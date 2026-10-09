@@ -1,0 +1,14 @@
+# Keep only the distributable plugin and its documentation.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/edge/
+!/figma/
+!/licenses/
+**/node_modules/
+**/__pycache__/
+**/*.log
+**/.env*
+**/credentials*
+**/secrets*
