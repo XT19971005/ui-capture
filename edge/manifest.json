@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾界 · UI Capture",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "抓取网页，编辑图层、文字与矢量，导出 Figma 插件数据、分层 PSD、SVG 和 PNG。Designed by XT。",
   "permissions": [
     "activeTab",

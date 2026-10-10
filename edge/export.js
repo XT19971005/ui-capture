@@ -79,3 +79,5 @@ async function captureTab(id,images){
 }
 // Do not leave capture parameters in the URL: refresh opens the saved project, not a second capture.
 (async()=>{const args=new URLSearchParams(location.search);if(args.has('project'))return;if(args.has('captureTab')&&globalThis.chrome?.scripting){try{await captureTab(Number(args.get('captureTab')),args.get('images')!=='0')}finally{window.history.replaceState(null,'',location.pathname)}return}try{const data=await CaptureStore.get();if(data)await accept(data)}catch(e){status('打开工程失败：'+e.message)}controls()})();
+
+$('demo').onclick=()=>{const url=new URL('demo.html',location.href).href;if(globalThis.chrome?.tabs)chrome.tabs.create({url});else window.open(url,'_blank')};

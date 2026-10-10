@@ -5,3 +5,25 @@
 @media(max-width:1200px){.app-header.single-module{grid-template-columns:90px auto 1fr;gap:10px;padding:0 12px!important}.workspace-switch a{font-size:12px;padding:8px 11px}.header-actions #demo{display:none}.header-actions .yc-header-button{padding:7px 9px}.workspace-switch svg{width:15px;height:15px}}
 @media(max-width:960px){.app-header.single-module{height:112px!important;grid-template-columns:1fr auto}.workspace-switch{grid-row:1;grid-column:2}.header-actions{grid-row:2;grid-column:1/-1;justify-content:flex-end}.editor-layout,.workspace{height:calc(100dvh - 112px)!important;grid-template-columns:198px minmax(250px,1fr) 242px!important}.app-header .brand small{display:none}.properties,.inspector{padding:12px!important}}
 @media(prefers-reduced-motion:reduce){.workspace-switch a,.studio-bar button,.toolbar button{transition:none!important;animation:none!important}}
+
+/* Keep project actions inside the header when URL capture adds a fourth item. */
+.app-header.single-module .header-actions #demo{display:inline-flex;align-items:center;white-space:nowrap}
+.app-header.single-module:not(:has(>.workspace-switch)):not(:has(>.url-capture)){grid-template-columns:minmax(100px,1fr) auto}
+.app-header.single-module:has(>.url-capture){grid-template-columns:auto auto minmax(260px,1fr) auto;grid-template-areas:"brand modes url actions";height:70px!important;gap:16px}
+.app-header.single-module:has(>.url-capture)>.brand{grid-area:brand}
+.app-header.single-module:has(>.url-capture)>.workspace-switch{grid-area:modes}
+.app-header.single-module:has(>.url-capture)>.url-capture{grid-area:url;width:100%;max-width:600px;justify-self:center}
+.app-header.single-module:has(>.url-capture)>.header-actions{grid-area:actions;justify-self:end;white-space:nowrap}
+.app-header.single-module:has(>.url-capture)+.editor-layout{height:calc(100dvh - 70px)!important}
+@media(max-width:1800px){
+ .app-header.single-module:has(>.url-capture){height:124px!important;grid-template-columns:minmax(70px,1fr) auto auto;grid-template-areas:"brand modes actions" "url url url";grid-template-rows:54px 46px;gap:4px 12px;padding:8px 14px!important}
+ .app-header.single-module:has(>.url-capture)>.url-capture{max-width:780px}
+ .app-header.single-module:has(>.url-capture) .local-badge{display:none}
+ .app-header.single-module:has(>.url-capture)+.editor-layout{height:calc(100dvh - 124px)!important}
+}
+@media(max-width:1100px){
+ .app-header.single-module:has(>.url-capture){gap:4px 8px;padding-inline:10px!important}
+ .app-header.single-module:has(>.url-capture) .header-actions{gap:5px}
+ .app-header.single-module:has(>.url-capture) .header-actions :is(button,.button){padding:8px!important;font-size:12px}
+ .app-header.single-module:has(>.url-capture) .workspace-switch a{padding:8px;font-size:12px}
+}
