@@ -1,0 +1,16 @@
+import {writePsd} from 'ag-psd';
+const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+const rgb=h=>({r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)});
+function paths(n){return n.type==='rect'?[{fill:n.fill,parts:[[[n.x,n.y],[n.x+n.width,n.y],[n.x+n.width,n.y+n.height],[n.x,n.y+n.height]]]}]:n.paths;}
+export function svg(scene){return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+scene.width+' '+scene.height+'" width="'+scene.width+'" height="'+scene.height+'">'+scene.nodes.map(n=>n.type==='text'?'<text x="'+n.x+'" y="'+n.y+'" fill="'+n.fill+'" font-family="Microsoft YaHei, sans-serif" font-size="'+n.fontSize+'">'+escape(n.text)+'</text>':paths(n).map(p=>'<path d="'+p.parts.map(part=>part.map(([x,y],i)=>(i?'L':'M')+x+','+y).join(' ')+'Z').join(' ')+'" fill="'+p.fill+'" fill-rule="evenodd"/>').join('')).join('')+'</svg>';}
+export function figma(scene){const color=h=>{const c=rgb(h);return {r:c.r/255,g:c.g/255,b:c.b/255,a:1}};
+const root={type:'box',name:scene.title,x:0,y:0,width:scene.width,height:scene.height,children:scene.nodes.map(n=>n.type==='text'?{type:'text',name:n.text,text:n.text,x:n.x,y:n.y-n.fontSize,width:Math.max(20,scene.width-n.x-20),height:n.fontSize*1.5,fontFamily:'Microsoft YaHei',fontSize:n.fontSize,fontWeight:400,lineHeight:n.fontSize*1.3,color:color(n.fill)}:n.type==='rect'?{type:'box',name:n.id,x:n.x,y:n.y,width:n.width,height:n.height,background:color(n.fill),children:[]}:{type:'svg',name:n.id==='art'?'艺术字 · 矢量轮廓':n.id,x:0,y:0,width:scene.width,height:scene.height,svg:svg({...scene,nodes:[n]})})};
+return {format:'gugu-page-to-figma',version:1,captureVersion:'image-research',title:scene.title,width:scene.width,height:scene.height,root,sceneMetadata:{edges:scene.edges,source:'controlled test fixture, not automatic image reconstruction'},warnings:['流程关系保存在工程 JSON；Figma 导入的是可编辑文字和矢量图形。']};}
+export function psd(scene){const composite=document.createElement('canvas');composite.width=scene.width;composite.height=scene.height;const cc=composite.getContext('2d'),layers=[];
+function canvas(){const c=document.createElement('canvas');c.width=scene.width;c.height=scene.height;return c;}
+for(const n of scene.nodes){if(n.type==='text'){const c=canvas(),ctx=c.getContext('2d');ctx.fillStyle=n.fill;ctx.font=n.fontSize+'px "Microsoft YaHei"';ctx.fillText(n.text,n.x,n.y);cc.drawImage(c,0,0);
+layers.push({name:'可编辑文字 · '+n.id,canvas:c,text:{text:n.text,transform:[1,0,0,1,n.x,n.y],antiAlias:'smooth',shapeType:'point',style:{font:{name:'MicrosoftYaHei'},fontSize:n.fontSize,fillColor:rgb(n.fill)}}});}
+else for(const p of paths(n)){const c=canvas(),ctx=c.getContext('2d');ctx.fillStyle=p.fill;ctx.beginPath();for(const part of p.parts){part.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();}ctx.fill('evenodd');cc.drawImage(c,0,0);
+layers.push({name:'矢量形状 · '+n.id,canvas:c,vectorFill:{type:'color',color:rgb(p.fill)},vectorMask:{fillStartsWithAllPixels:false,paths:p.parts.map(part=>({open:false,fillRule:'even-odd',operation:'combine',knots:part.map(([x,y])=>({linked:false,points:[x,y,x,y,x,y]}))}))}});}}
+return writePsd({width:scene.width,height:scene.height,canvas:composite,children:layers},{noBackground:true,trimImageData:true});}
+

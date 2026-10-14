@@ -1,0 +1,2 @@
+const fs=require('fs'),path=require('path');const root=path.resolve(__dirname,'../..'),{createCanvas,loadImage}=require(path.join(root,'依赖/构建工具/node_modules/@napi-rs/canvas'));
+(async()=>{const base=path.join(root,'插件程序/edge/icons'),svg=await loadImage(path.join(base,'shijie.svg'));for(const size of [16,32,48,128]){const c=createCanvas(size,size);c.getContext('2d').drawImage(svg,0,0,size,size);fs.writeFileSync(path.join(base,'shijie-'+size+'.png'),c.toBuffer('image/png'))}console.log('Icon SVG + 16/32/48/128 PNG ready')})();

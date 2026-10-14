@@ -12,3 +12,15 @@
 **/.env*
 **/credentials*
 **/secrets*
+
+# Current source backup (local registrations and credentials excluded)
+!/拾界插件/
+!/技能包/
+**/runtime.local.json
+**/native-host.json
+**/native-host.cmd
+**/service.json
+**/auth.json
+**/依赖/
+**/运行临时/
+!/源码备份说明.md

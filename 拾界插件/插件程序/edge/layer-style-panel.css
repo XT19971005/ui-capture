@@ -1,0 +1,18 @@
+#layer-style-panel{min-width:0;margin-top:12px;border-top:1px solid var(--line,#3c3b48)}
+#layer-style-panel[hidden],#layer-style-panel [hidden]{display:none!important}
+#layer-style-panel details{padding:10px 0;border-bottom:1px solid var(--line,#3c3b48)}
+#layer-style-panel summary{cursor:pointer;font-weight:600;font-size:12px;list-style:none;padding:4px 0}
+#layer-style-panel summary:before{content:'›';display:inline-block;width:14px;color:#a79cc2}
+#layer-style-panel details[open]>summary:before{transform:rotate(90deg)}
+#layer-style-panel label{min-width:0;font-size:11px;margin:7px 0;display:flex;flex-direction:column;gap:5px}
+#layer-style-panel .ls-check{flex-direction:row;align-items:center;gap:7px;font-size:12px}
+#layer-style-panel input,#layer-style-panel select,#layer-style-panel textarea{width:100%;min-width:0;box-sizing:border-box;margin:0}
+#layer-style-panel input[type=checkbox]{width:14px;height:14px;accent-color:#aa8aed}
+#layer-style-panel input[type=color]{height:30px;padding:3px}
+#layer-style-panel .ls-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 10px;padding:0 0 6px 21px}
+#layer-style-panel .ls-effect{margin-top:8px}
+#layer-style-panel .ls-path,#layer-style-panel .ls-stops{grid-column:1/-1}
+#layer-style-panel .ls-stop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 24px;gap:5px;align-items:center;margin-bottom:6px}
+#layer-style-panel .ls-stop button{padding:3px;height:28px;min-width:0}
+#layer-style-panel .ls-add-stop{font-size:11px;padding:4px 7px}
+#layer-style-panel :disabled{opacity:.45;cursor:default}
