@@ -16,3 +16,5 @@
 #layer-style-panel .ls-stop button{padding:3px;height:28px;min-width:0}
 #layer-style-panel .ls-add-stop{font-size:11px;padding:4px 7px}
 #layer-style-panel :disabled{opacity:.45;cursor:default}
+
+#layer-style-panel details{padding:5px 0}#layer-style-panel .ls-effect{margin:0;border-bottom:0;padding:2px 0}#layer-style-panel .ls-effect>summary{display:flex;align-items:center;padding:2px 0}#layer-style-panel .ls-effect>summary .ls-check{margin:0;font-weight:400}#layer-style-panel label{margin:5px 0;gap:3px}

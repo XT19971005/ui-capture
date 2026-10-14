@@ -237,17 +237,20 @@ def run(ident,source,title,mode,original,resume=None):
     try:
         if item['cancel'].is_set():raise InterruptedError('已取消')
         item['status']='running'
-        from codex_pipeline import process
+        if mode=='refine-ui':
+            from refine_ui import process
+        else:
+            from codex_pipeline import process
         result=process(source,title,progress,item['cancel'].is_set,original_source=original,on_scene=preview,resume_scene=resume)
         with lock:
             if item['cancel'].is_set():
                 SESSIONS.take(result.get('_sessionId'));item.update(status='cancelled',message='已取消')
-            else:item.update(status='completed',progress=1,message='智能拆图完成',sessionId=result['_sessionId'])
+            else:item.update(status='completed',progress=1,message='精修完成，请校对标记项' if mode=='refine-ui' else '智能拆图完成',sessionId=result['_sessionId'])
     except InterruptedError:item.update(status='cancelled',message='已取消，临时文件已清理')
     except Exception as e:
         # Local processing errors only; no source pixels or credentials are logged.
         logging.exception('Local pipeline failed')
-        item.update(status='failed',message='智能拆图未完成：'+str(e)[:240])
+        item.update(status='failed',message=('精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
         if isinstance(getattr(e,'diagnostics',None),dict):item['diagnostics']=e.diagnostics
     finally:
         with lock:
@@ -259,16 +262,19 @@ def submit():
     data=request.get_json(silent=True)
     if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume'}:return jsonify(error='任务参数无效'),400
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
-    if mode!='codex':return jsonify(error='处理方式无效'),400
+    if mode not in ('codex','refine-ui'):return jsonify(error='处理方式无效'),400
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):return jsonify(error='请选择有效图片'),400
     if not isinstance(original,str) or len(original)>36000000 or not original.startswith('data:image/'):return jsonify(error='原图无效'),400
     try:resume=validate_resume(data.get('resume'))
     except (ValueError,TypeError,RecursionError) as exc:return jsonify(error=str(exc)),400
+    if mode=='refine-ui':
+        from refine_ui import can_refine
+        if not can_refine(resume):return jsonify(error='当前工程没有可精修的完整、未锁定文字或矢量图层；请先完成拆图'),400
     with lock:
         for key in list(jobs):
             if jobs[key].get('finished',float('inf'))<time.time()-3600:del jobs[key]
         if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='已有图片正在处理，请等待完成或取消'),409
-        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备智能拆图…','cancel':threading.Event()}
+        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
     pool.submit(run,ident,source,title,mode,original,resume)

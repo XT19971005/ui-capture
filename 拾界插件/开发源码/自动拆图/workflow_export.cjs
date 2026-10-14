@@ -5,7 +5,13 @@ globalThis.document={createElement:()=>cv.createCanvas(1,1)};globalThis.Path2D=c
 for(const [file,name] of [['arial.ttf','Arial'],['msyh.ttc','Microsoft YaHei'],['msyhbd.ttc','Microsoft YaHei'],['simhei.ttf','SimHei']])cv.GlobalFonts.registerFromPath('C:/Windows/Fonts/'+file,name);
 const S=require('./scene-native.cjs'),skill=path.resolve(root,'../技能包/game-ui-to-psd/scripts');
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
-(async()=>{
+function spawnResult(label,result){
+ if(result.error)throw Error(label+'无法启动: '+result.error.message);
+ if(result.status!==0)throw Error(label+'失败 ('+(result.status===null?'无退出码':result.status)+'): '+String(result.stderr||result.stdout||'').slice(-1800));
+ return result;
+}
+module.exports={spawnResult};
+if(require.main===module)(async()=>{
  const [file,target,preview]=process.argv.slice(2),scene=S.validate(JSON.parse(fs.readFileSync(file,'utf8'))),project=path.resolve(path.dirname(file),'../..'),processRoot=path.join(project,'1_过程');
  const native=ag.readPsd(Buffer.from(await S.psd(scene))),materials=path.join(processRoot,'01_素材'),structure=path.join(processRoot,'02_结构');fs.mkdirSync(materials,{recursive:true});
  const nodes=S.allNodes(scene),layerById=new Map();function indexLayers(items){for(const l of items){if(layerById.has(l.id))throw Error('原生图层 ID 重复');layerById.set(l.id,l);if(l.children)indexLayers(l.children)}}indexLayers(native.children);
@@ -33,10 +39,10 @@ const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
  if(!fs.realpathSync(qaRoot).startsWith(realProject+path.sep))throw Error('Review cleanup must stay inside this project');
  for(const dir of ['独立图层','原生渐变图层','完整底稿参考','父组显示检查']){const targetDir=path.resolve(qaRoot,dir);if(!targetDir.startsWith(qaRoot+path.sep))throw Error('Unsafe review path');if(fs.existsSync(targetDir)){if(!fs.realpathSync(targetDir).startsWith(fs.realpathSync(qaRoot)+path.sep))throw Error('Review directory resolves outside project');fs.rmSync(targetDir,{recursive:true,force:true});}}
  for(const name of fs.readdirSync(qaRoot))if(/^独立图层图册_.*\.png$/.test(name))fs.unlinkSync(path.join(qaRoot,name));
- const r=cp.spawnSync(process.execPath,[path.join(skill,'pipeline.cjs'),'run','--project',processRoot,'--force'],{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:5000000});if(r.status)throw Error((r.stderr||r.stdout).slice(-1800));
+ spawnResult('拆图流水线',cp.spawnSync(process.execPath,[path.join(skill,'pipeline.cjs'),'run','--project',processRoot,'--force'],{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:5000000}));
  const runtime=require(path.join(skill,'runtime.cjs')).runtime({python:process.env.SHIJIE_PYTHON||'python',psdTools:path.resolve(root,'../技能包/依赖/Python')});
- const actual=cp.spawnSync(runtime.python,['-B',path.join(__dirname,'render_actual_layers.py'),target,qaRoot,runtime.psdTools],{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:5000000,env:{...process.env,PYTHONUTF8:'1'}});if(actual.status)throw Error(actual.stderr||actual.stdout);
- const reviewInit=cp.spawnSync(process.execPath,[path.join(skill,'review.cjs'),'init','--project',processRoot],{cwd:root,encoding:'utf8',windowsHide:true});if(reviewInit.status)throw Error(reviewInit.stderr||reviewInit.stdout);
+ spawnResult('实际图层渲染',cp.spawnSync(runtime.python,['-B',path.join(__dirname,'render_actual_layers.py'),target,qaRoot,runtime.psdTools],{cwd:root,encoding:'utf8',windowsHide:true,maxBuffer:5000000,env:{...process.env,PYTHONUTF8:'1'}}));
+ spawnResult('图层复核初始化',cp.spawnSync(process.execPath,[path.join(skill,'review.cjs'),'init','--project',processRoot],{cwd:root,encoding:'utf8',windowsHide:true}));
  const qa=path.join(processRoot,'03_检查'),composite=path.join(qa,'合成预览.png');if(path.resolve(composite)!==path.resolve(preview))fs.copyFileSync(composite,preview);
  const audit=JSON.parse(fs.readFileSync(path.join(qa,'检查结果.json'),'utf8'));
  console.log(JSON.stringify({status:audit.structuralChecks==='PASS'&&audit.assetChecks==='PASS'?'PASS':'FAIL',workflow:'game-ui-to-psd',audit:'03_检查/检查结果.json',visualReview:'REQUIRED'}));
