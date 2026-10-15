@@ -134,3 +134,5 @@
 .unified-workbench .document-actions{flex:none;gap:8px}.unified-workbench .document-actions button{flex:none;white-space:nowrap;min-height:29px;padding:5px 10px;font-size:11px}
 
 .unified-workbench .document-actions #recognize{width:auto;margin:0;background:#927bdd;border-color:#a18be9;color:#fff;padding:5px 12px}
+
+.unified-workbench #view,.unified-workbench #view option{background:#1c2029;color:#d6deed}.unified-workbench #view option:disabled{color:#738096}

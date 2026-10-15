@@ -19,7 +19,7 @@ PLAN=schema({
  'warnings':{'type':'array','items':{'type':'string'}}
 })
 for _kind in ['assets','texts','vectors']:
- _item=PLAN['properties'][_kind]['items'];_item['properties'].update(FIELDS);_item['required']=list(_item['properties'])
+ _item=PLAN['properties'][_kind]['items'];_item['properties'].update(FIELDS);_item['properties']['z_index']={'type':'number'};_item['required']=list(_item['properties'])
 PLAN['properties']['vectors']['items']['properties']['id']={'type':'string'}
 PLAN['properties']['vectors']['items']['required'].append('id')
 PLAN['properties']['groups']={'type':'array','maxItems':350,'items':GROUP}
@@ -82,6 +82,7 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
  prompt+='\nproject_name采用图中题材的简短中文名，不使用上传文件的数字英文名，不加PSD或日期。复杂3D物体、白色麻将牌/布/皮肤及金色绶带绝不是纯色logo。logo只用于真实单色墨迹/纯色标识；同一区域有多种纯色时按颜色分别建立logo资产。建筑、云台、牌组和装饰应尽量独立提取与补全；只有确实不可独立提取的互遮实体才列完整组合，并在warnings注明原因，不能重叠输出同一实体。\n本次必须遵循同一技能：'+workflow_rules
  prompt+='\n人物素材必须填写语义entity_id：同一个完整人体的本体、脸、手、衣物、持物使用同一个实体编号，程序只生成一次完整人物；真正独立的人物使用不同编号，即使名字相同也不可复用同一编号。相互遮挡且必须作为完整组合提取的人物共用组合编号。不属于人物实体的素材entity_id为空字符串。parent仅表达布局关联，不能代替人物身份。每项资产id仍须唯一。'
  prompt+='\n'+GRANULARITY_RULES
+ prompt+='\n用户2026-10-15最新优先规则：首遍不执行逐件视觉复核、不返修、不制作PSD，仅规划并提取。普通文字默认仅原始填色，未确实观察的描边、投影、发光、颜色/渐变叠加全部填null，不为提升可读性凭空加效果。所有assets/texts/vectors填写z_index，数值从后到前递增，以原图真实遮挡为准，绝不能按面积大小排序或把所有文字固定压最顶。groups只能包含连续层序成员且children由后到前；跨外部层时拆成合理组，不能改原图遮挡。完整角色包括真人、动物、卡通、吉祥物；与同一角色相连的一体坐垫、容器、贴身道具和手持物应共用entity_id完整提取一次，不将其拆成半身与独立座垫。确实独立的物件才分别提取，不能把外部相邻物体强合。高窄英文优先识别Impact/Arial Narrow等相近风格，保留原字高、字宽与布局，不能用宽字体缩小替代；明确艺术字用原形矢量/完整材质，普通正文原生编辑。角色外缘及原本画布外裁切按原图，不新增裁切。'
  source_sha=hashlib.sha256(original.read_bytes()).hexdigest()
  resume_scene=resume_scene if isinstance(resume_scene,dict) and resume_scene.get('recognition',{}).get('sourceOriginalSHA256')==source_sha and resume_scene.get('width')==im.width and resume_scene.get('height')==im.height else None
  saved_plan=(resume_scene or {}).get('recognition',{}).get('resumePlan')
@@ -95,8 +96,8 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
   original=next(out.glob('*_原图'+ext));renamed=out/(title+'_原图'+ext);original.rename(renamed);original=renamed;view=qa/'模型输入工作图.png'
  (structure/'Codex图层规划.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),'utf8')
  history=[];complete_assets={}
- from incremental_assets import extract_checked,gentle_glow,remember_record,restore_asset,review_or_pending,preserve_native
- reusable={n.get('sourceEntityId') or n.get('sourceAssetId') or n.get('id'):n for n in (resume_scene or {}).get('nodes',[]) if n.get('type')=='image' and n.get('assetReviewStatus')=='PASS'}
+ from incremental_assets import extract_once,gentle_glow,remember_record,restore_asset,preserve_native,check_resume_assets,check_resume_native
+ reusable={};repairs={}
  for attempt in range(1):
   def repair_plan(previous,error):
    corrected=CLIENT.analyze(prompt+'\n当前规划在实际组装前被拒绝，请只修正无效字段和引用，不删除独立对象、不合并文案逃避检查。问题：'+error+'\n当前规划：'+json.dumps(previous,ensure_ascii=False),[view],PLAN,cancelled,on_status=connection_status)
@@ -113,6 +114,10 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
   result['recognition'].update(colorFidelityRequired=True,acceptanceRequired=True,resumePlan=plan,sourceOriginalSHA256=source_sha)
   for n in [*result['nodes'],*result.get('groups',[])]:gentle_glow(n)
   preserve_native(result,resume_scene)
+  if resume_scene:
+   progress(.3,'正在检查已完成图层，再补齐和修正…')
+   result=check_resume_native(view,result,cancelled,connection_status)
+   reusable,repairs=check_resume_assets(view,result,resume_scene,assets,structure,source_sha,cancelled,connection_status)
   from progressive_scene import completed_scene
   def preview():
    snapshot=completed_scene(result)
@@ -120,7 +125,7 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
   preview()
   from workflow_assets import complete_background,complete_asset,review_sheets,review_reference_files,append_group_checks,reuse_current_asset
   progress(.8,'按原拆图流程补全干净背景…')
-  old_bg=next((n for n in (resume_scene or {}).get('nodes',[]) if n.get('assetKind')=='background' and not n.get('reviewIssue')),None)
+  old_bg=next((n for n in (resume_scene or {}).get('nodes',[]) if n.get('assetKind')=='background'),None)
   if old_bg:
    try:result['nodes'][0]=restore_asset(old_bg,result['nodes'][0],assets,structure,source_sha,True)
    except (ValueError,KeyError):old_bg=None
@@ -136,76 +141,25 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
    if cached:
     try:result['nodes'][index]=restore_asset(cached,n,assets,structure,source_sha);complete_assets[key]=result['nodes'][index];preview();continue
     except (ValueError,KeyError):pass
-   if key in complete_assets and n['name'] not in (repair_names if attempt else set()):
+   if key in complete_assets:
     result['nodes'][index]=reuse_current_asset(complete_assets[key],n,structure)
    else:
     progress(.83,'正在提取完整透明素材：'+n['name'])
-    candidate=extract_checked(view,n,assets,structure,cancelled,original,connection_status)
+    old=repairs.get(n.get('sourceEntityId') or n.get('sourceAssetId') or n['id'])
+    if old:
+     n['_repairNotes']=[old.get('reviewIssue','')]
+     progress(.83,'正在修正已有素材：'+n['name'])
+    candidate=extract_once(view,n,assets,structure,cancelled,original,connection_status)
+    if old and candidate.get('provenance')=='source-crop-fallback':
+     old['reviewIssue']+='；本轮修正未完成，保留之前的素材';candidate=old
     result['nodes'][index]=candidate
     complete_assets[key]=candidate
    preview()
-  psd=out/(title+'_可编辑分层.psd')
   unique_layer_names(result)
-  result['delivery']={'project':str(project),'psd':str(psd),'original':str(original)}
-  # Persist actual assets/structure. Only final PSD and original belong in output.
-  for i,n in enumerate(result['nodes']):
-   if n['type']=='image':(assets/(f'{i:03d}_'+safe_name(n['name'])+'.png')).write_bytes(base64.b64decode(n['src'].split(',',1)[1]))
-  scene_file=structure/'工程.scene.json';scene_file.write_text(json.dumps(result,ensure_ascii=False),'utf8')
-  progress(.86,'正在导出原生文字与矢量 PSD…')
-  exporter=Path(__file__).with_name('workflow_export.cjs');node=__import__('shutil').which('node')
-  if not node:raise RuntimeError('未找到 Node.js，无法导出 PSD')
-  psd=out/(title+'_可编辑分层.psd');preview=qa/'合成预览.png'
-  command=[node,str(exporter),str(scene_file),str(psd),str(preview)]
-  proc=subprocess.Popen(command,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf8',creationflags=getattr(__import__('subprocess'),'CREATE_NO_WINDOW',0))
-  while proc.poll() is None:
-   if cancelled():
-    if __import__('os').name=='nt':subprocess.run(['taskkill','/PID',str(proc.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-    else:proc.terminate()
-    proc.wait(timeout=10);raise InterruptedError('已取消')
-   time.sleep(.2)
-  stdout,stderr=proc.communicate()
-  if proc.returncode:raise RuntimeError('PSD 导出失败：'+stderr[-400:])
-  structural=json.loads(stdout);(qa/'结构检查.json').write_text(json.dumps(structural,ensure_ascii=False,indent=2),'utf8')
-  progress(.93,'Codex 正在对照原图检查拆分结果…')
-  sheets=review_sheets(result,qa)
-  review_file=qa/'画面复核.json';checklist=json.loads(review_file.read_text('utf8'))
-  group_render_limits=append_group_checks(qa,checklist)
-  unique_check_names(result,checklist);targets=review_targets(result,checklist)
-  native_proof=json.loads((qa/'检查结果.json').read_text('utf8'));native_proof={k:native_proof.get(k) for k in ('psdSHA256','structuralChecks','assetChecks','counts','layers','nativeEffectChecks','nativeGradientChecks')}
-  native_proof['parentGroupRenderLimits']=group_render_limits
-  extra=review_reference_files(qa,checklist)
-  review=review_or_pending(lambda:CLIENT.analyze(FINAL_RULES+COLOR_REVIEW_RULES+'第一张为原图，第二张为实际PSD独立回读回拼图，后续为每个独立PSD图层在深浅底的图册，最后按清单附实际并排、完整深浅底、棋盘格和完整背景，每张实际文件已提供。必须逐项检查每层并填写asset_checks，不能只看整体。主体身份/姿势、字形、完整实体、透明孔洞、文字准确及普通文字原生编辑、纯色矢量为硬门槛。背景不允许残留前景；麻将牌/白布/皮肤不能误透明；建筑不能混入牌组或碎片。多个坏图层叠加看起来像原图也必须NEEDS_REVIEW，破碎白牌、仅墨迹、混入其他物体、明显轮廓不完整均FAIL。高精度核对原图，次要纹理推断如实记录，不提供虚构百分比评分。有问题填写repair_assets为实际需重新提取补全的图层名。源文件注册通过不代表完整素材。名称末尾含#颜色的层是同一标识/艺术字的独立颜色通道，不要求它包含其它颜色的笔画；须检查该色自身笔画和孔洞完整，以及同名不同色图层正确重组完整实体，不能把合法拆色误判为坏碎片。file_checks必须对共享技能下列实际图像清单逐项记录观察、PASS或FAIL；层名对应图册的同名实际PSD独立图层，未看清不能写PASS。不要执行工具。清单：'+json.dumps(targets,ensure_ascii=False)+'\n以下为同一PSD的真实psd_tools独立结构读取，原生文字/矢量/渐变属性按此事实判断，图像复核再判断字形和画面，不要仅因PNG不携带元数据就说未验证原生属性：'+json.dumps(native_proof,ensure_ascii=False), [view,preview]+sheets+extra,REVIEW,cancelled,on_status=connection_status))
-  observed={c['name']:c for c in review['file_checks']}
-  for check in checklist['checks']:
-   observation=observed.get(check['name'])
-   if observation:check.update(status=observation['status'],notes=observation['notes'])
-   if check['status']!='PASS' or not check['notes'].strip():review['status']='NEEDS_REVIEW'
-  errors=review_errors(result,review,checklist)
-  if errors:review['status']='NEEDS_REVIEW';review['issues'].extend(errors)
-  for n in result['nodes']:
-   failed=[c for field in ('asset_checks','color_checks') for c in review.get(field,[]) if c.get('name')==n['name'] and c.get('status')=='FAIL']
-   if failed:n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='；'.join(c.get('notes') or '最终复核未通过' for c in failed))
-  pending=[n for n in result['nodes'] if n.get('reviewIssue')]
-  if pending:
-   review['status']='NEEDS_REVIEW';review['issues'].extend(n['name']+'：'+n['reviewIssue'] for n in pending)
-  checklist['issues']=review['issues'];checklist['observedBy']='own Codex vision on actual independent PSD pixels'
-  review_file.write_text(json.dumps(checklist,ensure_ascii=False,indent=2),'utf8')
-  (qa/'Codex画面复核.json').write_text(json.dumps(review,ensure_ascii=False,indent=2),'utf8')
-  history.append(review)
-  # User prefers a complete, exportable first pass; next run repairs only bad items.
-  break
- (qa/'复核修正过程.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),'utf8')
- result['recognition'].update(automatic=True,seconds=round(time.monotonic()-started,1),reviewStatus=review['status'],reviewSummary=review['summary'],pendingItems=[{'id':n['id'],'name':n['name'],'issues':n['reviewIssue']} for n in result['nodes'] if n.get('reviewIssue')],model=CLIENT.model(),warnings=result['recognition']['warnings']+review['issues'])
- result['delivery']={'project':str(project),'psd':str(psd),'original':str(original),'structuralChecks':structural['status']}
- scene_file.write_text(json.dumps(result,ensure_ascii=False),'utf8')
- if review['status']=='PASS':
-  shared=skill.parent/'scripts';node=__import__('shutil').which('node')
-  verified=subprocess.run([node,str(shared/'review.cjs'),'check','--project',str(project/'1_过程')],cwd=ROOT,capture_output=True,text=True,encoding='utf8',creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-  if verified.returncode:raise RuntimeError('实际画面复核记录校验失败：'+(verified.stderr or verified.stdout)[-600:])
-  (qa/'画面复核校验.json').write_text(verified.stdout,'utf8')
-  finalized=subprocess.run([__import__('sys').executable,'-B','-X','utf8',str(shared/'finalize_delivery.py'),'--project',str(project)],cwd=ROOT,capture_output=True,text=True,encoding='utf8',creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-  if finalized.returncode:raise RuntimeError('交付整理失败：'+(finalized.stderr or finalized.stdout)[-600:])
-  preview.unlink(missing_ok=True);view.unlink(missing_ok=True)
- if cancelled():raise InterruptedError('已取消')
- progress(1,'拆分完成，可编辑图层并导出 PSD' if review['status']=='PASS' else '拆分完成，有细节需要校对')
- return result
+  if cancelled():raise InterruptedError('已取消')
+  result.pop('delivery',None)
+  result.pop('_partial',None)
+  pending=[{'id':n['id'],'name':n['name'],'issues':n['reviewIssue']} for n in result['nodes'] if n.get('reviewIssue')]
+  result['recognition'].update(automatic=True,seconds=round(time.monotonic()-started,1),reviewStatus='NEEDS_REVIEW' if pending else 'NOT_REVIEWED',reviewSummary='首遍拆分已完成，未进行自动视觉复核。' if not resume_scene else '已检查原有素材并补齐和修正；新增或修正素材尚未复核。',pendingItems=pending,model=CLIENT.model())
+  progress(1,'拆分完成，可编辑或手动导出 PSD')
+  return result

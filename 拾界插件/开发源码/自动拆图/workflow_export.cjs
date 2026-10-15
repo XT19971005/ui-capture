@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),cp=require('child_process');
 const root=path.resolve(__dirname,'../..'),nm=path.resolve(root,'../技能包/依赖/Node/node_modules'),cv=require(path.join(nm,'@napi-rs/canvas')),ag=require(path.join(nm,'ag-psd'));
 globalThis.document={createElement:()=>cv.createCanvas(1,1)};globalThis.Path2D=cv.Path2D;globalThis.ShijieNodeCanvas=cv;ag.initializeCanvas(cv.createCanvas);
-for(const [file,name] of [['arial.ttf','Arial'],['msyh.ttc','Microsoft YaHei'],['msyhbd.ttc','Microsoft YaHei'],['simhei.ttf','SimHei']])cv.GlobalFonts.registerFromPath('C:/Windows/Fonts/'+file,name);
+for(const [file,name] of [['arial.ttf','Arial'],['arialn.ttf','Arial Narrow'],['arialnb.ttf','Arial Narrow'],['impact.ttf','Impact'],['HATTEN.TTF','Haettenschweiler'],['msyh.ttc','Microsoft YaHei'],['msyhbd.ttc','Microsoft YaHei'],['simhei.ttf','SimHei']])cv.GlobalFonts.registerFromPath('C:/Windows/Fonts/'+file,name);
 const S=require('./scene-native.cjs'),skill=path.resolve(root,'../技能包/game-ui-to-psd/scripts');
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 function spawnResult(label,result){
@@ -19,7 +19,7 @@ if(require.main===module)(async()=>{
  const registry=[],specById=new Map();let auxiliaryIndex=scene.nodes.length;
  const runtimeStyle=require(path.join(skill,'style_runtime.cjs'));
  for(const [i,n] of nodes.entries()){
-  const l=layerById.get(i+1);if(!l||l.children)throw Error('原生图层 ID 映射缺失: '+n.id);const name=n.name||n.text||n.id,filename=String(i).padStart(3,'0')+'_'+name.replace(/[<>:"/\\|?*]/g,'_')+'.png',f=path.join(materials,filename),edit={};for(const k of ['text','vectorFill','vectorMask','vectorStroke','effects'])if(l[k]!=null)edit[k]=l[k];
+  const l=layerById.get(i+1);if(!l||l.children)throw Error('原生图层 ID 映射缺失: '+n.id);const name=n.name||n.text||n.id,filename=String(i).padStart(3,'0')+'_'+name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.png',f=path.join(materials,filename),edit={};for(const k of ['text','vectorFill','vectorMask','vectorStroke','effects'])if(l[k]!=null)edit[k]=l[k];
   let spec;if(n.type==='image'){
    const bytes=Buffer.from(n.src.split(',')[1],'base64');fs.writeFileSync(f,bytes);const hash=sha(bytes),relative='01_素材/'+filename;
    registry.push({id:n.id,name,file:relative,sha256:hash,source:n.provenance,completeReview:'PENDING',inferred:n.inferred||false});

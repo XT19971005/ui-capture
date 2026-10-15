@@ -26,9 +26,9 @@ export function shape(layer,color,paths,clips=[]){
 export function nativeText(layer,n,baseline){
  if(!layer)return null;
  const family=String(n.fontResolved||n.fontFamily?.split(',')[0].replace(/["']/g,'').trim()||'Microsoft YaHei'),bold=+n.fontWeight>=600,italic=n.fontStyle==='italic';
- const known={'microsoft yahei':'MicrosoftYaHei','微软雅黑':'MicrosoftYaHei','segoe ui':'SegoeUI','arial':'ArialMT','sans-serif':'ArialMT','system-ui':'SegoeUI','serif':'TimesNewRomanPSMT','times new roman':'TimesNewRomanPSMT','monospace':'Consolas','tahoma':'Tahoma','verdana':'Verdana','simsun':'SimSun','宋体':'SimSun','simhei':'SimHei','黑体':'SimHei'};
+ const known={'microsoft yahei':'MicrosoftYaHei','微软雅黑':'MicrosoftYaHei','segoe ui':'SegoeUI','arial':'ArialMT','arial narrow':'ArialNarrow','arialnarrow':'ArialNarrow','impact':'Impact','haettenschweiler':'Haettenschweiler','sans-serif':'ArialMT','system-ui':'SegoeUI','serif':'TimesNewRomanPSMT','times new roman':'TimesNewRomanPSMT','monospace':'Consolas','tahoma':'Tahoma','verdana':'Verdana','simsun':'SimSun','宋体':'SimSun','simhei':'SimHei','黑体':'SimHei'};
  const regular=known[family.toLowerCase()]||family.replace(/\s+/g,'');
- const variants={TimesNewRomanPSMT:['TimesNewRomanPS-BoldMT','TimesNewRomanPS-ItalicMT','TimesNewRomanPS-BoldItalicMT'],'MicrosoftYaHei':['MicrosoftYaHei-Bold'],SegoeUI:['SegoeUI-Bold','SegoeUI-Italic','SegoeUI-BoldItalic'],ArialMT:['Arial-BoldMT','Arial-ItalicMT','Arial-BoldItalicMT'],Tahoma:['Tahoma-Bold'],Verdana:['Verdana-Bold','Verdana-Italic','Verdana-BoldItalic']};
+ const variants={TimesNewRomanPSMT:['TimesNewRomanPS-BoldMT','TimesNewRomanPS-ItalicMT','TimesNewRomanPS-BoldItalicMT'],'MicrosoftYaHei':['MicrosoftYaHei-Bold'],SegoeUI:['SegoeUI-Bold','SegoeUI-Italic','SegoeUI-BoldItalic'],ArialMT:['Arial-BoldMT','Arial-ItalicMT','Arial-BoldItalicMT'],ArialNarrow:['ArialNarrow-Bold','ArialNarrow-Italic','ArialNarrow-BoldItalic'],Tahoma:['Tahoma-Bold'],Verdana:['Verdana-Bold','Verdana-Italic','Verdana-BoldItalic']};
  const variant=(name)=>variants[name]?.[bold&&italic?2:italic?1:0];
  const base=(bold||italic)?variant(regular)||regular:regular;
  const text=String(n.text||'');

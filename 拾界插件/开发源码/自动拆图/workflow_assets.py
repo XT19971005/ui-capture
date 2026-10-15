@@ -119,7 +119,7 @@ def reusable_complete_asset(home,original_sha,node):
  return None
 
 def complete_asset(source,node,assets,structure,cancelled,original_source=None,force_repair=False,on_status=None):
- file=assets/('完整_'+re.sub(r'[<>:"/\\|?*]','_',str(node['name']))+'_'+node['id'][:16]+'.png')
+ file=assets/('完整_'+re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',str(node['name']))+'_'+node['id'][:16]+'.png')
  original_sha=hashlib.sha256(Path(original_source or source).read_bytes()).hexdigest()
  cached=None if force_repair else reusable_complete_asset(assets.parents[2],original_sha,node)
  if cached:
@@ -150,7 +150,7 @@ def review_sheets(scene,qa):
   group=nodes[start:start+8];atlas=Image.new('RGB',(1280,((len(group)+3)//4)*370),(35,38,43));draw=ImageDraw.Draw(atlas)
   for offset,n in enumerate(group):
    x=(offset%4)*320;y=(offset//4)*370;draw.text((x+5,y+5),f'{start+offset:02d} {n["name"][:18]}',font=font,fill='white')
-   independent=qa/'独立图层'/(f'{start+offset+1:03d}_'+re.sub(r'[<>:"/\\|?*]','_',n['name'])+'.png')
+   independent=qa/'独立图层'/(f'{start+offset+1:03d}_'+re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',n['name'])+'.png')
    if not independent.is_file():raise RuntimeError('缺少当前PSD实际独立图层：'+n['name'])
    im=Image.open(independent).convert('RGBA');bbox=im.getbbox();im=im.crop(bbox) if bbox else im
    im.thumbnail((310,160))

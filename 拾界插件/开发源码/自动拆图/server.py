@@ -227,7 +227,7 @@ def validate_resume(value):
     for k in ('delivery','_sessionId','_projectId'):result.pop(k,None)
     return result
 
-def run(ident,source,title,mode,original,resume=None):
+def run(ident,source,title,mode,original,resume=None,selected_ids=None):
     item=jobs[ident]
     def progress(value,message):
         with lock:item.update(progress=max(item.get('progress',0),float(value)),message=message)
@@ -237,20 +237,23 @@ def run(ident,source,title,mode,original,resume=None):
     try:
         if item['cancel'].is_set():raise InterruptedError('已取消')
         item['status']='running'
-        if mode=='refine-ui':
+        if mode=='refine-selected':
+            from selected_refine import process
+        elif mode=='refine-ui':
             from refine_ui import process
         else:
             from codex_pipeline import process
-        result=process(source,title,progress,item['cancel'].is_set,original_source=original,on_scene=preview,resume_scene=resume)
+        options={'selected_ids':selected_ids} if mode=='refine-selected' else {}
+        result=process(source,title,progress,item['cancel'].is_set,original_source=original,on_scene=preview,resume_scene=resume,**options)
         with lock:
             if item['cancel'].is_set():
                 SESSIONS.take(result.get('_sessionId'));item.update(status='cancelled',message='已取消')
-            else:item.update(status='completed',progress=1,message='精修完成，请校对标记项' if mode=='refine-ui' else '智能拆图完成',sessionId=result['_sessionId'])
+            else:item.update(status='completed',progress=1,message='选中项处理完成' if mode=='refine-selected' else '精修完成，请校对标记项' if mode=='refine-ui' else '智能拆图完成',sessionId=result['_sessionId'])
     except InterruptedError:item.update(status='cancelled',message='已取消，临时文件已清理')
     except Exception as e:
         # Local processing errors only; no source pixels or credentials are logged.
         logging.exception('Local pipeline failed')
-        item.update(status='failed',message=('精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
+        item.update(status='failed',message=('选中项处理未完成：' if mode=='refine-selected' else '精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
         if isinstance(getattr(e,'diagnostics',None),dict):item['diagnostics']=e.diagnostics
     finally:
         with lock:
@@ -260,13 +263,19 @@ def run(ident,source,title,mode,original,resume=None):
 @app.post('/jobs')
 def submit():
     data=request.get_json(silent=True)
-    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume'}:return jsonify(error='任务参数无效'),400
+    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds'}:return jsonify(error='任务参数无效'),400
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
-    if mode not in ('codex','refine-ui'):return jsonify(error='处理方式无效'),400
+    if mode not in ('codex','refine-ui','refine-selected'):return jsonify(error='处理方式无效'),400
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):return jsonify(error='请选择有效图片'),400
     if not isinstance(original,str) or len(original)>36000000 or not original.startswith('data:image/'):return jsonify(error='原图无效'),400
     try:resume=validate_resume(data.get('resume'))
     except (ValueError,TypeError,RecursionError) as exc:return jsonify(error=str(exc)),400
+    selected_ids=data.get('selectedIds')
+    if mode=='refine-selected':
+        from selected_refine import validate_selection
+        try:validate_selection(resume,selected_ids)
+        except (ValueError,TypeError):return jsonify(error='请选择工程中存在的图层'),400
+    elif selected_ids is not None:return jsonify(error='当前处理方式不接受选中图层'),400
     if mode=='refine-ui':
         from refine_ui import can_refine
         if not can_refine(resume):return jsonify(error='当前工程没有可精修的完整、未锁定文字或矢量图层；请先完成拆图'),400
@@ -277,7 +286,7 @@ def submit():
         ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
-    pool.submit(run,ident,source,title,mode,original,resume)
+    pool.submit(run,ident,source,title,mode,original,resume,selected_ids)
     return jsonify(id=ident),202
 
 @app.get('/jobs/<ident>')

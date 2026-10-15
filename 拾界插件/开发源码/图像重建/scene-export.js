@@ -15,7 +15,7 @@ export function validate(s){
  if(n.type!=='image'&&!/^#[\da-f]{6}$/i.test(n.fill))throw Error('图层颜色无效');
  normalizeGradient(n.gradient);normalizeStyle(n.layerStyle);normalizeMask(n.displayMask);
  if(n.strokeWidth!==undefined&&(!Number.isFinite(n.strokeWidth)||n.strokeWidth<0||n.strokeWidth>30))throw Error('文字描边宽度无效');if(n.stroke!==undefined&&!/^#[\da-f]{6}$/i.test(n.stroke))throw Error('文字描边颜色无效');
- if(n.rotation!==undefined&&![0,90].includes(n.rotation))throw Error('文字旋转方向无效');if(n.fontFamily!==undefined&&!['Arial','Microsoft YaHei','SimHei'].includes(n.fontFamily))throw Error('字体无效');
+ if(n.rotation!==undefined&&![0,90].includes(n.rotation))throw Error('文字旋转方向无效');if(n.fontFamily!==undefined&&!['Arial','Microsoft YaHei','SimHei','Impact','Arial Narrow','Haettenschweiler'].includes(n.fontFamily))throw Error('字体无效');
  if(n.fontStyle!==undefined&&!['normal','italic'].includes(n.fontStyle))throw Error('字体样式无效');if(n.fitWidth!==undefined&&typeof n.fitWidth!=='boolean')throw Error('文字字宽拟合参数无效');
  if(n.textSkew!==undefined&&(!Number.isFinite(n.textSkew)||n.textSkew<0||n.textSkew>.6))throw Error('文字倾斜参数无效');
  if(n.lineHeight!==undefined&&(!Number.isFinite(n.lineHeight)||n.lineHeight<=0||n.lineHeight>6000))throw Error('文字行高无效');

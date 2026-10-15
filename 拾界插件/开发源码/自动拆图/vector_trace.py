@@ -23,4 +23,19 @@ def trace(alpha):
     for p in ET.fromstring(svg).iter('{http://www.w3.org/2000/svg}path'):
         tr=re.search(r'translate\(([-\d.]+)[, ]+([-\d.]+)\)',p.get('transform',''));tx,ty=map(float,tr.groups()) if tr else (0,0)
         paths.append(translate(p.get('d',''),tx,ty))
-    return ' '.join(paths)
+    result=' '.join(p for p in paths if p.strip())
+    if result or not np.any(alpha>128):return result
+    # The spline tracer emits an empty path for a confirmed one-pixel mark.
+    # Preserve that ink as exact grid rectangles; never publish an invalid d or
+    # invent a larger contour. Merge matching runs across adjacent scanlines.
+    rectangles=[];active={}
+    for y,row in enumerate(alpha>128):
+        padded=np.pad(row.astype(np.int8),(1,1));changes=np.diff(padded)
+        runs=list(zip(np.flatnonzero(changes==1),np.flatnonzero(changes==-1)))
+        next_active={}
+        for left,right in runs:
+            key=(int(left),int(right));next_active[key]=active.pop(key,y)
+        for (left,right),top in active.items():rectangles.append((left,top,right,y))
+        active=next_active
+    for (left,right),top in active.items():rectangles.append((left,top,right,alpha.shape[0]))
+    return ' '.join(f'M{x} {y}H{right}V{bottom}H{x}Z' for x,y,right,bottom in rectangles)

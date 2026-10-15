@@ -1,13 +1,13 @@
 """Validate Codex placement coordinates without local inference."""
-import json
+import json,math
 from design_properties import design_fields
 
 def complete_entities(assets):
-    """Merge explicitly identified parts before generating one whole person.
+    """Merge only explicitly identified parts into one complete entity.
 
     Names, overlap and hierarchy alone are not reliable person identities.
     """
-    entities={a.get('entityId') for a in assets if a['kind']=='person' and a.get('entityId')}
+    entities={a.get('entityId') for a in assets if a.get('entityId')}
     groups={entity:[a for a in assets if a.get('entityId')==entity] for entity in entities}
     result=[];done=set()
     for a in assets:
@@ -15,10 +15,27 @@ def complete_entities(assets):
         if entity not in groups:result.append(a);continue
         if entity in done:continue
         done.add(entity);parts=groups[entity]
-        root=max((p for p in parts if p['kind']=='person'),key=lambda p:(p['box'][2]-p['box'][0])*(p['box'][3]-p['box'][1]))
+        roots=[p for p in parts if p['kind']=='person'] or [p for p in parts if p['kind'] not in ('panel','button')] or parts
+        root=max(roots,key=lambda p:(p['box'][2]-p['box'][0])*(p['box'][3]-p['box'][1]))
         box=[min(p['box'][0] for p in parts),min(p['box'][1] for p in parts),max(p['box'][2] for p in parts),max(p['box'][3] for p in parts)]
-        result.append({**root,'box':box,'entityParts':[p['id'] for p in parts]})
+        merged={**root,'box':box,'entityParts':list(dict.fromkeys(k for p in parts for k in p.get('entityParts',[p['id']]))) }
+        orders=[p['z_index'] for p in parts if 'z_index' in p]
+        if orders:merged['z_index']=max(orders)
+        text_parts=list(dict.fromkeys(k for p in parts for k in p.get('sourceTextParts',[])))
+        if text_parts:merged['sourceTextParts']=text_parts
+        result.append(merged)
+    aliases={part:a['id'] for a in result for part in a.get('entityParts',[a['id']])}
+    for a in result:
+        parent=aliases.get(a.get('parent'),a.get('parent'))
+        a['parent']=parent if parent!=a['id'] else None
     return result
+
+def layer_order(row):
+    if 'z_index' not in row:return {}
+    value=row['z_index']
+    if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value):
+        raise ValueError('图层 '+str(row.get('id') or row.get('name') or '')+' 的 z_index 必须是有限数值')
+    return {'z_index':value}
 def parse_plan(value, width, height, input_size=(1000,1000)):
     raw = value.strip()
     start, end = raw.find('{'), raw.rfind('}')
@@ -39,7 +56,7 @@ def parse_plan(value, width, height, input_size=(1000,1000)):
         used.add(ident)
         assets.append({'id':ident,'name':str(a.get('name') or '素材')[:80],
                        'kind':('logo' if a.get('kind')=='text' else a.get('kind','decoration')),'box':[x0,y0,x1,y1],
-                       'parent':str(a.get('parent') or '')[:60] or None,'entityId':str(a.get('entity_id') or a.get('entityId') or '')[:80],**design_fields(a)})
+                       'parent':str(a.get('parent') or '')[:60] or None,'entityId':str(a.get('entity_id') or a.get('entityId') or '')[:80],**design_fields(a),**layer_order(a)})
     if not assets and not obj.get("vectors") and not obj.get("text_corrections") and not obj.get("texts"): raise ValueError("视觉模型未找到可信素材，原图已保留")
     for a in assets:
         if a['parent'] not in used or a['parent']==a['id']: a['parent']=None

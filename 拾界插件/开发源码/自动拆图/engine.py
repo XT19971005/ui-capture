@@ -1,6 +1,6 @@
 """Deterministic native text/ink construction; complex assets require Codex ImageGen."""
 from runtime import ROOT
-import base64,io,json,re,time,uuid
+import base64,io,json,re,time,uuid,unicodedata
 from pathlib import Path
 import cv2,numpy as np
 from PIL import Image,ImageDraw,ImageFont
@@ -37,6 +37,13 @@ def ink_mask(rgb,row):
     full=np.zeros((h,w),np.uint8);full[y0:y1,x0:x1]=expanded
     return full,np.clip(fill,0,255).astype('uint8'),bg,coverage
 
+def upright_chinese_column(text,width,height):
+    # Keep Chinese role columns upright with their original separators/digits.
+    # Latin words and explicit line breaks retain their existing layout paths.
+    cjk=lambda c:'\u4e00'<=c<='\u9fff'
+    return height>width*1.4 and len(text)>1 and any(cjk(c) for c in text) and all(
+        cjk(c) or unicodedata.category(c).startswith('P') or unicodedata.category(c) in ('Nd','Zs') for c in text)
+
 def text_nodes(rows,rgb,art_ids):
     nodes=[];mask=np.zeros(rgb.shape[:2],np.uint8)
     for row in rows:
@@ -46,7 +53,7 @@ def text_nodes(rows,rgb,art_ids):
         if bh>bw*1.8 and re.fullmatch(r'[A-Za-z0-9 /+.-]+',text):
             pixels=rgb[y0:y1,x0:x1];dark=pixels[np.linalg.norm(pixels.astype(float)-bg,axis=2)>65];color=np.median(dark,axis=0) if len(dark) else fill
             nodes.append({'id':uuid.uuid4().hex,'name':text,'type':'text','text':text,'x':x0,'y':y0,'width':bw,'height':bh,'fontSize':max(8,round(bw*.8,2)),'fontWeight':400,'fontFamily':'Arial','rotation':90,'fill':'#'+''.join(f'{int(v):02x}' for v in color),'strokeWidth':0,'review':True,'sourceTextId':row['id'],'sourceBox':{'x0':x0,'y0':y0,'x1':x1,'y1':y1}});continue
-        vertical=bh>bw*1.4 and len(text)>1 and all('\u4e00'<=c<='\u9fff' for c in text)
+        vertical=upright_chinese_column(text,bw,bh)
         parts=[(ch,x0,y0+i*bh/len(text),bw,bh/len(text)) for i,ch in enumerate(text)] if vertical else [(text,x0,y0,bw,bh)]
         for value,x,y,width,height in parts:
             size=max(8,round(height*.84))
@@ -54,9 +61,7 @@ def text_nodes(rows,rgb,art_ids):
                 font=ImageFont.truetype(str(FONT),size);box=font.getbbox(value)
                 if box[2]-box[0]<=width and box[3]-box[1]<=height:break
                 size-=1
-            contrast=np.linalg.norm(fill-bg);stroke_width=min(2,max(0,round(height*.035))) if contrast>60 else 0
-            luminance=float(np.dot(fill,[.2126,.7152,.0722]))
-            nodes.append({'id':uuid.uuid4().hex,'name':value,'type':'text','text':value,'x':round(x+max(0,(width-(box[2]-box[0]))/2),2),'y':round(y+max(0,(height-(box[3]-box[1]))/2),2),'width':round(width,2),'height':round(height,2),'fontSize':size,'fontWeight':700,'fill':'#'+''.join(f'{v:02x}' for v in fill),'stroke':'#161919' if luminance>130 else '#fff8e8','strokeWidth':stroke_width,'confidence':round(row['confidence']*100,1),'review':row['confidence']<.9,'provenance':'rapidocr','sourceTextId':row['id'],'sourceBox':{'x0':int(round(x)),'y0':int(round(y)),'x1':int(round(x+width)),'y1':int(round(y+height))}})
+            nodes.append({'id':uuid.uuid4().hex,'name':value,'type':'text','text':value,'x':round(x+max(0,(width-(box[2]-box[0]))/2),2),'y':round(y+max(0,(height-(box[3]-box[1]))/2),2),'width':round(width,2),'height':round(height,2),'fontSize':size,'fontWeight':700,'fill':'#'+''.join(f'{v:02x}' for v in fill),'strokeWidth':0,'confidence':round(row['confidence']*100,1),'review':row['confidence']<.9,'provenance':'rapidocr','sourceTextId':row['id'],'sourceBox':{'x0':int(round(x)),'y0':int(round(y)),'x1':int(round(x+width)),'y1':int(round(y+height))}})
     # Fit genuine editable glyphs rather than treating padded OCR boxes as their size.
     from text_style import estimate
     for n in nodes:
@@ -65,11 +70,15 @@ def text_nodes(rows,rgb,art_ids):
         if fitted:
             n.update({k:fitted[k] for k in ('fontFamily','fontWeight','fontStyle','textSkew','fontSize','fitWidth','fill','strokeWidth','styleMatch')})
             n.update(x=b['x0']+fitted['offsetX'],y=b['y0']+fitted['offsetY'],width=fitted['glyphWidth'],height=fitted['glyphHeight'])
+            if 'lineHeight' in fitted:n['lineHeight']=fitted['lineHeight']
+            n['fontMatchApproximate']=fitted.get('fontMatchApproximate',False)
+            for key in ('nativeDensityError','nativeAspectError'):
+                if key in fitted:n[key]=fitted[key]
     # Connected vertical Chinese remains one editable text object, not one layer per glyph.
     # Glyph fitting above is retained, but its independent draft nodes are merged before export.
     for row in rows:
         x0,y0,x1,y1=row['bbox'];text=row['text']
-        vertical=(y1-y0)>(x1-x0)*1.4 and len(text)>1 and all('\u4e00'<=c<='\u9fff' for c in text)
+        vertical=upright_chinese_column(text,x1-x0,y1-y0)
         if not vertical or row['id'] in art_ids:continue
         members=[n for n in nodes if n.get('sourceTextId')==row['id']]
         if len(members)!=len(text):raise ValueError('连续竖排文字构造不完整')
@@ -267,6 +276,8 @@ def text_rows(plan,width,height):
 
 def build_scene(source,title,plan_override,progress,cancelled):
  if cancelled():raise InterruptedError('已取消')
+ for field in ('assets','texts','vectors'):
+  for row in plan_override.get(field,[]):planner.layer_order(row)
  im=load_source(source);rgb=np.array(im);w,h=im.size
  plan=planner.parse_plan(json.dumps(plan_override),w,h,(w,h));rows=text_rows(plan_override,w,h)
  vectors=[vector(a,w,h,i) for i,a in enumerate(plan_override.get('vectors',[]))]
@@ -280,10 +291,9 @@ def build_scene(source,title,plan_override,progress,cancelled):
   n.pop('confidence',None);n.update(provenance='codex-vision-text',review=True)
   for row in plan_override.get('texts',[]):
    if n.get('sourceTextId')==row['id'] or (n.get('sourceBox') and row['id'] in {r['id'] for r in rows if r['bbox'][0]<=n['sourceBox']['x0']<n['sourceBox']['x1']<=r['bbox'][2] and r['bbox'][1]<=n['sourceBox']['y0']<n['sourceBox']['y1']<=r['bbox'][3]}):
-    n['sourceTextId']=row['id'];n.update(design_fields(row));break
+    n['sourceTextId']=row['id'];n.update(design_fields(row));n.update(planner.layer_order(row));break
  exclude=[[int(v['x']),int(v['y']),int(v['x']+v['width']),int(v['y']+v['height'])] for v in vectors if v.get('type')=='rect']
  results=segment(rgb,assets,progress,cancelled,exclude_boxes=exclude)
- results.sort(key=lambda a:np.count_nonzero(a['mask']),reverse=True)
  layers=[{'id':uuid.uuid4().hex,'name':'背景补全候选','type':'image','x':0,'y':0,'width':w,'height':h,'src':source,'provenance':'pending-image-generation','review':True}]
  for a in results:
   if cancelled():raise InterruptedError('已取消')
@@ -296,12 +306,24 @@ def build_scene(source,title,plan_override,progress,cancelled):
    from vector_trace import trace
    n.update(type='path',d=trace(alpha),fill='#'+''.join(f'{int(v):02x}' for v in a['flatColor']),provenance='observed-flat-ink')
   else:n.update(type='image',src=png(Image.fromarray(np.dstack([crop,alpha]))),provenance='pending-image-generation')
-  n.update(design_fields(a));n['sourceTextParts']=a.get('sourceTextParts',[]);layers.append(n)
+  n.update(design_fields(a));n.update(planner.layer_order(a));n['sourceTextParts']=a.get('sourceTextParts',[]);layers.append(n)
  for i,a in enumerate(vectors):
   if a.get('type') not in ('rect','ellipse','path') or not re.fullmatch(r'#[0-9a-fA-F]{6}',a.get('fill','')):raise ValueError('原生矢量规划无效')
   if not all(isinstance(a.get(k),(int,float)) and not isinstance(a.get(k),bool) and np.isfinite(a[k]) for k in ['x','y','width','height']) or not (0<=a['x']<a['x']+a['width']<=w and 0<=a['y']<a['y']+a['height']<=h):raise ValueError('原生矢量框超出原图')
   if a['type']=='path' and (not a.get('d') or not re.fullmatch(r'[MmLlHhVvCcSsQqTtAaZz\s\d.eE,+\-]+',a['d'])):raise ValueError('原生矢量路径无效')
-  layers.append({k:a[k] for k in ['name','type','x','y','width','height','fill','radius','d'] if k in a}|{'id':uuid.uuid4().hex,'sourceVectorId':a.get('id') or 'vector:'+str(i),'provenance':'codex-native-vector','review':True}|design_fields(a))
+  layers.append({k:a[k] for k in ['name','type','x','y','width','height','fill','radius','d'] if k in a}|{'id':uuid.uuid4().hex,'sourceVectorId':a.get('id') or 'vector:'+str(i),'provenance':'codex-native-vector','review':True}|design_fields(a)|planner.layer_order(a))
  layers.extend(texts)
  if len(layers)==1 and not vectors:raise ValueError('未发现可拆分的文字或素材')
- return attach_groups({'format':'shijie-scene','version':2,'title':title,'width':w,'height':h,'source':source,'nodes':layers,'edges':[],'groups':[],'provenance':'codex-native-scene','recognition':{'engine':'Codex vision + native text/vector','automatic':True,'warnings':[]}},plan_override.get('groups',[]))
+ def fallback(n):
+  if n.get('assetKind') in ('panel','button') or (n['type']=='rect' and n['width']*n['height']>=w*h*.05):return 100
+  if n['type']=='text':return 400
+  return 300 if n['type'] in ('rect','ellipse','path') else 200
+ layers[1:]=sorted(layers[1:],key=lambda n:n.get('z_index',fallback(n)))
+ font_warnings=['文字「'+str(n.get('name',''))[:60]+'」使用相近本地字体，保留原生比例，请校对字形。' for n in texts if n.get('fontMatchApproximate')]
+ scene=attach_groups({'format':'shijie-scene','version':2,'title':title,'width':w,'height':h,'source':source,'nodes':layers,'edges':[],'groups':[],'provenance':'codex-native-scene','recognition':{'engine':'Codex vision + native text/vector','automatic':True,'warnings':font_warnings}},plan_override.get('groups',[]))
+ positions={n['id']:i for i,n in enumerate(layers)}
+ for group in scene['groups']:
+  group['children'].sort(key=positions.__getitem__)
+  indexes=[positions[ident] for ident in group['children']]
+  if indexes[-1]-indexes[0]+1!=len(indexes):raise ValueError('分组「'+group['name']+'」跨越交错图层，请按连续叠放范围拆组，不能改变原图前后顺序')
+ return scene
