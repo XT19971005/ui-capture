@@ -167,7 +167,7 @@ def health():
     try:command();available=True
     except RuntimeError:available=False
     with lock:active_jobs=sum(j['status'] in ('queued','running') for j in jobs.values())
-    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,imageWireVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order'])
+    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,imageWireVersion=1,regionRefineVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order'])
 
 @app.get('/codex/status')
 def codex_status():
@@ -258,7 +258,7 @@ def validate_resume(value):
     for k in ('delivery','_sessionId','_projectId'):result.pop(k,None)
     return result
 
-def run(ident,source,title,mode,original,resume=None,selected_ids=None):
+def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=None):
     item=jobs[ident]
     def progress(value,message):
         with lock:item.update(progress=max(item.get('progress',0),float(value)),message=message)
@@ -276,7 +276,7 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None):
             from refine_ui import process
         else:
             from codex_pipeline import process
-        options={'selected_ids':selected_ids} if mode=='refine-selected' else {}
+        options={'selected_ids':selected_ids,**({'region':region} if region is not None else {})} if mode=='refine-selected' else {}
         result=process(source,title,progress,item['cancel'].is_set,original_source=original,on_scene=preview,resume_scene=resume,**options)
         with lock:
             if item['cancel'].is_set():
@@ -300,19 +300,19 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None):
 def submit():
     try:data=decode_job(request.get_json(silent=True))
     except (ValueError,TypeError,RecursionError,UnicodeError) as exc:return jsonify(error=str(exc)[:240]),400
-    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds'}:return jsonify(error='任务参数无效'),400
+    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds','region'}:return jsonify(error='任务参数无效'),400
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
     if mode not in ('codex','refine-ui','refine-selected','repair-order'):return jsonify(error='处理方式无效'),400
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):return jsonify(error='请选择有效图片'),400
     if not isinstance(original,str) or len(original)>36000000 or not original.startswith('data:image/'):return jsonify(error='原图无效'),400
     try:resume=validate_resume(data.get('resume'))
     except (ValueError,TypeError,RecursionError) as exc:return jsonify(error=str(exc)),400
-    selected_ids=data.get('selectedIds')
+    selected_ids=data.get('selectedIds');region=data.get('region')
     if mode=='refine-selected':
         from selected_refine import validate_selection
-        try:validate_selection(resume,selected_ids)
-        except (ValueError,TypeError):return jsonify(error='请选择工程中存在的图层'),400
-    elif selected_ids is not None:return jsonify(error='当前处理方式不接受选中图层'),400
+        try:validate_selection(resume,selected_ids,region)
+        except (ValueError,TypeError) as exc:return jsonify(error=str(exc)),400
+    elif selected_ids is not None or region is not None:return jsonify(error='当前处理方式不接受选中图层或检查区域'),400
     if mode=='repair-order':
         from layer_order import hierarchy
         try:hierarchy(resume)
@@ -327,7 +327,7 @@ def submit():
         ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
-    pool.submit(run,ident,source,title,mode,original,resume,selected_ids)
+    pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []))
     return jsonify(id=ident),202
 
 @app.get('/jobs/<ident>')
