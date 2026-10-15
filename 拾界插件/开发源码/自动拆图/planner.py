@@ -36,6 +36,20 @@ def layer_order(row):
     if not isinstance(value,(int,float)) or isinstance(value,bool) or not math.isfinite(value):
         raise ValueError('图层 '+str(row.get('id') or row.get('name') or '')+' 的 z_index 必须是有限数值')
     return {'z_index':value}
+def asset_box(row,width,height,input_size,index=0):
+ """Validate explicit inventory entries; never discard them by size or area."""
+ label=str(row.get('name') or '第'+str(index+1)+'项')+'('+str(row.get('id') or '')+')'
+ def fail(reason):raise ValueError('素材「'+label+'」的 box '+reason)
+ box=row.get('box')
+ if isinstance(box,dict):box=[box.get(k) for k in ('left','top','right','bottom')]
+ if not isinstance(box,list) or len(box)!=4:fail('须为左上右下四个坐标')
+ if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in box):fail('须为有限数值')
+ if not(0<=box[0]<box[2]<=input_size[0] and 0<=box[1]<box[3]<=input_size[1]):fail('超出原图或顺序无效')
+ x0,y0,x1,y1=[int(round(v*k/size)) for v,k,size in zip(box,[width,height,width,height],[*input_size,*input_size])]
+ if x1-x0<8 or y1-y0<8 or x1>width or y1>height:fail('取整后宽高须至少8像素且位于画布内')
+ return [x0,y0,x1,y1]
+
+
 def parse_plan(value, width, height, input_size=(1000,1000)):
     raw = value.strip()
     start, end = raw.find('{'), raw.rfind('}')
@@ -44,19 +58,15 @@ def parse_plan(value, width, height, input_size=(1000,1000)):
     assets = []
     used = set()
     if len(obj.get('assets',[]))>120:raise ValueError('独立素材超过本次120项容量，请分批处理，不能截断或合并掩盖遗漏')
-    for a in obj.get('assets', []):
-        b = a.get('box')
-        if isinstance(b,dict):b=[b.get(k) for k in ('left','top','right','bottom')]
-        ident = str(a.get('id',''))[:60]
-        if not ident or ident in used or not isinstance(b,list) or len(b)!=4: continue
-        if any(not isinstance(v,(float,int)) or not 0 <= v <= max(input_size) for v in b): continue
-        x0,y0,x1,y1=[int(round(v*k/1000)) for v,k in zip(b,[width/input_size[0]*1000,height/input_size[1]*1000,width/input_size[0]*1000,height/input_size[1]*1000])]
-        if (x1-x0)*(y1-y0)>width*height*.93: continue
-        if x1-x0<8 or y1-y0<8 or x1>width or y1>height:raise ValueError('模型素材框不符合左上右下格式，请重新分析')
+    for index,a in enumerate(obj.get('assets', [])):
+        if not isinstance(a,dict):raise ValueError('素材规划第'+str(index+1)+'项不是对象')
+        ident=a.get('id')
+        if not isinstance(ident,str) or not ident or len(ident)>60 or ident in used:raise ValueError('素材ID缺失、重复或超过60字符，原清单不能静默过滤')
+        x0,y0,x1,y1=asset_box(a,width,height,input_size,index)
         used.add(ident)
         assets.append({'id':ident,'name':str(a.get('name') or '素材')[:80],
                        'kind':('logo' if a.get('kind')=='text' else a.get('kind','decoration')),'box':[x0,y0,x1,y1],
-                       'parent':str(a.get('parent') or '')[:60] or None,'entityId':str(a.get('entity_id') or a.get('entityId') or '')[:80],**design_fields(a),**layer_order(a)})
+                       'parent':str(a.get('parent') or '')[:60] or None,'entityId':str(a.get('entity_id') or a.get('entityId') or '')[:80],**({'derivedFromArtTextId':a['derivedFromArtTextId']} if a.get('derivedFromArtTextId') else {}),**design_fields(a),**layer_order(a)})
     if not assets and not obj.get("vectors") and not obj.get("text_corrections") and not obj.get("texts"): raise ValueError("视觉模型未找到可信素材，原图已保留")
     for a in assets:
         if a['parent'] not in used or a['parent']==a['id']: a['parent']=None

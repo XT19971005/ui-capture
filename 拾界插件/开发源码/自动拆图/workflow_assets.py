@@ -73,7 +73,8 @@ def reusable_background(home,original_sha):
 
 def complete_background(source,scene,assets,structure,cancelled,original_source=None,force_repair=False,on_status=None):
  file=assets/'完整干净背景.png'
- prompt='从编辑目标提取完整干净背景。去掉所有人物、前景物体、独立标题、文字、印章、标识、按钮、UI及阴影，补齐它们遮住的原有背景。保持画布比例、原有镜头、透视、背景风格、原有景观和光照，不重新设计。没有文字、人物、物体轮廓或色块残留，完整不透明。'+COLOR_PRESERVATION+'当前前景物体列表：'+json.dumps([n['name'] for n in scene['nodes'][1:]],ensure_ascii=False)
+ foreground=[{key:n[key] for key in ('name','type','assetKind','sourceVectorId','sourceEntityId','x','y','width','height','fill','z_index') if key in n} for n in scene['nodes'][1:]]
+ prompt='从编辑目标提取完整干净背景。去掉所有人物、前景物体、独立标题、文字、印章、标识、按钮、UI及阴影，补齐它们遮住的原有背景。保持画布比例、原有镜头、透视、背景风格、原有景观和光照，不重新设计。没有文字、人物、物体轮廓或色块残留，完整不透明。'+COLOR_PRESERVATION+'原生矢量前景也必须移除；清单中的独立纯色大区域、前景云地和遮罩台面不得因位于底部、面积大或颜色接近背景而保留，不得烘焙进干净背景。按原图遮挡边缘、坐标及z_index识别这些独立实体，补齐其后的背景，不保留重复轮廓；没有证据时不凭空新增前景。当前须移除的独立前景清单（含原生矢量和完整角色，坐标为工作图像素）：'+json.dumps(foreground,ensure_ascii=False)
  record_file=structure/'背景补全来源.json'
  original_sha=hashlib.sha256(Path(original_source or source).read_bytes()).hexdigest()
  if not force_repair and file.is_file() and record_file.is_file() and json.loads(record_file.read_text('utf8')).get('actualImageGeneration'):

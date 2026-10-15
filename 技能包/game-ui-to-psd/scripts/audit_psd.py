@@ -16,6 +16,7 @@ root=Path(a.project);DIRS=__import__('project_dirs').project_dirs(root);qa=root/
 job=json.loads((root/(DIRS['plan']+'/项目.json')).read_text('utf8'));psd=PSDImage.open(a.psd)
 source_report_file=qa/'来源检查.json';source_report=json.loads(source_report_file.read_text('utf8')) if source_report_file.exists() else {}
 def sha(file):return hashlib.sha256(Path(file).read_bytes()).hexdigest()
+def safe_filename(name):return ''.join('_' if c in '\\/:*?"<>|' or ord(c)<32 else c for c in name)
 source_report_valid=source_report.get('projectManifestSHA256')==sha(root/(DIRS['plan']+'/项目.json')) and source_report.get('psdSHA256')==sha(a.psd)
 layer_dir=qa/'独立图层';layer_dir.mkdir(exist_ok=True)
 errors=[];asset_errors=[];counts={'groups':0,'text':0,'vector':0,'bitmap':0};layer_rows=[];complete_assets=[];vector_checks=[];native_vector_checks=[];effect_checks=[];gradient_checks=[]
@@ -36,6 +37,7 @@ def expected_groups(items):
 mask_checks=[]
 for s,l in zip(expected_groups(job['layers']),[l for l in actual if l.is_group()]):
  if s['name']!=l.name:errors.append('group name/order mismatch: '+s['name'])
+ if l.visible==bool(s.get('hidden',False)):errors.append('group visibility changed: '+s['name'])
  if s.get('native',{}).get('effects'):
   expected=s['native']['effects'];mapping={'dropShadow':'DropShadow','innerShadow':'InnerShadow','outerGlow':'OuterGlow','innerGlow':'InnerGlow','stroke':'Stroke','solidFill':'ColorOverlay','gradientOverlay':'GradientOverlay'}
   if l.effects.enabled==bool(expected.get('disabled',False)):errors.append('group effect master switch changed: '+l.name)
@@ -57,9 +59,10 @@ for l in actual:
 for index,(s,l) in enumerate(zip(specs,leaves)):
  isolated=l.topil()
  if isolated is not None:
-  safe_name=''.join(c if c not in '\\/:*?"<>|' else '_' for c in l.name)
+  safe_name=safe_filename(l.name)
   isolated.save(layer_dir/(f'{index+1:03d}_'+safe_name+'.png'))
  if s['name']!=l.name:errors.append('name/order mismatch: '+s['name'])
+ if l.visible==bool(s.get('hidden',False)):errors.append('layer visibility changed: '+s['name'])
  if s.get('native',{}).get('effects'):
   expected_effects=s['native']['effects'];actual_effects=list(l.effects);mapping={'outerGlow':'OuterGlow','innerGlow':'InnerGlow','dropShadow':'DropShadow','innerShadow':'InnerShadow','stroke':'Stroke','solidFill':'ColorOverlay','gradientOverlay':'GradientOverlay','patternOverlay':'PatternOverlay','bevel':'BevelEmboss','satin':'Satin'}
   if not expected_effects.get('disabled',False):
@@ -75,8 +78,10 @@ for index,(s,l) in enumerate(zip(specs,leaves)):
  if s['kind']=='text':
   if l.kind!='type' or not l.engine_dict:errors.append('not native editable text: '+l.name)
   else:
-   expected=(s.get('native',{}).get('text',{}).get('text') or s.get('text',{}).get('value','')).rstrip('\r')
-   if l.text.rstrip('\r')!=expected:errors.append('text content mismatch: '+l.name)
+   expected=(s.get('native',{}).get('text',{}).get('text') or s.get('text',{}).get('value',''))
+   # PSD text engines encode line breaks as CR; scene/Pillow use LF.
+   normalize_text=lambda value:value.replace('\r\n','\n').replace('\r','\n').rstrip('\n')
+   if normalize_text(l.text)!=normalize_text(expected):errors.append('text content mismatch: '+l.name)
   if s.get('cleanTextSource'):
    proof=s['cleanTextSource'];cache_file=root/s['cache'];pixels=np.array(Image.open(cache_file).convert('RGBA'));valid=pixels[:,:,3]>128
    if sha(cache_file)!=proof['cacheSHA256']:asset_errors.append('clean text cache changed: '+l.name)
@@ -88,7 +93,7 @@ for index,(s,l) in enumerate(zip(specs,leaves)):
   # Whole-canvas MAE hides damaged small logos. Compare each native path's
   # opaque interior with its own cache, allowing only rasterizer edge pixels.
   from scipy.ndimage import binary_erosion,binary_dilation
-  native_image=l.composite(viewport=l.bbox,force=True)
+  native_image=l.composite(viewport=l.bbox,force=True,layer_filter=lambda _:True)
   if native_image is None:errors.append('native vector cannot render: '+l.name)
   else:
    expected_alpha=np.array(isolated.convert('RGBA'))[:,:,3]
@@ -133,12 +138,12 @@ for index,(s,l) in enumerate(zip(specs,leaves)):
     actual_opacity=float(entry.get(b'Opct'))/100
     if abs(actual_opacity-opacity)>.005 or abs(int(entry.get(b'Lctn'))-round(position*4096))>1:errors.append('native gradient opacity changed: '+l.name)
     row['opacityStops'].append({'position':int(entry.get(b'Lctn'))/4096,'opacity':actual_opacity})
-   rendered_gradient=l.composite(viewport=(0,0,psd.width,psd.height),force=True).crop(l.bbox)
-   if rendered_gradient is not None:rendered_gradient.save(gradient_dir/(f'{index+1:03d}_'+l.name.replace('/','_')+'.png'));row['independentImage']=(DIRS['qa']+'/原生渐变图层/')+f'{index+1:03d}_'+l.name.replace('/','_')+'.png'
+   rendered_gradient=l.composite(viewport=(0,0,psd.width,psd.height),force=True,layer_filter=lambda _:True).crop(l.bbox)
+   if rendered_gradient is not None:rendered_gradient.save(gradient_dir/(f'{index+1:03d}_'+safe_filename(l.name)+'.png'));row['independentImage']=(DIRS['qa']+'/原生渐变图层/')+f'{index+1:03d}_'+safe_filename(l.name)+'.png'
   gradient_checks.append(row)
  if s.get('native',{}).get('effects',{}).get('gradientOverlay'):
-  rendered_gradient=l.composite(viewport=(0,0,psd.width,psd.height),force=True).crop(l.bbox)
-  if rendered_gradient is not None:rendered_gradient.save(gradient_dir/(f'{index+1:03d}_'+l.name.replace('/','_')+'.png'))
+  rendered_gradient=l.composite(viewport=(0,0,psd.width,psd.height),force=True,layer_filter=lambda _:True).crop(l.bbox)
+  if rendered_gradient is not None:rendered_gradient.save(gradient_dir/(f'{index+1:03d}_'+safe_filename(l.name)+'.png'))
  if s.get('integrityRegion'):
   reg=s['integrityRegion'];x,y,right,bottom=reg['box']
   src=np.array(Image.open(root/job['source']).convert('RGB'))[y:bottom,x:right].astype('int16')
@@ -173,7 +178,7 @@ for index,(s,l) in enumerate(zip(specs,leaves)):
    if not s.get('cache') and ('width' in s or 'height' in s):im=im.resize((s.get('width',im.width),s.get('height',im.height)),Image.Resampling.BILINEAR)
    expected=Image.new('RGBA',psd.size);expected.paste(im,(s.get('x',0),s.get('y',0)))
   result=Image.new('RGBA',psd.size);result.paste(l.topil().convert('RGBA'),l.bbox[:2])
-  filename=('PSD内完整人物_'+f'{index+1:03d}_'+re.sub(r'[\\/:*?"<>|]','_',l.name)+'.png') if s['role']=='character' and sum(v.get('role')=='character' for v in specs)>1 else ('PSD内完整人物.png' if s['role']=='character' else 'PSD内完整艺术字.png' if s['role']=='artwork' else 'PSD内完整背景.png')
+  filename=('PSD内完整人物_'+f'{index+1:03d}_'+safe_filename(l.name)+'.png') if s['role']=='character' and sum(v.get('role')=='character' for v in specs)>1 else ('PSD内完整人物.png' if s['role']=='character' else 'PSD内完整艺术字.png' if s['role']=='artwork' else 'PSD内完整背景.png')
   result.save(qa/filename)
   e=np.array(expected).astype('int16');r=np.array(result).astype('int16');delta=np.abs(e-r)
   # Ignore RGB of fully transparent pixels; PNG encoders may keep arbitrary values there.

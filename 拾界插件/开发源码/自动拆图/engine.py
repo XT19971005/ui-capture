@@ -56,12 +56,20 @@ def text_nodes(rows,rgb,art_ids):
         vertical=upright_chinese_column(text,bw,bh)
         parts=[(ch,x0,y0+i*bh/len(text),bw,bh/len(text)) for i,ch in enumerate(text)] if vertical else [(text,x0,y0,bw,bh)]
         for value,x,y,width,height in parts:
-            size=max(8,round(height*.84))
-            while size>6:
-                font=ImageFont.truetype(str(FONT),size);box=font.getbbox(value)
-                if box[2]-box[0]<=width and box[3]-box[1]<=height:break
+            lines=value.replace('\r\n','\n').replace('\r','\n').split('\n')
+            leading=height/len(lines) if len(lines)>1 else None
+            size=max(6,round(height*.84/len(lines)))
+            while True:
+                font=ImageFont.truetype(str(FONT),size);boxes=[font.getbbox(line) for line in lines]
+                glyph_width=max(b[2]-b[0] for b in boxes)
+                glyph_height=max(b[3]-b[1] for b in boxes)+(len(lines)-1)*(leading or 0)
+                if (glyph_width<=width and glyph_height<=height) or size<=6:break
                 size-=1
-            nodes.append({'id':uuid.uuid4().hex,'name':value,'type':'text','text':value,'x':round(x+max(0,(width-(box[2]-box[0]))/2),2),'y':round(y+max(0,(height-(box[3]-box[1]))/2),2),'width':round(width,2),'height':round(height,2),'fontSize':size,'fontWeight':700,'fill':'#'+''.join(f'{v:02x}' for v in fill),'strokeWidth':0,'confidence':round(row['confidence']*100,1),'review':row['confidence']<.9,'provenance':'rapidocr','sourceTextId':row['id'],'sourceBox':{'x0':int(round(x)),'y0':int(round(y)),'x1':int(round(x+width)),'y1':int(round(y+height))}})
+            # A failed glyph match does not establish center alignment. Keep
+            # the source anchor, measure each line, and label the fallback.
+            node={'id':uuid.uuid4().hex,'name':value,'type':'text','text':value,'x':round(x,2),'y':round(y,2),'width':round(width,2),'height':round(height,2),'fontSize':size,'fontWeight':700,'fill':'#'+''.join(f'{v:02x}' for v in fill),'strokeWidth':0,'confidence':round(row['confidence']*100,1),'review':True,'fontMatchApproximate':True,'fontFitStatus':'FALLBACK','provenance':'rapidocr','sourceTextId':row['id'],'sourceBox':{'x0':int(round(x)),'y0':int(round(y)),'x1':int(round(x+width)),'y1':int(round(y+height))}}
+            if leading is not None:node['lineHeight']=leading
+            nodes.append(node)
     # Fit genuine editable glyphs rather than treating padded OCR boxes as their size.
     from text_style import estimate
     for n in nodes:
@@ -72,6 +80,7 @@ def text_nodes(rows,rgb,art_ids):
             n.update(x=b['x0']+fitted['offsetX'],y=b['y0']+fitted['offsetY'],width=fitted['glyphWidth'],height=fitted['glyphHeight'])
             if 'lineHeight' in fitted:n['lineHeight']=fitted['lineHeight']
             n['fontMatchApproximate']=fitted.get('fontMatchApproximate',False)
+            n['fontFitStatus']='APPROXIMATE' if n['fontMatchApproximate'] else 'MATCHED'
             for key in ('nativeDensityError','nativeAspectError'):
                 if key in fitted:n[key]=fitted[key]
     # Connected vertical Chinese remains one editable text object, not one layer per glyph.

@@ -14,8 +14,9 @@ const resolveFile=f=>path.isAbsolute(f)?f:path.resolve(project,f);
 function loadJob(){if(!fs.existsSync(planFile))throw Error('需要先 init 项目，再由识别阶段填写 03_结构/项目.json');return JSON.parse(fs.readFileSync(planFile,'utf8'))}
 function libraries(job={}){return loadLibraries(job.runtime||{});}
 function leaves(ls){return (ls||[]).flatMap(l=>l.kind==='group'?leaves(l.children):[l])}
+function visibleLeaves(ls){return (ls||[]).flatMap(l=>l.hidden?[]:l.kind==='group'?visibleLeaves(l.children):[l]);}
 function preflight(job){
- const errors=[],ls=leaves(job.layers);if(!Number.isInteger(job.width)||!Number.isInteger(job.height)||job.width<=0||job.height<=0)errors.push('识别阶段未填写有效画布尺寸');
+ const errors=[],ls=leaves(job.layers),active=visibleLeaves(job.layers).filter(l=>!l.versionArchived);if(!Number.isInteger(job.width)||!Number.isInteger(job.height)||job.width<=0||job.height<=0)errors.push('识别阶段未填写有效画布尺寸');
  if(!ls.length)errors.push('识别阶段未填写图层');
  if(job.width*job.height>12000000)errors.push('画布超过此工具的 1200 万像素上限');
  const assets=[];if(job.source){const f=resolveFile(job.source);if(!fs.existsSync(f))errors.push('缺少原始截图: '+f);else assets.push(f)}
@@ -38,18 +39,18 @@ function preflight(job){
   }
   if(l.kind==='shape'&&l.cache&&(!l.native?.vectorFill||!l.native?.vectorMask))errors.push('形状缓存缺少原生填充或路径: '+l.name);
  }
- if(ls.filter(l=>l.role==='background').length>1)errors.push('同一完整素材被拆成多个 background 图层');
+ if(active.filter(l=>l.role==='background').length>1)errors.push('同一完整素材被拆成多个 background 图层');
  // Distinct people are legal. Repeated source or repeated semantic entity is
  // independently illegal: renaming an entity must never hide source reuse.
  const characterSources=new Set(),characterEntities=new Set();
- for(const l of ls.filter(l=>l.role==='character')){
+ for(const l of active.filter(l=>l.role==='character')){
   const source=l.completeAssetSource?.sha256||l.completeAssetSHA256||(l.file&&fs.existsSync(resolveFile(l.file))?hash(resolveFile(l.file)):null),entity=l.completeAssetIdentity;
   if(source){const key=source.toLowerCase();if(characterSources.has(key))errors.push('同一完整素材被拆成多个 character 图层（重复底稿 SHA256）: '+l.name);characterSources.add(key)}
   if(entity){if(typeof entity!=='string')errors.push('人物实体编号必须是字符串: '+l.name);else{if(characterEntities.has(entity))errors.push('同一完整素材被拆成多个 character 图层（重复人物实体）: '+l.name);characterEntities.add(entity)}}
  }
  return {errors,assets,leafCount:ls.length};
 }
-function fingerprint(job,assets){const h=crypto.createHash('sha256');for(const file of ['pipeline.cjs','runtime.cjs','runtime.json','complete_assets.cjs','audit_psd.py','layer_effects.cjs','gradient_fill.cjs','style_runtime.cjs','psd_gradient_compat.py','project_dirs.cjs'])h.update(hash(path.join(toolRoot,file)));h.update(JSON.stringify(job));for(const f of [...new Set(assets)].sort())h.update(f+'\n'+hash(f));return h.digest('hex');}
+function fingerprint(job,assets){const h=crypto.createHash('sha256');for(const file of ['pipeline.cjs','runtime.cjs','runtime.json','complete_assets.cjs','bitmap_raster.cjs','audit_psd.py','layer_effects.cjs','gradient_fill.cjs','style_runtime.cjs','psd_gradient_compat.py','project_dirs.cjs'])h.update(hash(path.join(toolRoot,file)));h.update(JSON.stringify(job));for(const f of [...new Set(assets)].sort())h.update(f+'\n'+hash(f));return h.digest('hex');}
 function outputPath(job){const name=job.outputName||'可编辑分层.psd';if(path.basename(name)!==name||!name.toLowerCase().endsWith('.psd'))throw Error('outputName 必须是 PSD 文件名');return path.join(project,dirs.output,name);}
 async function build(job,check){
  const {ag,cv,svgpath}=libraries(job),{createCanvas,loadImage,GlobalFonts,Path2D}=cv;ag.initializeCanvas(createCanvas);
@@ -68,7 +69,7 @@ async function build(job,check){
  async function leaf(s){
   const native={...(s.native||{})};for(const bad of ['canvas','imageData','children','mask'])if(bad in native)throw Error('unsupported native field: '+bad);
   let layer;if(s.cache){const im=await loadImage(resolveFile(s.cache));const c=createCanvas(im.width,im.height);c.getContext('2d').drawImage(im,0,0);layer={canvas:c,left:s.x||0,top:s.y||0};}
-  else if(s.kind==='bitmap'){const im=await loadImage(resolveFile(s.file)),w=Math.ceil(s.width??im.width),h=Math.ceil(s.height??im.height),c=createCanvas(w,h);c.getContext('2d').drawImage(im,0,0,s.width??im.width,s.height??im.height);layer={canvas:c,left:s.x||0,top:s.y||0,right:(s.x||0)+w,bottom:(s.y||0)+h};}
+  else if(s.kind==='bitmap'){const im=await loadImage(resolveFile(s.file));layer=require('./bitmap_raster.cjs').bitmapLayer(im,s,cv);}
   else {const c=createCanvas(W,H),ctx=c.getContext('2d');
    if(s.kind==='bitmap'){const im=await loadImage(resolveFile(s.file));ctx.drawImage(im,s.x||0,s.y||0,s.width??im.width,s.height??im.height);}
    else if(s.kind==='text'){const t=s.text||{},size=t.size||24,baseline=t.baseline??((s.y||0)+size),family=t.family||'Microsoft YaHei';ctx.font=`${t.bold?'bold ':''}${size}px "${family}"`;ctx.textBaseline='alphabetic';ctx.lineJoin='round';const scale=t.targetWidth?t.targetWidth/ctx.measureText(t.value||'').width:1;ctx.save();ctx.translate(s.x||0,baseline);ctx.scale(scale,1);if(t.stroke){ctx.strokeStyle=t.stroke;ctx.lineWidth=(t.strokeWidth||1)*2;ctx.strokeText(t.value,0,0)}ctx.fillStyle=t.color||'#ffffff';ctx.fillText(t.value,0,0);ctx.restore();native.text={text:t.value,shapeType:'point',antiAlias:'smooth',transform:[scale,0,0,1,s.x||0,baseline],style:{font:{name:t.postscript||'MicrosoftYaHei'},fontSize:size,fillColor:color(t.color||'#ffffff'),fauxBold:!!t.fauxBold,leading:size*1.2,autoLeading:false,...(t.stroke?{strokeFlag:true,fillFlag:true,fillFirst:false,outlineWidth:t.strokeWidth||1,strokeColor:color(t.stroke)}:{})},paragraphStyle:{justification:'left'}};}
@@ -82,9 +83,9 @@ async function build(job,check){
    await checkSource(s,job,cv,resolveFile,actual);
   }
   if(s.kind==='text'&&!result.text)throw Error('文字没有原生描述');if(s.kind==='shape'&&!result.vectorFill)throw Error('矢量没有原生填充');
-  if(['character','background'].includes(s.role)){const full=createCanvas(W,H);full.getContext('2d').drawImage(result.canvas,result.left,result.top);const index=leaves(job.layers).indexOf(s)+1,name=s.role==='character'&&leaves(job.layers).filter(l=>l.role==='character').length>1?'完整人物_'+String(index).padStart(3,'0')+'_'+s.name.replace(/[\\/:*?"<>|]/g,'_')+'.png':s.role==='character'?'完整人物.png':'完整背景.png';fs.writeFileSync(path.join(project,dirs.compact?dirs.qa:dirs.output,name),full.toBuffer('image/png'))}return result;
+  if(['character','background'].includes(s.role)){const full=createCanvas(W,H);full.getContext('2d').drawImage(result.canvas,result.left,result.top);const index=leaves(job.layers).indexOf(s)+1,name=s.role==='character'&&leaves(job.layers).filter(l=>l.role==='character').length>1?'完整人物_'+String(index).padStart(3,'0')+'_'+s.name.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_')+'.png':s.role==='character'?'完整人物.png':'完整背景.png';fs.writeFileSync(path.join(project,dirs.compact?dirs.qa:dirs.output,name),full.toBuffer('image/png'))}return result;
  }
- async function visit(s){if(s.kind==='group'){const children=[];for(const ch of s.children||[])children.push(await visit(ch));const result={name:s.name,children,...(s.nativeLayerId!==undefined?{id:s.nativeLayerId}:{}),hidden:!!s.hidden,opacity:s.opacity??1,opened:false,blendMode:s.blendMode||'normal',...(s.native?.effects?{effects:s.native.effects}:{})};if(s.displayMask){const m=s.displayMask;if(!m.d||!m.reason)throw Error('显示遮罩必须登记路径和用途: '+s.name);const alpha=createCanvas(W,H),ac=alpha.getContext('2d');ac.fillStyle='#fff';ac.fill(new Path2D(m.d),'evenodd');const gray=createCanvas(W,H),gc=gray.getContext('2d');gc.fillStyle='#000';gc.fillRect(0,0,W,H);gc.drawImage(alpha,0,0);result.mask={canvas:gray,left:0,top:0,right:W,bottom:H,disabled:!!m.disabled,defaultColor:0};result._displayMask={canvas:alpha,disabled:!!m.disabled};}return result}try{return await leaf(s)}catch(e){throw Error(s.name+': '+e.message)}}
+ async function visit(s){if(s.kind==='group'){const children=[];for(const ch of s.children||[])children.push(await visit(ch));const result={name:s.name,children,...(s.nativeLayerId!==undefined?{id:s.nativeLayerId}:{}),hidden:!!s.hidden,opacity:s.opacity??1,opened:false,blendMode:s.blendMode||'normal',...(s.native?.effects?{effects:s.native.effects}:{}),...(s.native?.protected?{protected:s.native.protected}:{})};if(s.displayMask){const m=s.displayMask;if(!m.d||!m.reason)throw Error('显示遮罩必须登记路径和用途: '+s.name);const alpha=createCanvas(W,H),ac=alpha.getContext('2d');ac.fillStyle='#fff';ac.fill(new Path2D(m.d),'evenodd');const gray=createCanvas(W,H),gc=gray.getContext('2d');gc.fillStyle='#000';gc.fillRect(0,0,W,H);gc.drawImage(alpha,0,0);result.mask={canvas:gray,left:0,top:0,right:W,bottom:H,disabled:!!m.disabled,defaultColor:0};result._displayMask={canvas:alpha,disabled:!!m.disabled};}return result}try{return await leaf(s)}catch(e){throw Error(s.name+': '+e.message)}}
  const children=[];for(const s of job.layers)children.push(await visit(s));
  function paint(ls,target){for(const l of ls){if(l.hidden)continue;let base,left=l.left||0,top=l.top||0;if(l.children){base=createCanvas(W,H);paint(l.children,base.getContext('2d'));left=top=0;}else base=l.canvas;const effectBounds=styleRuntime.alphaBounds(base);if(l._displayMask&&!l._displayMask.disabled){const masked=createCanvas(base.width,base.height),mc=masked.getContext('2d');mc.drawImage(base,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(l._displayMask.canvas,-left,-top);base=masked;}const rendered=styleRuntime.styleCanvas(base,styleRuntime.nativeToStyle(l.effects,l.blendMode||'normal'),createCanvas,effectBounds),tmp=createCanvas(W,H),tc=tmp.getContext('2d');tc.drawImage(rendered.canvas,left-rendered.pad,top-rendered.pad);target.save();target.globalAlpha*=l.opacity??1;target.globalCompositeOperation=l.blendMode==='normal'?'source-over':l.blendMode||'source-over';target.drawImage(tmp,0,0);target.restore();}}
  const c=createCanvas(W,H);paint(children,c.getContext('2d'));const psd={width:W,height:H,canvas:c,children};

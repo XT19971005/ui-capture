@@ -31,8 +31,9 @@
  const positionGrid=$('properties').querySelector('.grid');positionGrid.after($('text-label'));$('text').rows=4;
  const order=document.querySelector('.layer-actions');order.classList.add('order-buttons');$('properties').append(order);$('up').textContent='上移一层';$('down').textContent='下移一层';
  const secondOrder=document.createElement('div');secondOrder.className='order-buttons';const duplicate=document.createElement('button');duplicate.textContent='复制';duplicate.onclick=()=>window.studio.run('duplicate');secondOrder.append(duplicate,$('delete'));order.after(secondOrder);
+ const originalUpdateButtons=updateButtons;updateButtons=function(){originalUpdateButtons();duplicate.disabled=!node()||busy};
  const strokeDetails=document.createElement('details');strokeDetails.className='text-stroke-details';strokeDetails.innerHTML='<summary>文字描边</summary>';strokeDetails.append($('stroke-props'));secondOrder.after(strokeDetails);
- const originalProps=props;props=function(){originalProps();const n=node();propertyHead.querySelector('span').textContent=n?.type==='text'?'文字图层':n?.type==='image'?'图片图层':'形状图层';strokeDetails.hidden=n?.type!=='text';duplicate.disabled=!n||busy};
+ const originalProps=props;props=function(){originalProps();const n=node();propertyHead.querySelector('span').textContent=n?.type==='text'?'文字图层':n?.type==='image'?'图片图层':'形状图层';strokeDetails.hidden=n?.type!=='text'};
  const tools=document.querySelector('.toolbar .tools'),extras=[...tools.querySelectorAll('[data-tool]')].filter(b=>!['select','hand'].includes(b.dataset.tool));
  const more=document.createElement('details');more.className='image-tools-menu';more.innerHTML='<summary>工具 ▾</summary><div></div>';more.querySelector('div').append(...extras);extras.forEach(b=>b.addEventListener('click',()=>more.open=false));tools.append(more);const traceSettings=$('trace-colors').closest('details');traceSettings.querySelector('.tip')?.remove();more.querySelector('div').append(traceSettings);
  const zoom=$('zoom');zoom.hidden=true;const widthOption=new Option('适宽','width');zoom.add(widthOption);

@@ -16,7 +16,10 @@ def estimate(patch,text):
  border_keys,border_counts=np.unique((border//16)*16,axis=0,return_counts=True)
  border_key=border_keys[np.argmax(border_counts)]
  if np.max(border_counts)/len(border)>=.35:key=border_key
- material=np.all(buckets==key,axis=1)
+ # A smooth or compressed material can straddle several 16-level buckets.
+ # Treat nearby background colours as one material before applying the area
+ # gate; a single exact bucket rejected real small text before glyph fitting.
+ material=np.linalg.norm(pixels.astype(float)-(key.astype(float)+8),axis=1)<28
  if np.mean(material)<.2:return None
  background=np.median(pixels[material],axis=0)
  distance=np.linalg.norm(patch.astype(float)-background,axis=2)

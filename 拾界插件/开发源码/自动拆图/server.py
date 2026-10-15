@@ -327,7 +327,11 @@ def submit():
         ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
-    pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []))
+    try:pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []))
+    except Exception:
+        with lock:jobs.pop(ident,None)
+        logging.exception('Local job dispatch failed')
+        return jsonify(error='任务未能启动，原工程已保留，请重试'),503
     return jsonify(id=ident),202
 
 @app.get('/jobs/<ident>')

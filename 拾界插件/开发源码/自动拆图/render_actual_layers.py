@@ -27,8 +27,8 @@ for psd_index,layer in enumerate(l for l in psd.descendants() if not l.is_group(
  if index in seen:raise RuntimeError('Duplicate original scene index');
  seen.add(index)
  if spec and spec['name']!=layer.name:raise RuntimeError('Actual layer name/source ID mismatch: '+layer.name)
- name=''.join(c if c not in '\\/:*?"<>|' else '_' for c in layer.name)
- image=layer.composite(force=True)
+ name=''.join('_' if c in '\\/:*?"<>|' or ord(c)<32 else c for c in layer.name)
+ image=layer.composite(force=True,layer_filter=lambda _:True)
  if image is None:raise RuntimeError('Native layer cannot render: '+layer.name)
  target=layers/(f'{index+1:03d}_'+name+'.png');image.save(target)
  rows.append({'index':index,'sourceSceneIndex':index,'psdIndex':psd_index,'nodeId':spec.get('nodeId') if spec else None,'nativeLayerId':layer.layer_id,'name':layer.name,'file':'独立图层/'+target.name,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'nativeComposite':True})
@@ -43,8 +43,14 @@ for group_index,layer in enumerate(l for l in psd.descendants() if l.is_group())
  files={};mask=layer.mask;mask_disabled=mask.disabled if mask else None
  descriptors=[layer.tagged_blocks.get_data(tag) for tag in [b'lfx2',b'lmfx']]
  saved=[(d,d.get(b'masterFXSwitch')) for d in descriptors if d is not None]
+ def within_group(candidate):
+  while candidate is not layer:
+   if not candidate.visible:return False
+   candidate=candidate.parent
+   if candidate is None:return False
+  return True
  def save(kind):
-  im=layer.composite(viewport=(0,0,psd.width,psd.height),force=True)
+  im=layer.composite(viewport=(0,0,psd.width,psd.height),force=True,layer_filter=within_group)
   if im is None:raise RuntimeError('Parent group cannot render: '+layer.name)
   target=group_dir/(f'{group_index+1:03d}_'+str(layer.layer_id)+'_'+kind+'.png');im.save(target)
   files[kind]={'file':'父组显示检查/'+target.name,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'nativeComposite':True}

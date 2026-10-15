@@ -24,5 +24,5 @@ def completed_scene(scene):
  for ident in original_groups:keep(ident)
  groups.sort(key=lambda g:list(original_groups).index(g['id']))
  snapshot.update(nodes=copy.deepcopy(nodes),groups=groups,edges=[copy.deepcopy(e) for e in scene.get('edges',[]) if e.get('from') in ids and e.get('to') in ids],_partial=True)
- snapshot['recognition']={**copy.deepcopy(scene.get('recognition',{})),'automatic':True,'reviewStatus':'PROCESSING'}
+ snapshot['recognition']={**copy.deepcopy(scene.get('recognition',{})),'automatic':True,'reviewStatus':'NEEDS_REVIEW' if scene.get('recognition',{}).get('reviewStatus')=='NEEDS_REVIEW' else 'NOT_REVIEWED'}
  return snapshot

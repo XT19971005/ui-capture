@@ -324,6 +324,11 @@ def _process(source, title, progress, cancelled, original_source, home, resume_s
     recorded_sha = scene.get('recognition', {}).get('sourceOriginalSHA256')
     if recorded_sha and recorded_sha != original_sha:
         raise ValueError('精修原文件与当前工程来源不一致')
+    stored_original = scene.get('originalSource')
+    if stored_original and stored_original != original_source:
+        raise ValueError('精修原文件与当前工程来源不一致')
+    if not recorded_sha and not stored_original and original_source != source:
+        raise ValueError('旧工程缺少原文件校验信息，请使用工程中保存的原图精修')
     require_unique_names(scene)
     before = copy.deepcopy(_frozen(scene))
     title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(title)).strip(' .')[:70] or '图片精修'

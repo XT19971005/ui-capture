@@ -28,6 +28,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
  from engine import load_source
  from acceptance import review_asset
  from incremental_assets import extract_once,check_resume_native,effective_locked_ids
+ from region_refine import contains
  ids=validate_selection(resume_scene,selected_ids,region)
  scene=copy.deepcopy(resume_scene);original_scene=copy.deepcopy(scene);im=load_source(source)
  if im.size!=(scene.get('width'),scene.get('height')):raise ValueError('选中项原图尺寸不一致')
@@ -36,16 +37,29 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
  raw=base64.b64decode(original_source.split(',',1)[1],validate=True);source_sha=hashlib.sha256(raw).hexdigest()
  recorded=scene.get('recognition',{}).get('sourceOriginalSHA256')
  if recorded and recorded!=source_sha:raise ValueError('选中项原文件来源不一致')
+ stored_original=scene.get('originalSource')
+ if stored_original and stored_original!=original_source:raise ValueError('选中项原文件来源不一致')
+ if not recorded and not stored_original and original_source!=source:raise ValueError('旧工程缺少原文件校验信息，请使用工程中保存的原图检查选中项')
  folder=Path(home)/'选中项修正';assets=folder/'素材';structure=folder/'结构'
  assets.mkdir(parents=True);structure.mkdir()
  work=structure/'工作原图.png';work.write_bytes(base64.b64decode(source.split(',',1)[1],validate=True))
  original=structure/'原文件.png';original.write_bytes(raw)
  inherited_locked=effective_locked_ids(scene)
- selected=[n for n in scene['nodes'] if n['id'] in ids and n['id'] not in inherited_locked and not n.get('versionArchived')]
+ if ids&inherited_locked:raise ValueError('选中图层继承锁定，请先解锁')
+ selected=[n for n in scene['nodes'] if n['id'] in ids and not n.get('versionArchived')]
  if not selected:raise ValueError('选中图层已锁定，请先解锁')
  total=len(selected);notes=[];changed=[];checked=[]
- diagnostic=None;diagnostic_error=None
- if region is not None:
+ diagnostic=None;diagnostic_error=None;entity_changes=[];joint=len(selected)>1
+ if joint:
+  from selected_entities import diagnose
+  progress(.05,'正在联合判断所选对象的完整实体…')
+  try:
+   diagnostic=diagnose(work,scene,selected,structure,cancelled,lambda m:progress(.05,m),region)
+   notes.extend(diagnostic['notes'])
+  except InterruptedError:raise
+  except Exception as error:
+   diagnostic_error='联合检查未完成，保留原图层：'+str(error)[:200];notes.append(diagnostic_error)
+ elif region is not None:
   from region_refine import diagnose,contains
   progress(.05,'正在对照原图检查框选区域…')
   try:
@@ -54,10 +68,11 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
   except InterruptedError:raise
   except Exception as error:
    diagnostic_error='区域检查未完成，保留原图层：'+str(error)[:200];notes.append(diagnostic_error)
+ joint_image_ids={i for e in (diagnostic or {}).get('entities',[]) if e.get('mode')=='image-union' for i in e['members']}
  for index,n in enumerate(selected):
   if cancelled():raise InterruptedError('已取消')
   progress(.05+.75*index/total,'正在检查选中项：'+n['name'])
-  if n['type']!='image':continue
+  if n['type']!='image' or n['id'] in joint_image_ids:continue
   try:
    if diagnostic_error:raise ValueError(diagnostic_error)
    quality=next(c for c in diagnostic['assetChecks'] if c['id']==n['id']) if diagnostic is not None else review_asset(work,n,structure,cancelled,on_status=lambda m:progress(.05+.75*index/total,m))
@@ -98,7 +113,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
    from refine_ui import apply_patches
    result,warnings=apply_patches(subset,diagnostic['patches']);notes.extend(warnings)
    for index,node in enumerate(result['nodes']):
-    if not contains(region,node):
+    if region is not None and not contains(region,node):
      result['nodes'][index]=native[index];notes.append(node['name']+'：修正结果越过区域，已保留原参数')
   else:result=check_resume_native(work,subset,cancelled,lambda m:progress(.82,m))
   replacements={n['id']:n for n in result['nodes']}
@@ -107,15 +122,37 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
     if n!=replacements[n['id']]:changed.append(n['id'])
     scene['nodes'][index]=replacements[n['id']]
   notes.extend(result.get('recognition',{}).get('warnings',[]))
+ if joint and diagnostic is not None and not diagnostic_error:
+  from selected_entities import apply as apply_entity
+  for entity in diagnostic['entities']:
+   if cancelled():raise InterruptedError('已取消')
+   try:
+    scene,operation,_=apply_entity(scene,original_scene,entity,structure,work,original,assets,cancelled,lambda m:progress(.86,m),extract_once,region)
+    entity_changes.append(operation);changed.extend(operation['members'])
+    notes.append(entity['name']+'：已按原图语义联合修正为完整实体，新结果仍需对照原图校对')
+   except InterruptedError:raise
+   except Exception as error:
+    # A failed compound repair cannot leave some colour pieces patched and
+    # others stale. Its original members and source bytes remain together.
+    old={n['id']:n for n in original_scene['nodes']}
+    for index,node in enumerate(scene['nodes']):
+     if node['id'] in entity['members']:scene['nodes'][index]=copy.deepcopy(old[node['id']])
+    changed=[i for i in changed if i not in entity['members']]
+    notes.append(entity['name']+'：联合修正未完成，保留完整旧结果：'+str(error)[:200])
  if cancelled():raise InterruptedError('已取消')
  # Enforce the scope server-side as well as in the browser.
  for before,after in zip(original_scene['nodes'],scene['nodes']):
   if before['id']!=after['id'] or (before['id'] not in ids and before!=after):raise ValueError('选中修正触及了其他图层')
- if region is not None:validate_selection(scene,selected_ids,region)
- for key in ('width','height','source','comparisonSource','originalSource','background','groups','edges','_partial'):
+ if region is not None:validate_selection(scene,[i for i in selected_ids if not next(n for n in scene['nodes'] if n['id']==i).get('versionArchived')],region)
+ from selected_entities import validate_structure
+ validate_structure(original_scene,scene,entity_changes,selected_ids)
+ for key in ('width','height','source','comparisonSource','originalSource','background','edges','_partial'):
   if original_scene.get(key)!=scene.get(key):raise ValueError('选中修正更改了工程结构')
  for key in ('delivery','_sessionId','_projectId'):scene.pop(key,None)
- scene.setdefault('recognition',{})['selectedRefine']={'selectedIds':list(selected_ids),'checkedIds':checked,'changedIds':changed,'notes':notes,'status':'NEEDS_REVIEW' if notes else 'COMPLETED','repairedAssetsNotRechecked':bool(changed)}
+ replacement={i:(op['groupId'] if op['mode']=='vector-group' else op['anchorId']) for op in entity_changes for i in op['members']}
+ active_ids={n['id'] for n in scene['nodes'] if not n.get('versionArchived')}
+ result_ids=list(dict.fromkeys(replacement.get(i,i) for i in selected_ids if i in active_ids or i in replacement))
+ scene.setdefault('recognition',{})['selectedRefine']={'selectedIds':list(selected_ids),'resultSelectedIds':result_ids,'effectiveSelectedIds':[i for i in selected_ids if i in active_ids],'entityChanges':entity_changes,'checkedIds':checked,'changedIds':list(dict.fromkeys(changed)),'notes':notes,'status':'NEEDS_REVIEW' if notes else 'COMPLETED','repairedAssetsNotRechecked':bool(changed)}
  if region is not None:scene['recognition']['selectedRefine']['region']=dict(region)
  # A partial or previously unchecked whole document never becomes PASS.
  if changed or notes:

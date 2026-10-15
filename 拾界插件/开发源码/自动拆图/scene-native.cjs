@@ -33,9 +33,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/path_parse.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/path_parse.js
 var require_path_parse = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
     "use strict";
     var paramCounts = { a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0 };
     var SPECIAL_SPACES = [
@@ -274,9 +274,9 @@ var require_path_parse = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/matrix.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/matrix.js
 var require_matrix = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
     "use strict";
     function combine(m1, m2) {
       return [
@@ -379,9 +379,9 @@ var require_matrix = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/transform_parse.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/transform_parse.js
 var require_transform_parse = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
     "use strict";
     var Matrix = require_matrix();
     var operations = {
@@ -452,9 +452,9 @@ var require_transform_parse = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/a2c.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/a2c.js
 var require_a2c = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
     "use strict";
     var TAU = Math.PI * 2;
     function unit_vector_angle(ux, uy, vx, vy) {
@@ -552,9 +552,9 @@ var require_a2c = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/ellipse.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/ellipse.js
 var require_ellipse = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
     "use strict";
     var epsilon = 1e-10;
     var torad = Math.PI / 180;
@@ -605,9 +605,9 @@ var require_ellipse = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/lib/svgpath.js
+// ../技能包/依赖/Node/node_modules/svgpath/lib/svgpath.js
 var require_svgpath = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
     "use strict";
     var pathParse = require_path_parse();
     var transformParse = require_transform_parse();
@@ -1044,17 +1044,17 @@ var require_svgpath = __commonJS({
   }
 });
 
-// 技能包/依赖/Node/node_modules/svgpath/index.js
+// ../技能包/依赖/Node/node_modules/svgpath/index.js
 var require_svgpath2 = __commonJS({
-  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/index.js"(exports2, module2) {
+  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_svgpath();
   }
 });
 
-// 技能包/game-ui-to-psd/scripts/style_runtime.cjs
+// ../技能包/game-ui-to-psd/scripts/style_runtime.cjs
 var require_style_runtime = __commonJS({
-  "\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
+  "../\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
     var svgpath2 = require_svgpath2();
     var blends = ["normal", "multiply", "screen", "overlay"];
     var effects = ["stroke", "dropShadow", "innerShadow", "outerGlow", "innerGlow", "colorOverlay", "gradientOverlay"];
@@ -1482,9 +1482,9 @@ var require_style_runtime = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/path_parse.js
+// 依赖/构建工具/node_modules/svgpath/lib/path_parse.js
 var require_path_parse2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
     "use strict";
     var paramCounts = { a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0 };
     var SPECIAL_SPACES = [
@@ -1723,9 +1723,9 @@ var require_path_parse2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/matrix.js
+// 依赖/构建工具/node_modules/svgpath/lib/matrix.js
 var require_matrix2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
     "use strict";
     function combine(m1, m2) {
       return [
@@ -1828,9 +1828,9 @@ var require_matrix2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/transform_parse.js
+// 依赖/构建工具/node_modules/svgpath/lib/transform_parse.js
 var require_transform_parse2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
     "use strict";
     var Matrix = require_matrix2();
     var operations = {
@@ -1901,9 +1901,9 @@ var require_transform_parse2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/a2c.js
+// 依赖/构建工具/node_modules/svgpath/lib/a2c.js
 var require_a2c2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
     "use strict";
     var TAU = Math.PI * 2;
     function unit_vector_angle(ux, uy, vx, vy) {
@@ -2001,9 +2001,9 @@ var require_a2c2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/ellipse.js
+// 依赖/构建工具/node_modules/svgpath/lib/ellipse.js
 var require_ellipse2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
     "use strict";
     var epsilon = 1e-10;
     var torad = Math.PI / 180;
@@ -2054,9 +2054,9 @@ var require_ellipse2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/svgpath.js
+// 依赖/构建工具/node_modules/svgpath/lib/svgpath.js
 var require_svgpath3 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
     "use strict";
     var pathParse = require_path_parse2();
     var transformParse = require_transform_parse2();
@@ -2493,17 +2493,17 @@ var require_svgpath3 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/svgpath/index.js
+// 依赖/构建工具/node_modules/svgpath/index.js
 var require_svgpath4 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/index.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_svgpath3();
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/trees.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/trees.js
 var require_trees = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
     "use strict";
     var Z_FIXED = 4;
     var Z_BINARY = 0;
@@ -3139,9 +3139,9 @@ var require_trees = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/adler32.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/adler32.js
 var require_adler32 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
     "use strict";
     var adler32 = (adler, buf, len, pos) => {
       let s1 = adler & 65535 | 0, s2 = adler >>> 16 & 65535 | 0, n = 0;
@@ -3161,9 +3161,9 @@ var require_adler32 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/crc32.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/crc32.js
 var require_crc32 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
     "use strict";
     var makeTable = () => {
       let c, table = [];
@@ -3190,9 +3190,9 @@ var require_crc32 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/messages.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/messages.js
 var require_messages = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       2: "need dictionary",
@@ -3217,9 +3217,9 @@ var require_messages = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/constants.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/constants.js
 var require_constants = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       /* Allowed flush values; see deflate() and inflate() below for details */
@@ -3264,9 +3264,9 @@ var require_constants = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/deflate.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/deflate.js
 var require_deflate = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
     "use strict";
     var { _tr_init, _tr_stored_block, _tr_flush_block, _tr_tally, _tr_align } = require_trees();
     var adler32 = require_adler32();
@@ -4404,9 +4404,9 @@ var require_deflate = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/utils/common.js
+// 依赖/构建工具/node_modules/pako/lib/utils/common.js
 var require_common = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/common.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/common.js"(exports2, module2) {
     "use strict";
     var _has = (obj, key) => {
       return Object.prototype.hasOwnProperty.call(obj, key);
@@ -4445,9 +4445,9 @@ var require_common = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/utils/strings.js
+// 依赖/构建工具/node_modules/pako/lib/utils/strings.js
 var require_strings = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/strings.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/strings.js"(exports2, module2) {
     "use strict";
     var STR_APPLY_UIA_OK = true;
     try {
@@ -4574,9 +4574,9 @@ var require_strings = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/zstream.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/zstream.js
 var require_zstream = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
     "use strict";
     function ZStream() {
       this.input = null;
@@ -4596,9 +4596,9 @@ var require_zstream = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/deflate.js
+// 依赖/构建工具/node_modules/pako/lib/deflate.js
 var require_deflate2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/deflate.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/deflate.js"(exports2, module2) {
     "use strict";
     var zlib_deflate = require_deflate();
     var utils = require_common();
@@ -4757,9 +4757,9 @@ var require_deflate2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inffast.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/inffast.js
 var require_inffast = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
     "use strict";
     var BAD = 16209;
     var TYPE = 16191;
@@ -4985,9 +4985,9 @@ var require_inffast = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inftrees.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/inftrees.js
 var require_inftrees = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
     "use strict";
     var MAXBITS = 15;
     var ENOUGH_LENS = 852;
@@ -5297,9 +5297,9 @@ var require_inftrees = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inflate.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/inflate.js
 var require_inflate = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
     "use strict";
     var adler32 = require_adler32();
     var crc32 = require_crc32();
@@ -6548,9 +6548,9 @@ var require_inflate = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/gzheader.js
+// 依赖/构建工具/node_modules/pako/lib/zlib/gzheader.js
 var require_gzheader = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
     "use strict";
     function GZheader() {
       this.text = 0;
@@ -6568,9 +6568,9 @@ var require_gzheader = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/lib/inflate.js
+// 依赖/构建工具/node_modules/pako/lib/inflate.js
 var require_inflate2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/inflate.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/inflate.js"(exports2, module2) {
     "use strict";
     var zlib_inflate = require_inflate();
     var utils = require_common();
@@ -6743,9 +6743,9 @@ var require_inflate2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/pako/index.js
+// 依赖/构建工具/node_modules/pako/index.js
 var require_pako = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/index.js"(exports2, module2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/index.js"(exports2, module2) {
     "use strict";
     var { Deflate, deflate, deflateRaw, gzip } = require_deflate2();
     var { Inflate, inflate, inflateRaw, ungzip } = require_inflate2();
@@ -6762,9 +6762,9 @@ var require_pako = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/jpeg.js
+// 依赖/构建工具/node_modules/ag-psd/dist/jpeg.js
 var require_jpeg = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/jpeg.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/jpeg.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeJpeg = decodeJpeg;
@@ -7783,9 +7783,9 @@ var require_jpeg = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/helpers.js
+// 依赖/构建工具/node_modules/ag-psd/dist/helpers.js
 var require_helpers = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/helpers.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/helpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createImageData = exports2.createCanvas = exports2.MaskParams = exports2.LayerMaskFlags = exports2.ColorSpace = exports2.largeAdditionalInfoKeys = exports2.layerColors = exports2.toBlendMode = exports2.fromBlendMode = exports2.RAW_IMAGE_DATA = exports2.MOCK_HANDLERS = void 0;
@@ -8152,9 +8152,9 @@ var require_helpers = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/base64-js/index.js
+// 依赖/构建工具/node_modules/base64-js/index.js
 var require_base64_js = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/base64-js/index.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/base64-js/index.js"(exports2) {
     "use strict";
     exports2.byteLength = byteLength;
     exports2.toByteArray = toByteArray;
@@ -8253,9 +8253,9 @@ var require_base64_js = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/utf8.js
+// 依赖/构建工具/node_modules/ag-psd/dist/utf8.js
 var require_utf8 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/utf8.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/utf8.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.stringLengthInBytes = stringLengthInBytes;
@@ -8409,9 +8409,9 @@ var require_utf8 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/descriptor.js
+// 依赖/构建工具/node_modules/ag-psd/dist/descriptor.js
 var require_descriptor = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/descriptor.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/descriptor.js"(exports2) {
     "use strict";
     var __rest = exports2 && exports2.__rest || function(s, e) {
       var t = {};
@@ -10694,9 +10694,9 @@ var require_descriptor = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/imageResources.js
+// 依赖/构建工具/node_modules/ag-psd/dist/imageResources.js
 var require_imageResources = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/imageResources.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/imageResources.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.resourceHandlersMap = exports2.resourceHandlers = void 0;
@@ -11851,9 +11851,9 @@ var require_imageResources = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psdReader.js
+// 依赖/构建工具/node_modules/ag-psd/dist/psdReader.js
 var require_psdReader = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdReader.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdReader.js"(exports2) {
     "use strict";
     var __rest = exports2 && exports2.__rest || function(s, e) {
       var t = {};
@@ -13165,9 +13165,9 @@ var require_psdReader = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/effectsHelpers.js
+// 依赖/构建工具/node_modules/ag-psd/dist/effectsHelpers.js
 var require_effectsHelpers = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readEffects = readEffects;
@@ -13483,9 +13483,9 @@ var require_effectsHelpers = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/engineData.js
+// 依赖/构建工具/node_modules/ag-psd/dist/engineData.js
 var require_engineData = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.parseEngineData = parseEngineData;
@@ -13815,9 +13815,9 @@ var require_engineData = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/text.js
+// 依赖/构建工具/node_modules/ag-psd/dist/text.js
 var require_text = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/text.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/text.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeEngineData = decodeEngineData;
@@ -14402,9 +14402,9 @@ var require_text = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/engineData2.js
+// 依赖/构建工具/node_modules/ag-psd/dist/engineData2.js
 var require_engineData2 = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData2.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData2.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeEngineData2 = decodeEngineData2;
@@ -14823,9 +14823,9 @@ var require_engineData2 = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/additionalInfo.js
+// 依赖/构建工具/node_modules/ag-psd/dist/additionalInfo.js
 var require_additionalInfo = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.booleanOperations = exports2.infoHandlersMap = exports2.infoHandlers = void 0;
@@ -18366,9 +18366,9 @@ var require_additionalInfo = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psdWriter.js
+// 依赖/构建工具/node_modules/ag-psd/dist/psdWriter.js
 var require_psdWriter = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdWriter.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdWriter.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createWriter = createWriter;
@@ -19214,9 +19214,9 @@ var require_psdWriter = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/abr.js
+// 依赖/构建工具/node_modules/ag-psd/dist/abr.js
 var require_abr = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/abr.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/abr.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readAbr = readAbr;
@@ -19568,9 +19568,9 @@ var require_abr = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/csh.js
+// 依赖/构建工具/node_modules/ag-psd/dist/csh.js
 var require_csh = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/csh.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/csh.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readCsh = readCsh;
@@ -19608,9 +19608,9 @@ var require_csh = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psd.js
+// 依赖/构建工具/node_modules/ag-psd/dist/psd.js
 var require_psd = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psd.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psd.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Compression = exports2.ChannelID = exports2.LayerCompCapturedInfo = exports2.SectionDividerType = exports2.ColorMode = void 0;
@@ -19659,9 +19659,9 @@ var require_psd = __commonJS({
   }
 });
 
-// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/index.js
+// 依赖/构建工具/node_modules/ag-psd/dist/index.js
 var require_dist = __commonJS({
-  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/index.js"(exports2) {
+  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/index.js"(exports2) {
     "use strict";
     var __createBinding = exports2 && exports2.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -19746,7 +19746,7 @@ var require_dist = __commonJS({
   }
 });
 
-// 拾界插件/开发源码/图像重建/scene-export.js
+// 开发源码/图像重建/scene-export.js
 var scene_export_exports = {};
 __export(scene_export_exports, {
   SCENE_CAPACITY_LIMITS: () => SCENE_CAPACITY_LIMITS,
@@ -19782,10 +19782,10 @@ __export(scene_export_exports, {
 });
 module.exports = __toCommonJS(scene_export_exports);
 
-// 拾界插件/开发源码/图像重建/layer-style.js
+// 开发源码/图像重建/layer-style.js
 var import_style_runtime = __toESM(require_style_runtime());
 
-// 拾界插件/插件程序/edge/psd-native.js
+// 插件程序/edge/psd-native.js
 var import_svgpath = __toESM(require_svgpath4());
 var knot = (x, y, ix = x, iy = y, ox = x, oy = y) => ({ linked: false, points: [ix, iy, x, y, ox, oy] });
 var rgb8 = (c) => ({ r: Math.round((c?.r || 0) * 255), g: Math.round((c?.g || 0) * 255), b: Math.round((c?.b || 0) * 255) });
@@ -19870,10 +19870,10 @@ function pathData(d, transform = "") {
   return { paths: paths.filter((p2) => p2.knots.length > 1), d: p.toString() };
 }
 
-// 拾界插件/开发源码/图像重建/layer-style.js
+// 开发源码/图像重建/layer-style.js
 var { normalizeStyle, normalizeGradient, normalizeMask, maskPath, gradientData, nativeEffects, stylePadding, gradientPaint, styleCanvas, displayMaskCanvas, nativeMask, nativeToStyle, styleSvg, applyDom, alphaBounds, fitGradientEffects, validatePath, definitionId } = import_style_runtime.default;
 
-// 拾界插件/开发源码/图像重建/scene-export.js
+// 开发源码/图像重建/scene-export.js
 var import_ag_psd = __toESM(require_dist());
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var color = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
@@ -20212,7 +20212,7 @@ var layerHidden = (n) => n.visible === false || n.visible === void 0 && n.hidden
 var allNodes = (s, includeHidden = false) => [...s.background ? [{ id: "__canvas_background__", name: "\u753B\u5E03\u80CC\u666F", type: "rect", x: 0, y: 0, width: s.width, height: s.height, fill: s.background, locked: true }] : [], ...s.nodes, ...s.edges.map((e, i) => edgeNode(s, e, i)).filter(Boolean)].filter((n) => includeHidden || !layerHidden(n));
 function textMatrix(n) {
   const m = metrics(n), a = m.actualBoundingBoxAscent || n.fontSize * 0.85, d = m.actualBoundingBoxDescent || 0;
-  if (n.rotation === 90) return [0, n.height / Math.max(1, m.width), -1, 0, n.x + (n.width - a - d) / 2 + d, n.y];
+  if (n.rotation === 90) return [0, n.fitWidth ? n.height / Math.max(1, m.width) : 1, -1, 0, n.x + (n.width - a - d) / 2 + d, n.y];
   const skew = n.textSkew || 0, sx = n.fitWidth ? n.width / Math.max(1, (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || m.width) + skew * (a + d)) : 1;
   return [sx, 0, -skew * sx, 1, n.x + (n.fitWidth ? ((m.actualBoundingBoxLeft || 0) + skew * d) * sx : 0), n.y + a];
 }
@@ -20330,6 +20330,7 @@ function releaseDecodedImage(im) {
 }
 async function psd(s) {
   assertExportCapacity(s);
+  s = structuredClone(s);
   const decodedImages = /* @__PURE__ */ new Map();
   let cachedPixels = 0;
   async function exportImage(src) {
@@ -20361,12 +20362,9 @@ async function psd(s) {
         left = top = 0;
       } else base = layer.canvas;
       let style = layer._target.layerStyle;
-      if (!style && layer.effects) {
-        style = { enabled: true };
-        if (layer._target.strokeWidth) style.stroke = { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" };
-      }
+      if (layer._target.strokeWidth && layer._target.stroke && !style?.stroke) style = { ...style || { enabled: true }, stroke: { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" } };
       if (layer._target.type === "text" && layer._target.gradient) {
-        style = { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
+        style = style?.enabled === false ? { enabled: true, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 } } : { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
       }
       const effectBounds = layer._target.width ? { x: layer._target.x - left, y: layer._target.y - top, width: layer._target.width, height: layer._target.height } : alphaBounds(base);
       if (normalizeMask(layer._target.displayMask)?.enabled) {
@@ -20405,9 +20403,17 @@ async function psd(s) {
         c.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4] - left, matrix[5] - top);
         c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
         c.fillStyle = n.fill;
+        const intrinsicStroke = n.strokeWidth && n.stroke && n.layerStyle?.enabled === false;
+        if (intrinsicStroke) {
+          c.strokeStyle = n.stroke;
+          c.lineWidth = n.strokeWidth * 2;
+          c.lineJoin = "round";
+          textLines(n).forEach((line, i) => c.strokeText(line, 0, i * textLeading(n)));
+        }
         textLines(n).forEach((line, i) => c.fillText(line, 0, i * textLeading(n)));
         nativeText(layer, { ...n, fontStyle: n.textSkew ? "normal" : n.fontStyle, color: color(n.fill), fontFamily: n.fontFamily || "Microsoft YaHei", lineHeight: textLeading(n) }, matrix[5]);
         layer.text.transform = matrix;
+        if (intrinsicStroke) Object.assign(layer.text.style, { strokeFlag: true, fillFlag: true, fillFirst: false, outlineWidth: n.strokeWidth, strokeColor: { r: parseInt(n.stroke.slice(1, 3), 16), g: parseInt(n.stroke.slice(3, 5), 16), b: parseInt(n.stroke.slice(5, 7), 16) } });
         if (n.strokeWidth && n.stroke) layer.effects = nativeEffects({ stroke: { color: n.stroke, size: n.strokeWidth, opacity: 1, position: "outside" } });
       } else {
         const d = geometry(n);
@@ -20429,6 +20435,14 @@ async function psd(s) {
       if (n.layerStyle) {
         const fx = nativeEffects(n.layerStyle);
         layer.effects = { ...layer.effects || {}, ...fx };
+      }
+      if (n.type === "text" && n.gradient && n.layerStyle?.enabled === false) {
+        const fx = nativeEffects(n.layerStyle);
+        fx.disabled = false;
+        for (const value of Object.values(fx)) for (const effect of Array.isArray(value) ? value : [value]) if (effect && typeof effect === "object") effect.enabled = false;
+        const intrinsic = nativeEffects({ gradientOverlay: { ...normalizeGradient(n.gradient), enabled: true, opacity: 1 } }).gradientOverlay;
+        fx.gradientOverlay = [...fx.gradientOverlay || [], ...intrinsic];
+        layer.effects = fx;
       }
       if (n.type === "text") fitGradientEffects(layer, n);
       if (n.displayMask) layer.mask = nativeMask(n.displayMask, s.width, s.height, factory, Path2D);

@@ -17,11 +17,12 @@
  function archiveChanges(before,result,ids){
   if(!Array.isArray(before?.nodes)||!Array.isArray(result?.nodes))throw Error('修正版缺少完整图层，无法保留旧版本');
   const scene=clone(result),oldById=new Map(before.nodes.map(node=>[node.id,node])),chosen=ids==null?null:new Set(ids);
+  const forced=new Set((result.recognition?.selectedRefine?.entityChanges||[]).flatMap(op=>op.mode==='vector-group'?op.members:[op.anchorId]));
   const used=new Set([...before.nodes,...result.nodes,...(before.groups||[]),...(result.groups||[])].map(node=>node.id));
   const archives=new Map(),changedIds=[],archivedIds=[];let sequence=0;
   for(const next of scene.nodes){
    const old=oldById.get(next.id);
-   if(!old||old.versionArchived||next.versionArchived||(chosen&&!chosen.has(next.id))||!visuallyChanged(old,next))continue;
+   if(!old||old.versionArchived||next.versionArchived||(chosen&&!chosen.has(next.id))||!forced.has(next.id)&&!visuallyChanged(old,next))continue;
    const stem='version-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36));let id=stem;
    while(used.has(id))id=stem+'-'+(++sequence);used.add(id);
    const ordinal=before.nodes.filter(node=>node.versionArchived&&node.versionOf===old.id).length+1;

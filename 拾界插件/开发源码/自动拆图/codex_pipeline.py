@@ -1,12 +1,13 @@
 """Codex visual planning + local extraction, native PSD export and explicit review."""
-import base64,hashlib,json,re,subprocess,time,uuid
+import base64,hashlib,json,re,subprocess,time,uuid,copy
 from pathlib import Path
 from runtime import ROOT
 from codex_client import CLIENT
 from layer_review import unique_layer_names,unique_check_names,review_targets,review_errors,discard_failed_assets
 from design_properties import FIELDS,GROUP
 from acceptance import FINAL_CRITERIA,FINAL_RULES,GRANULARITY_RULES,check_schema,review_asset,AssetReviewError
-from plan_contract import assemble
+from plan_contract import assemble,PlanAssemblyError
+from ui_components import install_schema,link_scene
 
 def schema(properties):return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
 PLAN=schema({
@@ -28,6 +29,7 @@ PLAN['properties']['assets']['maxItems']=120
 PLAN['properties']['vectors']['maxItems']=240
 PLAN['properties']['vectors']['items']['properties']['fill']['pattern']='^#[0-9a-fA-F]{6}$'
 PLAN['properties']['vectors']['items']['properties']['radius'].update(minimum=0,maximum=6000)
+install_schema(PLAN)
 REVIEW=schema({'status':{'type':'string','enum':['PASS','NEEDS_REVIEW']},'issues':{'type':'array','items':{'type':'string'}},'summary':{'type':'string'},'repair_assets':{'type':'array','items':{'type':'string'}},'asset_checks':{'type':'array','items':schema({'name':{'type':'string'},'status':{'type':'string','enum':['PASS','FAIL']},'notes':{'type':'string'}})},'file_checks':{'type':'array','items':schema({'name':{'type':'string'},'status':{'type':'string','enum':['PASS','FAIL']},'notes':{'type':'string'}})}})
 REVIEW['properties']['color_checks']={'type':'array','items':schema({'name':{'type':'string'},'status':{'type':'string','enum':['PASS','FAIL']},'notes':{'type':'string'}})}
 REVIEW['required'].append('color_checks')
@@ -51,6 +53,11 @@ def process(source,title,progress,cancelled,original_source=None,on_scene=lambda
     time.sleep(.05)
    else:raise RuntimeError('Codex 仍有请求，临时运行目录尚未清理')
  return run_temporary(generate)
+def _planning_draft_signature(scene):
+ data={key:scene.get(key,[]) for key in ('nodes','groups','edges')}
+ return hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode('utf8')).hexdigest()
+
+
 def _process(source,title,progress,cancelled,original_source,home,on_scene=lambda scene:None,resume_scene=None):
  from engine import load_source,build_scene,text_rows
  im=load_source(source);started=time.monotonic();title=safe_name(title)
@@ -107,18 +114,31 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
  (structure/'Codex图层规划.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),'utf8')
  from incremental_assets import extract_once,gentle_glow,remember_record,pending_generation,recover_pending_scene,merge_resume_scene,effective_locked_ids
  from progressive_scene import completed_scene,remember_pending
- recovered=recover_pending_scene(resume_scene) if resume_scene else None
+ planning_draft=bool(resume_scene and resume_scene.get('recognition',{}).get('planningDraft'))
+ if planning_draft and resume_scene['recognition'].get('planningDraftSignature')!=_planning_draft_signature(resume_scene):
+  raise ValueError('规划失败草稿已有用户编辑，不能用重建覆盖；原工程与完整清单已保留，请先保存工程再处理。')
+ recovered=recover_pending_scene(resume_scene) if resume_scene and not planning_draft else None
  if recovered is None:
   def repair_plan(previous,error):
-   if resume_scene:raise ValueError('已保存规划无法安全续拆，原工程已保留：'+error)
-   corrected=CLIENT.analyze(prompt+'\n当前规划在实际组装前被拒绝，请只修正无效字段和引用，不删除独立对象、不合并文案逃避检查。问题：'+error+'\n当前规划：'+json.dumps(previous,ensure_ascii=False),[view],PLAN,cancelled,on_status=connection_status)
-   (structure/'Codex图层规划.json').write_text(json.dumps(corrected,ensure_ascii=False,indent=2),'utf8')
+   if resume_scene and not planning_draft:raise ValueError('已保存规划无法安全续拆，原工程已保留：'+error)
+   corrected=CLIENT.analyze(prompt+'\n当前规划在实际组装前被拒绝，请只修正无效字段和引用，这是按既有ID的局部字段补丁，必须保留原ID；空数组不表示删除。只修正所报错的字段，其他已有对象、文案、分组、槽位、层序及有效参数不得改动，不得新增或改名ID。问题：'+error+'\n当前规划：'+json.dumps(previous,ensure_ascii=False),[view],PLAN,cancelled,on_status=connection_status)
    return corrected
-  plan,result=assemble(plan,lambda p:build_scene(source,title,p,lambda v,m:progress(.23+.6*v,m),cancelled),repair_plan,cancelled,lambda m:progress(.23,m))
+  try:
+   plan,result=assemble(plan,lambda p:build_scene(source,title,p,lambda v,m:progress(.23+.6*v,m),cancelled),repair_plan,cancelled,lambda m:progress(.23,m),canvas_size=im.size,normalize_groups=resume_scene is None or planning_draft)
+  except PlanAssemblyError as error:
+   # Keep the complete original inventory when bounded local repair cannot be
+   # applied. This is explicitly unfinished, never a tiny completed extraction.
+   draft=copy.deepcopy(resume_scene) if resume_scene else {'format':'shijie-scene','version':2,'title':title,'width':im.width,'height':im.height,'source':source,'comparisonSource':source,'originalSource':original_source,'nodes':[{'id':'planning-source-'+uuid.uuid4().hex,'name':'原图（规划尚未完成）','type':'image','x':0,'y':0,'width':im.width,'height':im.height,'src':source,'provenance':'source-reference'}],'groups':[],'edges':[]}
+   draft['_partial']=True
+   draft.setdefault('recognition',{}).update(resumePlan=copy.deepcopy(error.plan),sourceOriginalSHA256=source_sha,planningDraft=not resume_scene or planning_draft,planningStatus='FAILED',planningError=str(error),extractionStatus='INCOMPLETE',reviewStatus='NOT_REVIEWED')
+   if draft['recognition']['planningDraft']:draft['recognition']['planningDraftSignature']=_planning_draft_signature(draft)
+   if not cancelled():on_scene(draft)
+   raise
+  (structure/'Codex图层规划.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),'utf8')
   result['nodes'][0].update(name='完整干净背景',assetKind='background')
   unique_layer_names(result)
   for node in [*result['nodes'],*result.get('groups',[])]:gentle_glow(node)
-  if resume_scene:result=merge_resume_scene(result,resume_scene)
+  if resume_scene and not planning_draft:result=merge_resume_scene(result,resume_scene)
  else:result=merge_resume_scene(recovered,resume_scene)
  ocr=text_rows(plan,im.width,im.height)
  (structure/'Codex文字识别.json').write_text(json.dumps(ocr,ensure_ascii=False,indent=2),'utf8')
@@ -126,7 +146,8 @@ def _process(source,title,progress,cancelled,original_source,home,on_scene=lambd
  result['provenance']='game-ui-to-psd-workflow'
  recognition=result.setdefault('recognition',{})
  recognition.update(engine='game-ui-to-psd · 自己的 Codex + ImageGen',colorFidelityRequired=True,acceptanceRequired=True,resumePlan=plan,sourceOriginalSHA256=source_sha)
- if not resume_scene:recognition['warnings']=plan['warnings']+['补绘区域属于模型推断，必须检查完整独立素材。']
+ link_scene(result,plan,strict=resume_scene is None)
+ if not resume_scene or planning_draft:recognition['warnings']=plan['warnings']+['补绘区域属于模型推断，必须检查完整独立素材。']
  if resume_scene:progress(.3,'保留已完成图层，仅继续提取尚缺的素材…')
  def preview():
   snapshot=completed_scene(result)
