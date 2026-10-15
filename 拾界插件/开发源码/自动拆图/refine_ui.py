@@ -41,7 +41,7 @@ def can_refine(scene):
 def _editable_nodes(scene):
     locked = effective_locked_ids(scene)
     return [n for n in scene.get('nodes', []) if n.get('type') in ('text', 'rect', 'ellipse', 'path')
-            and n.get('assetKind') != 'background' and n['id'] not in locked]
+            and n.get('assetKind') != 'background' and not n.get('versionArchived') and n['id'] not in locked]
 
 
 def _overlap(a, b):
@@ -174,6 +174,8 @@ def apply_patches(scene, patches):
             if counts[ident] != 1:
                 raise ValueError('重复图层标识，歧义修改全部跳过')
             old = nodes[ident]
+            if old.get('versionArchived'):
+                raise ValueError('历史版本必须原样保留，不能自动精修')
             if ident in locked:
                 raise ValueError('图层或父组已锁定，请解锁后再精修')
             if old['type'] not in ('text', 'rect', 'ellipse', 'path') or old.get('assetKind') == 'background':
@@ -219,9 +221,9 @@ def apply_patches(scene, patches):
                 if any(key in changes and node.get(key) != old.get(key) for key in TEXT_METRICS):
                     _fit_text(node, local_warnings)
                 for other in result['nodes']:
-                    if other['id'] != ident and other.get('type') == 'text' and _overlap(node, other) > _overlap(originals[ident], originals[other['id']]) + .001:
+                    if other['id'] != ident and other.get('type') == 'text' and not other.get('versionArchived') and _overlap(node, other) > _overlap(originals[ident], originals[other['id']]) + .001:
                         raise ValueError('会新增或扩大与另一文案的重叠')
-                if any(n['id'] != ident and n.get('type') == 'text' and n.get('text') == node['text'] and
+                if any(n['id'] != ident and n.get('type') == 'text' and not n.get('versionArchived') and n.get('text') == node['text'] and
                        all(abs(n[k] - node[k]) < .5 for k in ('x', 'y', 'width', 'height')) for n in result['nodes']):
                     raise ValueError('会产生同文案重复重叠')
             if 'radius' in changes:

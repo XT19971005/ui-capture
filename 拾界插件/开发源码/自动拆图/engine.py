@@ -160,11 +160,31 @@ def flat_ink_parts(patch,ink):
     # JPEG/anti-alias transition colours are not additional flat inks. Only
     # secondary regions with an actual interior become separate native layers.
     genuine=[];_,components=cv2.connectedComponents((ink>0).astype('uint8'))
+    material=patch[ink==0]
+    background=np.median(material,axis=0) if len(material) else None
     for index,center in enumerate(palette):
         part=np.zeros(ink.shape,np.uint8);part[ink>0]=(nearest==index).astype('uint8')
         core=cv2.erode(part,np.ones((5,5),np.uint8))>0
         isolated=any(np.all(nearest[components[ink>0]==label]==index) for label in np.unique(components[part>0]) if label)
-        if index==0 or np.count_nonzero(core)>=8 or isolated:
+        # A real second ink can be only one pixel wide while touching the main
+        # silhouette. A 5x5 interior test alone recolours such accents. Retain
+        # stable components off the material-to-main-ink colour line; colours on that
+        # line remain antialias transitions, not invented extra ink layers.
+        thin=False
+        if background is not None and genuine:
+            stable=part&(np.linalg.norm(patch.astype(float)-center,axis=2)<6)
+            # Eight-connectivity keeps diagonal strokes and compact accents;
+            # an axial run would still erase them before vector tracing starts.
+            _,_,stable_stats,_=cv2.connectedComponentsWithStats(stable.astype('uint8'),connectivity=8)
+            stable_component=np.any(stable_stats[1:,cv2.CC_STAT_AREA]>=4)
+            transition=False
+            for main in genuine:
+                direction=main-background;length=float(direction@direction)
+                fraction=float((center-background)@direction)/max(1,length)
+                if 0<fraction<1 and np.linalg.norm(center-(background+fraction*direction))<12:
+                    transition=True;break
+            thin=stable_component and not transition
+        if index==0 or np.count_nonzero(core)>=8 or isolated or thin:
             genuine.append(np.median(patch[core],axis=0) if np.any(core) else center)
     palette=genuine
     nearest=np.argmin(np.linalg.norm(pixels[:,None,:]-np.array(palette)[None,:,:],axis=2),axis=1)

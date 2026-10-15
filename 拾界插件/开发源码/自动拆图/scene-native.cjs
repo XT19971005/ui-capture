@@ -19749,7 +19749,10 @@ var require_dist = __commonJS({
 // 开发源码/图像重建/scene-export.js
 var scene_export_exports = {};
 __export(scene_export_exports, {
+  SCENE_CAPACITY_LIMITS: () => SCENE_CAPACITY_LIMITS,
   allNodes: () => allNodes,
+  assertExportCapacity: () => assertExportCapacity,
+  assertRenderCapacity: () => assertRenderCapacity,
   color: () => color,
   contourOperations: () => contourOperations,
   edgeNode: () => edgeNode,
@@ -19760,6 +19763,7 @@ __export(scene_export_exports, {
   groupBounds: () => groupBounds,
   grouped: () => grouped,
   html: () => html,
+  imageMetadata: () => imageMetadata,
   loadImage: () => loadImage,
   metrics: () => metrics,
   nodeSvg: () => nodeSvg,
@@ -19768,6 +19772,7 @@ __export(scene_export_exports, {
   normalizeStyle: () => normalizeStyle,
   psd: () => psd,
   resizePath: () => resizePath,
+  sceneUsage: () => sceneUsage,
   svg: () => svg,
   textInkBounds: () => textInkBounds,
   textLeading: () => textLeading,
@@ -19872,12 +19877,196 @@ var { normalizeStyle, normalizeGradient, normalizeMask, maskPath, gradientData, 
 var import_ag_psd = __toESM(require_dist());
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var color = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
+var SCENE_CAPACITY_LIMITS = Object.freeze({ uniqueImageBytes: 256 * 1024 * 1024, metadataBytes: 16 * 1024 * 1024, logicalBytes: 1024 * 1024 * 1024, pathChars: 3e6, decodedPixels: 256e6, imagePixels: 64e6, imageEdge: 16384, psdWorkingBytes: 1024 * 1024 * 1024, layerRasterPixels: 16e6, decodeCachePixels: 16e6 });
+var imageURI = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+function capacityError(code, label, used, limit, unit = "MiB", phase = "storage") {
+  const scale = unit === "MiB" ? 1024 * 1024 : unit === "MP" ? 1e6 : 1, amount = (value) => (Math.ceil(value / scale * 10) / 10).toLocaleString("en-US");
+  const error = Error(label + " " + amount(used) + " " + unit + "\uFF0C\u8D85\u8FC7 " + amount(limit) + " " + unit + "\u3002\u8BF7\u5148\u4FDD\u5B58\u5DE5\u7A0B\uFF0C\u518D\u6309\u6240\u9009\u56FE\u5C42\u6216\u5206\u7EC4\u5206\u6279\u5BFC\u51FA\u3002");
+  Object.assign(error, { name: "SceneCapacityError", code, used, limit, phase });
+  throw error;
+}
+function jsonStringBytes(value) {
+  let bytes = 2;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 34 || c === 92 || [8, 9, 10, 12, 13].includes(c)) bytes += 2;
+    else if (c < 32) bytes += 6;
+    else if (c < 128) bytes++;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && value.charCodeAt(i + 1) >= 56320 && value.charCodeAt(i + 1) <= 57343) {
+      bytes += 4;
+      i++;
+    } else bytes += c >= 55296 && c <= 57343 ? 6 : 3;
+  }
+  return bytes;
+}
+function measureScene(s) {
+  let metadataBytes = 0, imageReferences = 0, imageReferenceBytes = 0;
+  const images = /* @__PURE__ */ new Map(), visiting = /* @__PURE__ */ new Set();
+  function visit(value, depth = 0) {
+    if (depth > 128) throw Error("\u5DE5\u7A0B\u5143\u6570\u636E\u5D4C\u5957\u8D85\u8FC7128\u5C42");
+    if (typeof value === "string") {
+      if (value.startsWith("data:image/") && (images.has(value) || imageURI.test(value))) {
+        imageReferences++;
+        imageReferenceBytes += value.length;
+        metadataBytes += 2;
+        if (!images.has(value)) images.set(value, { bytes: value.length, compressedBytes: Math.floor((value.length - value.indexOf(",") - 1) * 3 / 4) - (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0) });
+      } else metadataBytes += jsonStringBytes(value);
+      return;
+    }
+    if (value == null || typeof value !== "object") {
+      metadataBytes += typeof value === "number" && Number.isFinite(value) ? String(value).length : typeof value === "boolean" ? String(value).length : 4;
+      return;
+    }
+    if (visiting.has(value)) throw Error("\u5DE5\u7A0B\u542B\u5FAA\u73AF\u5F15\u7528\uFF0C\u65E0\u6CD5\u6301\u4E45\u4FDD\u5B58");
+    visiting.add(value);
+    if (Array.isArray(value)) {
+      metadataBytes += 2 + Math.max(0, value.length - 1);
+      for (const item of value) visit(item, depth + 1);
+    } else {
+      const entries = Object.entries(value).filter(([, v]) => v !== void 0 && typeof v !== "function" && typeof v !== "symbol");
+      metadataBytes += 2 + Math.max(0, entries.length - 1);
+      for (const [key, item] of entries) {
+        metadataBytes += jsonStringBytes(key) + 1;
+        visit(item, depth + 1);
+      }
+    }
+    visiting.delete(value);
+  }
+  visit(s);
+  const uniqueImageBytes = [...images.values()].reduce((sum, image) => sum + image.bytes, 0), compressedImageBytes = [...images.values()].reduce((sum, image) => sum + image.compressedBytes, 0);
+  return { images, uniqueImages: images.size, imageReferences, uniqueImageBytes, compressedImageBytes, metadataBytes, logicalBytes: metadataBytes + imageReferenceBytes, displayPixels: (s.nodes || []).reduce((sum, n) => sum + n.width * n.height, 0), pathChars: (s.nodes || []).reduce((sum, n) => sum + (n.type === "path" ? n.d.length : 0), 0) };
+}
+function sceneUsage(s) {
+  const { images, ...usage } = measureScene(s);
+  return usage;
+}
+function assertSceneStorageCapacity(s) {
+  const usage = sceneUsage(s), labels = { uniqueImageBytes: ["SCENE_IMAGE_BYTES", "\u5DE5\u7A0B\u552F\u4E00\u56FE\u7247\u6570\u636E"], metadataBytes: ["SCENE_METADATA_BYTES", "\u5DE5\u7A0B\u975E\u56FE\u7247\u5143\u6570\u636E"], logicalBytes: ["SCENE_LOGICAL_BYTES", "\u5DE5\u7A0B\u5C55\u5F00\u5F15\u7528\u6570\u636E"] };
+  for (const [key, [code, label]] of Object.entries(labels)) if (usage[key] > SCENE_CAPACITY_LIMITS[key]) capacityError(code, label, usage[key], SCENE_CAPACITY_LIMITS[key]);
+  if (usage.pathChars > SCENE_CAPACITY_LIMITS.pathChars) capacityError("SCENE_PATH_CHARS", "\u5DE5\u7A0B\u77E2\u91CF\u8DEF\u5F84\u5B57\u7B26", usage.pathChars, SCENE_CAPACITY_LIMITS.pathChars, "\u5B57\u7B26");
+  return usage;
+}
+function imageMetadata(src) {
+  if (typeof src !== "string" || !imageURI.test(src)) throw Error("\u56FE\u7247\u4E0D\u662F\u6709\u6548\u7684\u5185\u5D4CPNG/JPEG/WebP");
+  const comma = src.indexOf(","), base = src.slice(comma + 1), length = Math.floor(base.length * 3 / 4) - (base.endsWith("==") ? 2 : base.endsWith("=") ? 1 : 0);
+  function read(offset, count) {
+    if (offset < 0 || offset + count > length) throw Error("\u56FE\u7247\u5934\u90E8\u6216\u5C3A\u5BF8\u6570\u636E\u4E0D\u5B8C\u6574");
+    const aligned = Math.floor(offset / 3) * 3, start = aligned / 3 * 4, end = Math.min(base.length, Math.ceil((offset + count) / 3) * 4), raw = atob(base.slice(start, end)), out = new Uint8Array(count);
+    for (let i = 0; i < count; i++) out[i] = raw.charCodeAt(offset - aligned + i);
+    return out;
+  }
+  const be32 = (a, i) => a[i] * 16777216 + a[i + 1] * 65536 + a[i + 2] * 256 + a[i + 3], le32 = (a, i) => a[i] + a[i + 1] * 256 + a[i + 2] * 65536 + a[i + 3] * 16777216 >>> 0, le24 = (a, i) => a[i] + a[i + 1] * 256 + a[i + 2] * 65536;
+  const head = read(0, Math.min(length, 32));
+  let width, height;
+  if (src.startsWith("data:image/png;") && head[0] === 137 && head[1] === 80 && head[2] === 78 && head[3] === 71 && head[12] === 73 && head[13] === 72 && head[14] === 68 && head[15] === 82) {
+    width = be32(head, 16);
+    height = be32(head, 20);
+  } else if (src.startsWith("data:image/jpeg;") && head[0] === 255 && head[1] === 216) {
+    let offset = 2;
+    for (let i = 0; i < 4096 && offset < length; i++) {
+      const marker = read(offset, 4);
+      if (marker[0] !== 255) throw Error("JPEG\u56FE\u7247\u5934\u90E8\u6807\u8BB0\u65E0\u6548");
+      if (marker[1] === 255) {
+        offset++;
+        continue;
+      }
+      if ([192, 193, 194, 195, 197, 198, 199, 201, 202, 203, 205, 206, 207].includes(marker[1])) {
+        const frame = read(offset, 9);
+        height = frame[5] * 256 + frame[6];
+        width = frame[7] * 256 + frame[8];
+        break;
+      }
+      if (marker[1] === 217 || marker[1] === 218) break;
+      const size = marker[2] * 256 + marker[3];
+      if (size < 2) throw Error("JPEG\u56FE\u7247\u5934\u90E8\u957F\u5EA6\u65E0\u6548");
+      offset += 2 + size;
+    }
+  } else if (src.startsWith("data:image/webp;") && String.fromCharCode(...head.slice(0, 4)) === "RIFF" && String.fromCharCode(...head.slice(8, 12)) === "WEBP") {
+    let offset = 12;
+    for (let i = 0; i < 4096 && offset + 8 <= length; i++) {
+      const h = read(offset, 8), kind = String.fromCharCode(...h.slice(0, 4)), size = le32(h, 4);
+      if (kind === "VP8X") {
+        const p = read(offset + 8, 10);
+        width = le24(p, 4) + 1;
+        height = le24(p, 7) + 1;
+        break;
+      }
+      if (kind === "VP8L") {
+        const p = read(offset + 8, 5);
+        if (p[0] !== 47) break;
+        const bits = le32(p, 1);
+        width = (bits & 16383) + 1;
+        height = (bits >>> 14 & 16383) + 1;
+        break;
+      }
+      if (kind === "VP8 ") {
+        const p = read(offset + 8, 10);
+        if (p[3] !== 157 || p[4] !== 1 || p[5] !== 42) break;
+        width = p[6] + p[7] * 256 & 16383;
+        height = p[8] + p[9] * 256 & 16383;
+        break;
+      }
+      offset += 8 + size + (size & 1);
+    }
+  }
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw Error("\u56FE\u7247\u5C3A\u5BF8\u5934\u90E8\u65E0\u6548\u6216\u4E0D\u53D7\u652F\u6301");
+  return { width, height, pixels: width * height, compressedBytes: length };
+}
+function assertImageDecodeCapacity(info, label) {
+  if (info.pixels > SCENE_CAPACITY_LIMITS.imagePixels) capacityError("IMAGE_DECODE_PIXELS", label + "\u5355\u5F20\u89E3\u7801\u50CF\u7D20", info.pixels, SCENE_CAPACITY_LIMITS.imagePixels, "MP", "decode");
+  if (Math.max(info.width, info.height) > SCENE_CAPACITY_LIMITS.imageEdge) capacityError("IMAGE_DECODE_EDGE", label + "\u5355\u8FB9\u89E3\u7801\u5C3A\u5BF8", Math.max(info.width, info.height), SCENE_CAPACITY_LIMITS.imageEdge, "\u50CF\u7D20", "decode");
+}
+function decodeUsage(nodes) {
+  const images = /* @__PURE__ */ new Map();
+  for (const n of nodes) if (n.type === "image" && !images.has(n.src)) {
+    let info;
+    try {
+      info = imageMetadata(n.src);
+    } catch (error) {
+      throw Error("\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D\uFF1A" + error.message);
+    }
+    assertImageDecodeCapacity(info, "\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D");
+    images.set(n.src, info);
+  }
+  const decodedPixels = [...images.values()].reduce((sum, image) => sum + image.pixels, 0), maxDecodedPixels = Math.max(0, ...[...images.values()].map((image) => image.pixels));
+  if (decodedPixels > SCENE_CAPACITY_LIMITS.decodedPixels) capacityError("SCENE_DECODE_PIXELS", "\u5BFC\u51FA\u552F\u4E00\u56FE\u7247\u89E3\u7801\u50CF\u7D20", decodedPixels, SCENE_CAPACITY_LIMITS.decodedPixels, "MP", "decode");
+  return { decodedPixels, maxDecodedPixels, uniqueDecodedImages: images.size };
+}
+function assertExportCapacity(s) {
+  validate(s);
+  const usage = sceneUsage(s), nodes = allNodes(s, true), decoded = decodeUsage(nodes);
+  let layerRasterPixels = 0, maskPixels = 0, maxDepth = 0;
+  for (const n of nodes) {
+    const box = n.type === "text" ? textInkBounds(n) : n, pad = Math.ceil(n.strokeWidth || 0) + 2, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
+    if (w > 12e3 || h > 12e3) capacityError("PSD_LAYER_RASTER_EDGE", "\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D\u5B9E\u9645\u663E\u793A\u7F13\u5B58\u8FB9\u957F", Math.max(w, h), 12e3, "\u50CF\u7D20", "export");
+    if (w * h > SCENE_CAPACITY_LIMITS.layerRasterPixels) capacityError("PSD_LAYER_RASTER_PIXELS", "\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D\u5B9E\u9645\u663E\u793A\u7F13\u5B58", w * h, SCENE_CAPACITY_LIMITS.layerRasterPixels, "MP", "export");
+    layerRasterPixels += w * h;
+    if (n.displayMask?.enabled !== false && n.displayMask) maskPixels += s.width * s.height;
+  }
+  const owner = /* @__PURE__ */ new Map();
+  for (const g of s.groups || []) {
+    for (const id of g.children) owner.set(id, g.id);
+    if (g.displayMask && g.displayMask.enabled !== false) maskPixels += s.width * s.height;
+  }
+  for (const n of nodes) {
+    let id = n.id, depth = 0;
+    while (owner.has(id)) {
+      depth++;
+      id = owner.get(id);
+    }
+    maxDepth = Math.max(maxDepth, depth);
+  }
+  const decodeWorkingPixels = Math.min(decoded.decodedPixels, Math.max(SCENE_CAPACITY_LIMITS.decodeCachePixels, decoded.maxDecodedPixels));
+  const estimatedWorkingBytes = 4 * (layerRasterPixels * 3 + maskPixels * 2 + s.width * s.height * (6 + 2 * maxDepth) + decodeWorkingPixels) + usage.uniqueImageBytes * 2;
+  if (estimatedWorkingBytes > SCENE_CAPACITY_LIMITS.psdWorkingBytes) capacityError("PSD_WORKING_BYTES", "PSD\u5BFC\u51FA\u9884\u8BA1\u5DE5\u4F5C\u5185\u5B58", estimatedWorkingBytes, SCENE_CAPACITY_LIMITS.psdWorkingBytes, "MiB", "export");
+  return { ...usage, ...decoded, layerRasterPixels, maskPixels, estimatedWorkingBytes };
+}
 function validate(s) {
   if (!s || s.format !== "shijie-scene" || s.version !== 2 || !Array.isArray(s.nodes) || s.nodes.length > 700) throw Error("\u8BF7\u9009\u62E9\u62FE\u754C\u56FE\u7247\u5DE5\u7A0B\uFF08v2\uFF09\uFF0C\u6700\u591A 700 \u5C42");
   if (![s.width, s.height].every((v) => Number.isInteger(v) && v > 0 && v <= 6e3) || s.width * s.height > 6e6) throw Error("\u753B\u5E03\u5C3A\u5BF8\u8D85\u9650");
   if (s.background != null && !/^#[0-9a-f]{6}$/i.test(s.background)) throw Error("\u753B\u5E03\u80CC\u666F\u8272\u65E0\u6548");
   const ids = /* @__PURE__ */ new Set();
-  let totalPath = 0, totalImage = 0, totalPixels = 0;
   for (const n of s.nodes) {
     if (typeof n.id !== "string" || ids.has(n.id) || !["text", "rect", "ellipse", "path", "image"].includes(n.type)) throw Error("\u56FE\u5C42 ID \u6216\u7C7B\u578B\u65E0\u6548");
     ids.add(n.id);
@@ -19886,7 +20075,6 @@ function validate(s) {
     if (n.radius !== void 0 && (!Number.isFinite(n.radius) || n.radius < 0 || n.radius > 6e3)) throw Error("\u5706\u89D2\u65E0\u6548");
     for (const k of ["x", "y", "width", "height"]) if (!Number.isFinite(n[k]) || Math.abs(n[k]) > 12e3) throw Error("\u56FE\u5C42\u5750\u6807\u65E0\u6548");
     if (n.width <= 0 || n.height <= 0 || n.width * n.height > 6e6) throw Error("\u56FE\u5C42\u5C3A\u5BF8\u65E0\u6548");
-    totalPixels += n.width * n.height;
     if (n.type !== "image" && !/^#[\da-f]{6}$/i.test(n.fill)) throw Error("\u56FE\u5C42\u989C\u8272\u65E0\u6548");
     normalizeGradient(n.gradient);
     normalizeStyle(n.layerStyle);
@@ -19902,14 +20090,11 @@ function validate(s) {
     if (n.type === "text" && (typeof n.text !== "string" || n.text.length > 1e4 || !Number.isFinite(n.fontSize) || n.fontSize < 1 || n.fontSize > 1e3)) throw Error("\u6587\u5B57\u6570\u636E\u65E0\u6548");
     if (n.type === "path") {
       if (typeof n.d !== "string" || !/^[MmLlHhVvCcSsQqTtAaZz\s\d.eE,+\-]+$/.test(n.d)) throw Error("\u77E2\u91CF\u8DEF\u5F84\u65E0\u6548");
-      totalPath += n.d.length;
     }
     if (n.type === "image") {
       if (!/^data:image\/(png|jpeg|webp);base64,[\w+/=]+$/.test(n.src)) throw Error("\u53EA\u652F\u6301\u5185\u5D4C\u56FE\u7247");
-      totalImage += n.src.length;
     }
   }
-  if (totalPixels > 48e6 || totalPath > 3e6 || totalImage > 4e7) throw Error("\u5DE5\u7A0B\u5185\u5BB9\u8FC7\u5927");
   if (s.groups !== void 0) {
     let check = function(g) {
       if (visiting.has(g.id)) throw Error("\u5206\u7EC4\u5FAA\u73AF\u5F15\u7528");
@@ -19936,9 +20121,9 @@ function validate(s) {
     s.groups.forEach(check);
   }
   if (s.source && !/^data:image\/(png|jpeg|webp);base64,[\w+/=]+$/.test(s.source)) throw Error("\u539F\u56FE\u65E0\u6548");
-  if (s.source?.length > 4e7) throw Error("\u539F\u56FE\u8FC7\u5927");
   if (!Array.isArray(s.edges) || s.edges.length > 300) throw Error("\u8FDE\u7EBF\u6570\u636E\u65E0\u6548");
   for (const e of s.edges) if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to || !/^#[\da-f]{6}$/i.test(e.fill)) throw Error("\u8FDE\u7EBF\u7AEF\u70B9\u65E0\u6548");
+  assertSceneStorageCapacity(s);
   return s;
 }
 function geometry(n) {
@@ -20023,7 +20208,8 @@ function edgeNode(s, e, i = 0) {
   const p = [ac[0] + ux * t1, ac[1] + uy * t1], q = [bc[0] - ux * t2, bc[1] - uy * t2], nx = -uy * 2, ny = ux * 2;
   return { id: "edge-" + i, name: "\u8FDE\u7EBF", type: "path", x: 0, y: 0, width: s.width, height: s.height, fill: e.fill, d: `M${p[0] + nx} ${p[1] + ny}L${q[0] - ux * 12 + nx} ${q[1] - uy * 12 + ny}L${q[0] - ux * 12 - uy * 6} ${q[1] - uy * 12 + ux * 6}L${q[0]} ${q[1]}L${q[0] - ux * 12 + uy * 6} ${q[1] - uy * 12 - ux * 6}L${q[0] - ux * 12 - nx} ${q[1] - uy * 12 - ny}L${p[0] - nx} ${p[1] - ny}Z` };
 }
-var allNodes = (s) => [...s.background ? [{ id: "__canvas_background__", name: "\u753B\u5E03\u80CC\u666F", type: "rect", x: 0, y: 0, width: s.width, height: s.height, fill: s.background, locked: true }] : [], ...s.nodes, ...s.edges.map((e, i) => edgeNode(s, e, i)).filter(Boolean)].filter((n) => n.visible !== false);
+var layerHidden = (n) => n.visible === false || n.visible === void 0 && n.hidden === true;
+var allNodes = (s, includeHidden = false) => [...s.background ? [{ id: "__canvas_background__", name: "\u753B\u5E03\u80CC\u666F", type: "rect", x: 0, y: 0, width: s.width, height: s.height, fill: s.background, locked: true }] : [], ...s.nodes, ...s.edges.map((e, i) => edgeNode(s, e, i)).filter(Boolean)].filter((n) => includeHidden || !layerHidden(n));
 function textMatrix(n) {
   const m = metrics(n), a = m.actualBoundingBoxAscent || n.fontSize * 0.85, d = m.actualBoundingBoxDescent || 0;
   if (n.rotation === 90) return [0, n.height / Math.max(1, m.width), -1, 0, n.x + (n.width - a - d) / 2 + d, n.y];
@@ -20089,9 +20275,24 @@ function groupBounds(s, g) {
   const bs = g.children.map((id) => map.get(id) || groupBounds(s, groups.get(id))).filter(Boolean), x = Math.min(...bs.map((n) => n.x)), y = Math.min(...bs.map((n) => n.y));
   return { x, y, width: Math.max(...bs.map((n) => n.x + n.width)) - x, height: Math.max(...bs.map((n) => n.y + n.height)) - y };
 }
+function assertRenderCapacity(s) {
+  validate(s);
+  const groups = new Map((s.groups || []).map((g) => [g.id, g])), owner = /* @__PURE__ */ new Map();
+  for (const g of groups.values()) for (const id of g.children) owner.set(id, g.id);
+  const nodes = allNodes(s).filter((n) => {
+    let id = n.id;
+    while (owner.has(id)) {
+      id = owner.get(id);
+      if (layerHidden(groups.get(id))) return false;
+    }
+    return true;
+  });
+  return decodeUsage(nodes);
+}
 function svg(s) {
+  assertRenderCapacity(s);
   const nodes = allNodes(s);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, nodes.map(nodeSvg), (g, parts) => g.visible === false ? "" : styleSvg('<g data-group="' + esc(g.id) + '" data-name="' + esc(g.name) + '" opacity="' + (g.opacity ?? 1) + '">' + parts.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, nodes.map(nodeSvg), (g, parts) => layerHidden(g) ? "" : styleSvg('<g data-group="' + esc(g.id) + '" data-name="' + esc(g.name) + '" opacity="' + (g.opacity ?? 1) + '">' + parts.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
 }
 function figma(s) {
   validate(s);
@@ -20109,103 +20310,139 @@ function figma(s) {
   return { format: "gugu-page-to-figma", version: 1, title: s.title, width: s.width, height: s.height, root: { type: "box", name: s.title, x: 0, y: 0, width: s.width, height: s.height, children }, sceneMetadata: { edges: s.edges, groups: s.groups, source: s.provenance }, warnings: ["\u6587\u5B57\u548C\u5F62\u72B6\u53EF\u7F16\u8F91\uFF1B\u5B57\u4F53\u4E3A\u4F30\u8BA1\u503C\uFF0C\u8BF7\u5BF9\u7167\u539F\u56FE\u6821\u5BF9\u3002\u6D41\u7A0B\u5173\u7CFB\u4FDD\u5B58\u5728\u5DE5\u7A0B JSON\u3002"] };
 }
 async function loadImage(src) {
-  if (globalThis.ShijieNodeCanvas) return globalThis.ShijieNodeCanvas.loadImage(src);
-  const im = new Image();
-  im.src = src;
-  await im.decode();
+  const expected = typeof src === "string" && imageURI.test(src) ? imageMetadata(src) : null;
+  if (expected) assertImageDecodeCapacity(expected, "\u56FE\u7247");
+  let im;
+  if (globalThis.ShijieNodeCanvas) im = await globalThis.ShijieNodeCanvas.loadImage(src);
+  else {
+    im = new Image();
+    im.src = src;
+    await im.decode();
+  }
+  const actual = { width: im.width, height: im.height, pixels: im.width * im.height };
+  assertImageDecodeCapacity(actual, "\u56FE\u7247");
+  if (expected && !(actual.width === expected.width && actual.height === expected.height || actual.width === expected.height && actual.height === expected.width)) throw Error("\u5B9E\u9645\u89E3\u7801\u5C3A\u5BF8\u4E0E\u56FE\u7247\u5934\u90E8\u4E0D\u4E00\u81F4");
   return im;
 }
+function releaseDecodedImage(im) {
+  if (typeof im.close === "function") im.close();
+  else if (!globalThis.ShijieNodeCanvas && typeof Image !== "undefined" && im instanceof Image) im.src = "";
+}
 async function psd(s) {
-  validate(s);
-  const factory = (w, h) => {
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    return c;
-  }, composite = factory(s.width, s.height), cc = composite.getContext("2d"), layers = [];
-  const visible = allNodes(s);
-  for (const [index, n] of visible.entries()) {
-    const box = n.type === "text" ? textInkBounds(n) : n, pad = Math.ceil(n.strokeWidth || 0) + 2, left = Math.floor(box.x) - pad, top = Math.floor(box.y) - pad, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
-    if (w > 12e3 || h > 12e3 || w * h > 6e6) throw Error("\u6587\u5B57\u6216\u56FE\u5C42\u5B9E\u9645\u663E\u793A\u7F13\u5B58\u8FC7\u5927\uFF0C\u8BF7\u8C03\u6574\u6392\u7248\u5C3A\u5BF8");
-    const canvas = factory(w, h), c = canvas.getContext("2d");
-    c.translate(n.x - left, n.y - top);
-    const layer = { id: index + 1, name: n.name || n.text || n.id, left, top, canvas, opacity: n.opacity ?? 1, blendMode: normalizeStyle(n.layerStyle)?.blendMode || "normal" };
-    if (n.type === "image") c.drawImage(await loadImage(n.src), 0, 0, n.width, n.height);
-    else if (n.type === "text") {
-      const matrix = textMatrix(n);
-      c.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4] - left, matrix[5] - top);
-      c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
-      c.fillStyle = n.fill;
-      textLines(n).forEach((line, i) => c.fillText(line, 0, i * textLeading(n)));
-      nativeText(layer, { ...n, fontStyle: n.textSkew ? "normal" : n.fontStyle, color: color(n.fill), fontFamily: n.fontFamily || "Microsoft YaHei", lineHeight: textLeading(n) }, matrix[5]);
-      layer.text.transform = matrix;
-      if (n.strokeWidth && n.stroke) layer.effects = nativeEffects({ stroke: { color: n.stroke, size: n.strokeWidth, opacity: 1, position: "outside" } });
-    } else {
-      const d = geometry(n);
-      c.fillStyle = n.fill;
-      c.fill(new Path2D(d), "evenodd");
-      layer.vectorFill = { type: "color", color: { r: parseInt(n.fill.slice(1, 3), 16), g: parseInt(n.fill.slice(3, 5), 16), b: parseInt(n.fill.slice(5, 7), 16) } };
-      layer.vectorMask = { fillStartsWithAllPixels: false, paths: contourOperations(pathData(d, `translate(${n.x},${n.y})`).paths) };
+  assertExportCapacity(s);
+  const decodedImages = /* @__PURE__ */ new Map();
+  let cachedPixels = 0;
+  async function exportImage(src) {
+    if (decodedImages.has(src)) {
+      const image2 = decodedImages.get(src);
+      decodedImages.delete(src);
+      decodedImages.set(src, image2);
+      return image2;
     }
-    if (n.gradient && n.type !== "image") {
-      const g = gradientData2(n);
-      if (n.type === "text") {
-        const fx = nativeEffects({ gradientOverlay: { ...normalizeGradient(n.gradient), enabled: true, opacity: 1 } });
-        layer.effects = { ...layer.effects || {}, ...fx };
-      } else {
-        gradientCache(canvas, n, left, top);
-        layer.vectorFill = g;
+    const info = imageMetadata(src);
+    while (decodedImages.size && cachedPixels + info.pixels > SCENE_CAPACITY_LIMITS.decodeCachePixels) {
+      const [key, image2] = decodedImages.entries().next().value;
+      cachedPixels -= image2.width * image2.height;
+      decodedImages.delete(key);
+      releaseDecodedImage(image2);
+    }
+    const image = await loadImage(src);
+    decodedImages.set(src, image);
+    cachedPixels += image.width * image.height;
+    return image;
+  }
+  try {
+    let paint = function(layer, target) {
+      if (layer.hidden) return;
+      let base, left = layer.left || 0, top = layer.top || 0;
+      if (layer.children) {
+        base = factory(s.width, s.height);
+        layer.children.forEach((l) => paint(l, base.getContext("2d")));
+        left = top = 0;
+      } else base = layer.canvas;
+      let style = layer._target.layerStyle;
+      if (!style && layer.effects) {
+        style = { enabled: true };
+        if (layer._target.strokeWidth) style.stroke = { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" };
       }
+      if (layer._target.type === "text" && layer._target.gradient) {
+        style = { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
+      }
+      const effectBounds = layer._target.width ? { x: layer._target.x - left, y: layer._target.y - top, width: layer._target.width, height: layer._target.height } : alphaBounds(base);
+      if (normalizeMask(layer._target.displayMask)?.enabled) {
+        const masked = factory(base.width, base.height), mc = masked.getContext("2d");
+        mc.drawImage(base, 0, 0);
+        mc.globalCompositeOperation = "destination-in";
+        mc.drawImage(displayMaskCanvas(layer._target.displayMask, s.width, s.height, factory, Path2D), -left, -top);
+        base = masked;
+      }
+      const rendered = styleCanvas(base, style, factory, effectBounds), scratch = factory(s.width, s.height), sc = scratch.getContext("2d");
+      sc.drawImage(rendered.canvas, left - rendered.pad, top - rendered.pad);
+      target.save();
+      target.globalAlpha = layer.opacity ?? 1;
+      target.globalCompositeOperation = layer.blendMode === "normal" ? "source-over" : layer.blendMode;
+      target.drawImage(scratch, 0, 0);
+      target.restore();
+    }, clean = function(l) {
+      delete l._target;
+      (l.children || []).forEach(clean);
+    };
+    const factory = (w, h) => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      return c;
+    }, composite = factory(s.width, s.height), cc = composite.getContext("2d"), layers = [];
+    const exportNodes = allNodes(s, true);
+    for (const [index, n] of exportNodes.entries()) {
+      const box = n.type === "text" ? textInkBounds(n) : n, pad = Math.ceil(n.strokeWidth || 0) + 2, left = Math.floor(box.x) - pad, top = Math.floor(box.y) - pad, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
+      const canvas = factory(w, h), c = canvas.getContext("2d");
+      c.translate(n.x - left, n.y - top);
+      const layer = { id: index + 1, name: n.name || n.text || n.id, left, top, canvas, opacity: n.opacity ?? 1, hidden: layerHidden(n), ...n.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, blendMode: normalizeStyle(n.layerStyle)?.blendMode || "normal" };
+      if (n.type === "image") c.drawImage(await exportImage(n.src), 0, 0, n.width, n.height);
+      else if (n.type === "text") {
+        const matrix = textMatrix(n);
+        c.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4] - left, matrix[5] - top);
+        c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
+        c.fillStyle = n.fill;
+        textLines(n).forEach((line, i) => c.fillText(line, 0, i * textLeading(n)));
+        nativeText(layer, { ...n, fontStyle: n.textSkew ? "normal" : n.fontStyle, color: color(n.fill), fontFamily: n.fontFamily || "Microsoft YaHei", lineHeight: textLeading(n) }, matrix[5]);
+        layer.text.transform = matrix;
+        if (n.strokeWidth && n.stroke) layer.effects = nativeEffects({ stroke: { color: n.stroke, size: n.strokeWidth, opacity: 1, position: "outside" } });
+      } else {
+        const d = geometry(n);
+        c.fillStyle = n.fill;
+        c.fill(new Path2D(d), "evenodd");
+        layer.vectorFill = { type: "color", color: { r: parseInt(n.fill.slice(1, 3), 16), g: parseInt(n.fill.slice(3, 5), 16), b: parseInt(n.fill.slice(5, 7), 16) } };
+        layer.vectorMask = { fillStartsWithAllPixels: false, paths: contourOperations(pathData(d, `translate(${n.x},${n.y})`).paths) };
+      }
+      if (n.gradient && n.type !== "image") {
+        const g = gradientData2(n);
+        if (n.type === "text") {
+          const fx = nativeEffects({ gradientOverlay: { ...normalizeGradient(n.gradient), enabled: true, opacity: 1 } });
+          layer.effects = { ...layer.effects || {}, ...fx };
+        } else {
+          gradientCache(canvas, n, left, top);
+          layer.vectorFill = g;
+        }
+      }
+      if (n.layerStyle) {
+        const fx = nativeEffects(n.layerStyle);
+        layer.effects = { ...layer.effects || {}, ...fx };
+      }
+      if (n.type === "text") fitGradientEffects(layer, n);
+      if (n.displayMask) layer.mask = nativeMask(n.displayMask, s.width, s.height, factory, Path2D);
+      layer._target = n;
+      layers.push(layer);
     }
-    if (n.layerStyle) {
-      const fx = nativeEffects(n.layerStyle);
-      layer.effects = { ...layer.effects || {}, ...fx };
-    }
-    if (n.type === "text") fitGradientEffects(layer, n);
-    if (n.displayMask) layer.mask = nativeMask(n.displayMask, s.width, s.height, factory, Path2D);
-    layer._target = n;
-    layers.push(layer);
+    const children = grouped(s, exportNodes, layers, (g, children2) => ({ id: 1e4 + (s.groups || []).indexOf(g), name: g.name || "\u5206\u7EC4", children: children2, opened: true, hidden: layerHidden(g), ...g.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, opacity: g.opacity ?? 1, blendMode: normalizeStyle(g.layerStyle)?.blendMode || "normal", ...g.layerStyle ? { effects: nativeEffects(g.layerStyle) } : {}, ...g.displayMask ? { mask: nativeMask(g.displayMask, s.width, s.height, factory, Path2D) } : {}, _target: g }));
+    children.forEach((l) => paint(l, cc));
+    children.forEach(clean);
+    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: true });
+  } finally {
+    for (const image of decodedImages.values()) releaseDecodedImage(image);
+    decodedImages.clear();
   }
-  const children = grouped(s, visible, layers, (g, children2) => ({ id: 1e4 + (s.groups || []).indexOf(g), name: g.name || "\u5206\u7EC4", children: children2, opened: true, hidden: g.visible === false, opacity: g.opacity ?? 1, blendMode: normalizeStyle(g.layerStyle)?.blendMode || "normal", ...g.layerStyle ? { effects: nativeEffects(g.layerStyle) } : {}, ...g.displayMask ? { mask: nativeMask(g.displayMask, s.width, s.height, factory, Path2D) } : {}, _target: g }));
-  function paint(layer, target) {
-    if (layer.hidden) return;
-    let base, left = layer.left || 0, top = layer.top || 0;
-    if (layer.children) {
-      base = factory(s.width, s.height);
-      layer.children.forEach((l) => paint(l, base.getContext("2d")));
-      left = top = 0;
-    } else base = layer.canvas;
-    let style = layer._target.layerStyle;
-    if (!style && layer.effects) {
-      style = { enabled: true };
-      if (layer._target.strokeWidth) style.stroke = { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" };
-    }
-    if (layer._target.type === "text" && layer._target.gradient) {
-      style = { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
-    }
-    const effectBounds = layer._target.width ? { x: layer._target.x - left, y: layer._target.y - top, width: layer._target.width, height: layer._target.height } : alphaBounds(base);
-    if (normalizeMask(layer._target.displayMask)?.enabled) {
-      const masked = factory(base.width, base.height), mc = masked.getContext("2d");
-      mc.drawImage(base, 0, 0);
-      mc.globalCompositeOperation = "destination-in";
-      mc.drawImage(displayMaskCanvas(layer._target.displayMask, s.width, s.height, factory, Path2D), -left, -top);
-      base = masked;
-    }
-    const rendered = styleCanvas(base, style, factory, effectBounds), scratch = factory(s.width, s.height), sc = scratch.getContext("2d");
-    sc.drawImage(rendered.canvas, left - rendered.pad, top - rendered.pad);
-    target.save();
-    target.globalAlpha = layer.opacity ?? 1;
-    target.globalCompositeOperation = layer.blendMode === "normal" ? "source-over" : layer.blendMode;
-    target.drawImage(scratch, 0, 0);
-    target.restore();
-  }
-  children.forEach((l) => paint(l, cc));
-  function clean(l) {
-    delete l._target;
-    (l.children || []).forEach(clean);
-  }
-  children.forEach(clean);
-  return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: true });
 }
 function html(s) {
   validate(s);
@@ -20219,7 +20456,10 @@ function resizePath(n, width, height) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  SCENE_CAPACITY_LIMITS,
   allNodes,
+  assertExportCapacity,
+  assertRenderCapacity,
   color,
   contourOperations,
   edgeNode,
@@ -20230,6 +20470,7 @@ function resizePath(n, width, height) {
   groupBounds,
   grouped,
   html,
+  imageMetadata,
   loadImage,
   metrics,
   nodeSvg,
@@ -20238,6 +20479,7 @@ function resizePath(n, width, height) {
   normalizeStyle,
   psd,
   resizePath,
+  sceneUsage,
   svg,
   textInkBounds,
   textLeading,

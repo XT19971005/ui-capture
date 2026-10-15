@@ -6,6 +6,7 @@ def validate_selection(scene,ids):
  if not isinstance(scene,dict) or not isinstance(ids,list) or not ids or len(ids)>700 or any(not isinstance(i,str) or not i or len(i)>160 for i in ids) or len(set(ids))!=len(ids):raise ValueError('请选择要检查的图层')
  known={n['id'] for n in scene.get('nodes',[])}
  if not set(ids)<=known:raise ValueError('选中图层不存在')
+ if any(n.get('versionArchived') and n['id'] in ids for n in scene.get('nodes',[])):raise ValueError('历史版本必须原样保留，不能自动检查或修正')
  return set(ids)
 
 def process(source,title,progress,cancelled,original_source=None,on_scene=lambda scene:None,resume_scene=None,selected_ids=None):
@@ -37,7 +38,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
  work=structure/'工作原图.png';work.write_bytes(base64.b64decode(source.split(',',1)[1],validate=True))
  original=structure/'原文件.png';original.write_bytes(raw)
  inherited_locked=effective_locked_ids(scene)
- selected=[n for n in scene['nodes'] if n['id'] in ids and n['id'] not in inherited_locked]
+ selected=[n for n in scene['nodes'] if n['id'] in ids and n['id'] not in inherited_locked and not n.get('versionArchived')]
  if not selected:raise ValueError('选中图层已锁定，请先解锁')
  total=len(selected);notes=[];changed=[];checked=[]
  for index,n in enumerate(selected):

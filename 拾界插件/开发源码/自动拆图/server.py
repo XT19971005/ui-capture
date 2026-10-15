@@ -4,14 +4,18 @@ from session_outputs import SESSIONS,CAPTURES
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from werkzeug.serving import make_server
+from image_wire import decode_job,measure,MAX_HTTP_BYTES
 
 PORT=19217
 TOKEN=secrets.token_urlsafe(32)
-app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=80*1024*1024
+app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=MAX_HTTP_BYTES
 jobs={};lock=threading.Lock();pool=concurrent.futures.ThreadPoolExecutor(max_workers=1)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 LOCAL_ORIGINS={'http://127.0.0.1:19217','http://localhost:19217'}
 ALLOWED_ORIGINS=LOCAL_ORIGINS|{o.rstrip('/') for o in json.loads(Path(__file__).with_name('native-host.json').read_text('utf-8-sig')).get('allowed_origins',[])}
+
+@app.errorhandler(413)
+def payload_too_large(error):return jsonify(error='工程传输数据超过容量限制，原工程已保留。请保存工程后重试；不会自动重新拆分或压缩图片。'),413
 
 @app.before_request
 def guard():
@@ -163,7 +167,7 @@ def health():
     try:command();available=True
     except RuntimeError:available=False
     with lock:active_jobs=sum(j['status'] in ('queued','running') for j in jobs.values())
-    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs)
+    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,imageWireVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order'])
 
 @app.get('/codex/status')
 def codex_status():
@@ -198,20 +202,48 @@ def open_output():
 
 def validate_resume(value):
     if value is None:return None
+    measure(value)
     if not isinstance(value,dict) or value.get('format')!='shijie-scene' or value.get('version')!=2:raise ValueError('续拆工程格式无效')
     def number(n,low,high):return isinstance(n,(int,float)) and not isinstance(n,bool) and math.isfinite(n) and low<=n<=high
+    def valid_id(ident):return isinstance(ident,str) and bool(ident) and len(ident)<=160
     if not all(number(value.get(k),1,6000) for k in ('width','height')):raise ValueError('续拆画板尺寸无效')
-    nodes=value.get('nodes')
-    if not isinstance(nodes,list) or len(nodes)>700:raise ValueError('续拆图层数量无效')
-    ids=set()
-    for n in nodes:
-        if not isinstance(n,dict) or n.get('type') not in ('text','image','path','rect','ellipse'):raise ValueError('续拆图层类型无效')
-        ident=n.get('id')
-        if not isinstance(ident,str) or not ident or len(ident)>160 or ident in ids:raise ValueError('续拆图层标识无效')
-        ids.add(ident)
-        if not all(number(n.get(k),-12000,12000) for k in ('x','y')) or not all(number(n.get(k),.001,12000) for k in ('width','height')):raise ValueError('续拆图层尺寸无效')
+    def node_ids(nodes):
+        if not isinstance(nodes,list) or len(nodes)>700:raise ValueError('续拆图层数量无效')
+        ids=set()
+        for n in nodes:
+            if not isinstance(n,dict) or n.get('type') not in ('text','image','path','rect','ellipse'):raise ValueError('续拆图层类型无效')
+            ident=n.get('id')
+            if not valid_id(ident) or ident in ids:raise ValueError('续拆图层标识无效')
+            ids.add(ident)
+            if not all(number(n.get(k),-12000,12000) for k in ('x','y')) or not all(number(n.get(k),.001,12000) for k in ('width','height')):raise ValueError('续拆图层尺寸无效')
+        return ids
+    ids=node_ids(value.get('nodes'))
     for k in ('edges','groups'):
         if k in value and (not isinstance(value[k],list) or len(value[k])>1400):raise ValueError('续拆工程结构无效')
+    def groups_valid(groups):
+        if not isinstance(groups,list) or len(groups)>1400:raise ValueError('续拆分组数量无效')
+        seen=set();owners={}
+        for group in groups:
+            if not isinstance(group,dict) or not valid_id(group.get('id')) or group['id'] in seen or not isinstance(group.get('children'),list) or not group['children'] or len(group['children'])>2100:raise ValueError('续拆分组结构无效')
+            seen.add(group['id'])
+            for ident in group['children']:
+                if not valid_id(ident) or ident in owners or ident==group['id']:raise ValueError('续拆分组成员无效')
+                owners[ident]=group['id']
+        for ident in owners:
+            path=set();current=ident
+            while current in owners:
+                if current in path:raise ValueError('续拆分组循环引用')
+                path.add(current);current=owners[current]
+    groups_valid(value.get('groups',[]))
+    recognition=value.get('recognition',{})
+    if not isinstance(recognition,dict):raise ValueError('续拆恢复记录无效')
+    if 'resumePendingNodes' in recognition and len(ids|node_ids(recognition['resumePendingNodes']))>700:raise ValueError('续拆待完成图层数量无效')
+    if 'resumeGroups' in recognition:groups_valid(recognition['resumeGroups'])
+    for key in ('resumeNodeOrder','pendingGenerationIds'):
+        if key in recognition:
+            entries=recognition[key]
+            if not isinstance(entries,list) or len(entries)>1400 or any(not valid_id(ident) for ident in entries) or len(set(entries))!=len(entries):raise ValueError('续拆恢复图层标识无效')
+    if 'resumePlan' in recognition and not isinstance(recognition['resumePlan'],dict):raise ValueError('续拆恢复规划无效')
     def inspect(v,depth=0):
         if depth>40:raise ValueError('续拆工程层级过多')
         if isinstance(v,float) and not math.isfinite(v):raise ValueError('续拆工程数值无效')
@@ -222,7 +254,6 @@ def validate_resume(value):
         elif isinstance(v,list):
             for item in v:inspect(item,depth+1)
     inspect(value)
-    if len(json.dumps(value,ensure_ascii=False,allow_nan=False))>72000000:raise ValueError('续拆工程过大')
     result=copy.deepcopy(value)
     for k in ('delivery','_sessionId','_projectId'):result.pop(k,None)
     return result
@@ -237,7 +268,9 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None):
     try:
         if item['cancel'].is_set():raise InterruptedError('已取消')
         item['status']='running'
-        if mode=='refine-selected':
+        if mode=='repair-order':
+            from layer_order import process
+        elif mode=='refine-selected':
             from selected_refine import process
         elif mode=='refine-ui':
             from refine_ui import process
@@ -248,12 +281,15 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None):
         with lock:
             if item['cancel'].is_set():
                 SESSIONS.take(result.get('_sessionId'));item.update(status='cancelled',message='已取消')
-            else:item.update(status='completed',progress=1,message='选中项处理完成' if mode=='refine-selected' else '精修完成，请校对标记项' if mode=='refine-ui' else '智能拆图完成',sessionId=result['_sessionId'])
+            else:
+                missing=result.get('recognition',{}).get('pendingGenerationIds',[])
+                split_message=('仍有'+str(len(missing))+'项未完成，可继续拆分') if missing else '尚未全部完成，可继续拆分' if result.get('_partial') or result.get('recognition',{}).get('extractionStatus')=='INCOMPLETE' else '拆分完成'
+                item.update(status='completed',progress=1,message='层级修复完成，请核对遮挡关系' if mode=='repair-order' else '选中项处理完成' if mode=='refine-selected' else '精修完成，请校对标记项' if mode=='refine-ui' else split_message,sessionId=result['_sessionId'])
     except InterruptedError:item.update(status='cancelled',message='已取消，临时文件已清理')
     except Exception as e:
         # Local processing errors only; no source pixels or credentials are logged.
         logging.exception('Local pipeline failed')
-        item.update(status='failed',message=('选中项处理未完成：' if mode=='refine-selected' else '精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
+        item.update(status='failed',message=('层级修复未完成：' if mode=='repair-order' else '选中项处理未完成：' if mode=='refine-selected' else '精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
         if isinstance(getattr(e,'diagnostics',None),dict):item['diagnostics']=e.diagnostics
     finally:
         with lock:
@@ -262,10 +298,11 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None):
 
 @app.post('/jobs')
 def submit():
-    data=request.get_json(silent=True)
+    try:data=decode_job(request.get_json(silent=True))
+    except (ValueError,TypeError,RecursionError,UnicodeError) as exc:return jsonify(error=str(exc)[:240]),400
     if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds'}:return jsonify(error='任务参数无效'),400
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
-    if mode not in ('codex','refine-ui','refine-selected'):return jsonify(error='处理方式无效'),400
+    if mode not in ('codex','refine-ui','refine-selected','repair-order'):return jsonify(error='处理方式无效'),400
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):return jsonify(error='请选择有效图片'),400
     if not isinstance(original,str) or len(original)>36000000 or not original.startswith('data:image/'):return jsonify(error='原图无效'),400
     try:resume=validate_resume(data.get('resume'))
@@ -276,6 +313,10 @@ def submit():
         try:validate_selection(resume,selected_ids)
         except (ValueError,TypeError):return jsonify(error='请选择工程中存在的图层'),400
     elif selected_ids is not None:return jsonify(error='当前处理方式不接受选中图层'),400
+    if mode=='repair-order':
+        from layer_order import hierarchy
+        try:hierarchy(resume)
+        except (ValueError,TypeError,RecursionError) as exc:return jsonify(error=str(exc)),400
     if mode=='refine-ui':
         from refine_ui import can_refine
         if not can_refine(resume):return jsonify(error='当前工程没有可精修的完整、未锁定文字或矢量图层；请先完成拆图'),400
@@ -283,7 +324,7 @@ def submit():
         for key in list(jobs):
             if jobs[key].get('finished',float('inf'))<time.time()-3600:del jobs[key]
         if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='已有图片正在处理，请等待完成或取消'),409
-        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
+        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
     pool.submit(run,ident,source,title,mode,original,resume,selected_ids)
@@ -310,7 +351,11 @@ def cancel(ident):
         item=jobs.get(ident)
         if not item:return jsonify(error='任务不存在'),404
         item['cancel'].set()
-        if item['status'] not in ('queued','running'):jobs.pop(ident,None)
+        if item['status'] not in ('queued','running'):
+            # Order results contain no downloadable PSD; DELETE owns their fresh
+            # result session even if an in-flight GET has not delivered its ID.
+            if item['status']=='completed' and item.get('mode')=='repair-order':SESSIONS.take(item.get('sessionId'))
+            jobs.pop(ident,None)
     return jsonify(ok=True)
 
 from web_capture import register_web_capture

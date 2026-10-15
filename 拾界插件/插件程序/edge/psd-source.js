@@ -9,7 +9,7 @@ const MAX_PAGE_PIXELS=12000000,MAX_LAYER_PIXELS=32000000;
 export function validateCapture(data){
   if(!data||!['gugu-page-to-figma','shijie-ui-capture'].includes(data.format)||data.version!==1||!data.root)throw Error('请选择拾界或旧版咕咕扩展生成的 JSON 文件。');
   if(!Number.isFinite(data.width)||!Number.isFinite(data.height)||data.width<=0||data.height<=0||data.width>30000||data.height>30000)throw Error('画布尺寸无效。');
-  let count=0,bytes=0;
+  let count=0,bytes=0;const uniqueImages=new Set();
   function visit(n,depth){
     if(!n||depth>100||++count>6000)throw Error('图层过多或层级过深。');
     if(!['group','box','text','image','svg'].includes(n.type))throw Error('未知图层类型。');
@@ -18,7 +18,7 @@ export function validateCapture(data){
       if(n.width<=0||n.height<=0)throw Error('无效的图层尺寸。');
     }
     normalizeStyle(n.layerStyle);normalizeGradient(n.gradient);normalizeMask(n.displayMask);
-    if(n.image){if(typeof n.image!=='string'||!/^data:image\/(png|jpeg|webp);base64,/.test(n.image))throw Error('图片必须为内嵌 PNG、JPEG 或 WebP。');bytes+=n.image.length;}
+    if(n.image){if(typeof n.image!=='string'||!/^data:image\/(png|jpeg|webp);base64,/.test(n.image))throw Error('图片必须为内嵌 PNG、JPEG 或 WebP。');if(!uniqueImages.has(n.image)){uniqueImages.add(n.image);bytes+=n.image.length}}
     if(bytes>26000000||n.text?.length>100000||n.svg?.length>2000000)throw Error('图层数据超过安全处理上限。');
     if(n.children){if(!Array.isArray(n.children))throw Error('图层结构无效。');n.children.forEach(c=>visit(c,depth+1));}
   }

@@ -6,21 +6,19 @@
  const note=document.getElementById('selected-refine-note');
  const pendingRepair=record=>Array.isArray(record?.repairedAssetsNotRechecked)?record.repairedAssetsNotRechecked.length>0:!!record?.repairedAssetsNotRechecked;
  const completed=record=>['COMPLETED','PASS'].includes(record?.status)&&!pendingRepair(record);
- const visualKeys=['type','src','text','x','y','width','height','fill','stroke','strokeWidth','d','radius','opacity','visible','blendMode','fontFamily','fontResolved','fontSize','fontWeight','fontStyle','fontVariantLigatures','textSkew','fitWidth','rotation','lineHeight','letterSpacing','wordSpacing','textDecoration','gradient','layerStyle','displayMask'];
- const visual=node=>Object.fromEntries(visualKeys.filter(k=>node[k]!==undefined).map(k=>[k,node[k]]));
  function selection(){
   const doc=window.studio.adapter.get(),roots=window.studio.roots();
   if(!doc||!roots.length)return {ids:[],reason:'请先选择图层或分组'};
   if(!(doc.comparisonSource||doc.source))return {ids:[],reason:'当前工程没有工作原图，无法对照检查'};
   try{
    const subset=window.studio.adapter.selectionData(roots,0),set=new Set(subset.nodes.map(n=>n.id)),entries=window.studio.adapter.entries();
-   const chosen=doc.nodes.filter(n=>set.has(n.id));
+   const chosen=doc.nodes.filter(n=>set.has(n.id)&&!n.versionArchived);
    if(chosen.some(n=>entries.get(n.id)?.locked))return {ids:[],reason:'所选包含锁定图层，请先解锁'};
    if(chosen.some(n=>n.pendingGeneration||n.provenance==='pending-image-generation'))return {ids:[],reason:'请先完成所选素材的拆分'};
    return {ids:chosen.map(n=>n.id),roots,reason:chosen.length?'仅检查并修正这 '+chosen.length+' 个所选图层':'所选没有可处理图层'};
   }catch(e){return {ids:[],reason:e.message}}
  }
- function sync(){const chosen=selection();button.disabled=busy||!!active||!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function';button.title=chosen.reason;button.textContent=active?'正在检查所选…':'检查并修正选中项';const record=window.studio.adapter.get()?.recognition?.selectedRefine;if(note)note.textContent=!active&&record&&equal(record.selectedIds,chosen.ids)&&!completed(record)?'所选项仍需对照原图校对。':'';}
+ function sync(){const chosen=selection();button.disabled=busy||!!active||!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function';button.title=chosen.reason;button.textContent=active?'正在检查所选…':'检查并修正选中项';const record=window.studio.adapter.get()?.recognition?.selectedRefine;if(note)note.textContent=!active&&record&&equal(record.selectedIds,chosen.ids)&&!completed(record)?'所选项仍需对照原图校对。':'';}
  function feedback(kind,message){if(note)note.textContent=kind==='review'?'仅所选项已处理，仍需对照原图校对。':'';splitFeedback('selected-'+kind,message);status(kind==='failure'?'所选修正未完成，完整工程已保留，可重试。':message);}
  function releaseOther(result,before){const id=result?._sessionId||result?.delivery?.sessionId,old=before?._sessionId||before?.delivery?.sessionId;if(id&&id!==old)ShijieSmartSplit.releaseSession(result)}
  function validateResult(before,result,ids){
@@ -37,7 +35,7 @@
  }
  async function durable(){await window.studio.flush()}
  async function run(){
-  if(busy||active)return;const chosen=selection();if(!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function')return;
+  if(busy||active)return;const chosen=selection();if(!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function')return;
   const transaction={id:++task,before:clone(scene),roots:chosen.roots,ids:chosen.ids,past:undo.slice(),future:redo.slice(),returned:null};active=transaction;refineBefore=transaction.before;
   setBusy(true);startSplitClock('selected');sync();
   try{
@@ -48,13 +46,15 @@
    if(active!==transaction||task!==transaction.id){releaseOther(result,transaction.before);return}
    validateResult(transaction.before,result,chosen.ids);
    const selectedRecord=result.recognition?.selectedRefine||{status:'NEEDS_REVIEW',selectedIds:chosen.ids,warnings:['本次检查尚未得到确认结论']};
-   const next={...transaction.before,...result,_projectId:transaction.before._projectId,recognition:{...transaction.before.recognition,selectedRefine:clone(selectedRecord)}};
-   const changedPixels=transaction.before.nodes.some((n,i)=>!equal(visual(n),visual(result.nodes[i]))),pending=selectedRecord.status==='NEEDS_REVIEW'||pendingRepair(selectedRecord);
+   const versioned=window.ShijieRefinementVersions.archiveChanges(transaction.before,result,chosen.ids);
+   const next={...transaction.before,...versioned.scene,_projectId:transaction.before._projectId,recognition:{...transaction.before.recognition,selectedRefine:clone(selectedRecord)}};
+   const changedPixels=versioned.changedIds.length>0,pending=selectedRecord.status==='NEEDS_REVIEW'||pendingRepair(selectedRecord);
    if(changedPixels||pending)for(const key of ['status','reviewStatus'])if(['PASS','MANUAL_CONFIRMED'].includes(transaction.before.recognition?.[key]))next.recognition[key]=result.recognition?.[key]==='NEEDS_REVIEW'||pending?'NEEDS_REVIEW':'NOT_REVIEWED';
    if(transaction.before._partial)next._partial=true;else if(!Object.hasOwn(transaction.before,'_partial'))delete next._partial;
    // A retained audit describes the old pixels. Only a distinct new session may replace it.
    const oldSession=transaction.before._sessionId||transaction.before.delivery?.sessionId,newSession=result._sessionId||result.delivery?.sessionId;
    if(!newSession||newSession===oldSession){delete next._sessionId;delete next.delivery}
+   S.validate(next);
    scene=clone(transaction.before);checkpoint('检查并修正选中项');scene={...next,_studioStep:{label:'检查并修正选中项',time:Date.now()}};refresh();
    window.studio.select(transaction.roots,true);await durable();if(active!==transaction||task!==transaction.id)return;
    ShijieSmartSplit.releaseSession(transaction.before);stopSplitClock();
