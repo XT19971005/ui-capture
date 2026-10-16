@@ -1,0 +1,9 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),{test}=require('node:test');
+test('disk project transport decodes wireFormat/wireVersion and preserves baseline',async()=>{
+ const src='data:image/png;base64,QUJD',calls=[],record={id:'fixture',persistedVersion:'disk-v1',doc:{width:4,height:4,source:{$image:0},nodes:[{id:'a',src:{$image:0}}],_splitBaseline:{scene:{source:{$image:0}}}}};
+ const ctx={TextEncoder,DOMException,setTimeout,clearTimeout,location:{protocol:'http:',host:'127.0.0.1:19217'},addEventListener(){}};ctx.window=ctx;
+ ctx.fetch=async(url,options={})=>{calls.push({url,options});const data=url==='/connection'?{url:'http://127.0.0.1:19217',token:'fixture'}:url.endsWith('/saved-projects/fixture')&&options.method==='DELETE'?{deleted:true}:url.endsWith('/saved-projects/fixture')&&options.method==='PUT'?{project:{id:'fixture',persistedVersion:'disk-v2'}}:{project:{wireFormat:'shijie-image-table',wireVersion:1,job:record,images:[src]}};return {ok:true,status:200,json:async()=>data}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../工作台增强/project-codec.js'),'utf8'),ctx);vm.runInNewContext(fs.readFileSync(path.join(__dirname,'smart-split.js'),'utf8'),ctx);
+ const result=await ctx.ShijieSmartSplit.savedProject('fixture');assert.equal(result.project.doc.source,src);assert.equal(result.project.doc._splitBaseline.scene.source,src);
+ await ctx.ShijieSmartSplit.saveProject({...result.project,_expectedVersion:'disk-v1'});assert.equal(JSON.parse(calls.find(v=>v.options.method==='PUT').options.body)._expectedVersion,'disk-v1');await ctx.ShijieSmartSplit.deleteSavedProject('fixture','disk-v2');assert.equal(JSON.parse(calls.find(v=>v.options.method==='DELETE').options.body)._expectedVersion,'disk-v2');
+});

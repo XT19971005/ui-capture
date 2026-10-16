@@ -152,6 +152,9 @@ def assemble(plan,build,repair,cancelled,progress,canvas_size=None,normalize_gro
     drawing_plan={**plan,'groups':[]}
     plan,scene=normalize(plan,build(drawing_plan))
    else:scene=build(plan)
+   from group_quality import validate_planned_groups
+   try:validate_planned_groups(plan,scene)
+   except ValueError as error:raise PlanAssemblyError(str(error),plan) from error
    return plan,link_scene(scene,plan)
   except PlanAssemblyError:raise
   except ValueError as exc:

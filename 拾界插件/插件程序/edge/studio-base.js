@@ -6,29 +6,52 @@ window.StudioBase=(()=>{
  const overlap=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const memory=ShijieSession.library,hidden=new Set(),persisted=new Map(),retired=new Map();let writeQueue=Promise.resolve(),sequence=0;
+ const localWeb=typeof location!=='undefined'&&location.protocol==='http:'&&['127.0.0.1:19217','localhost:19217'].includes(location.host);
+ let legacyLoaded=false,localLoaded=false;
+ const localError=e=>Error('本地工程库不可用：'+(e?.message||'请连接本机引擎后重试')+'。当前编辑仍在页面中，可导出工程文件。');
  function sameDoc(a,b){if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;if(Array.isArray(a)!==Array.isArray(b))return false;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&sameDoc(a[k],b[k]))}
- async function restoreSaved(){for(const p of await ShijieSession.legacySaved()){if(!persisted.has(p.id)&&!retired.has(p.id))persisted.set(p.id,clone(p));if(!hidden.has(p.id)&&!memory.has(p.id)){const entry=clone(p);if(entry.doc)entry.doc._projectId=entry.id;memory.set(entry.id,entry)}}}
+ async function restoreSaved(){if(localWeb&&legacyLoaded)return;try{for(const p of await ShijieSession.legacySaved()){if(!persisted.has(p.id)&&!retired.has(p.id))persisted.set(p.id,clone(p));if(!hidden.has(p.id)&&!memory.has(p.id)){const entry=clone(p);if(localWeb)entry.source='browser-legacy';if(entry.doc)entry.doc._projectId=entry.id;memory.set(entry.id,entry)}}legacyLoaded=true;ShijieSession.legacyLibraryError=null}catch(e){if(!localWeb)throw e;ShijieSession.legacyLibraryError=e.message}}
+ async function localProjects(refresh=false){
+  if(!localWeb||localLoaded&&!refresh)return;
+  try{
+   if(!window.ShijieSmartSplit?.savedProjects)throw Error('本机引擎需要更新');
+   const observed=new Map(memory),data=await ShijieSmartSplit.savedProjects();
+   if(!Array.isArray(data.projects))throw Error('本地工程列表响应无效');
+   const found=new Set(data.projects.map(p=>p.id));
+   // A late list must not retire or replace a save completed while it was in flight.
+   for(const [key,entry] of memory)if(entry.source==='local-disk'&&!found.has(key)&&entry===observed.get(key)){
+    memory.delete(key);if(persisted.get(key)?.source==='local-disk')persisted.delete(key);
+   }
+   for(const p of data.projects){
+    if(hidden.has(p.id))continue;const old=memory.get(p.id);
+    if(old?.source==='local-disk'&&old!==observed.get(p.id))continue;
+    if(old?.source!=='local-disk'||old.persistedVersion!==p.persistedVersion)memory.set(p.id,{...p,source:'local-disk'});
+    if(!persisted.has(p.id)||persisted.get(p.id)?.source!=='local-disk')persisted.set(p.id,{...p,source:'local-disk'});
+   }
+   localLoaded=true;ShijieSession.localLibraryError=null;
+  }catch(e){ShijieSession.localLibraryError=e.message;throw localError(e)}
+ }
  async function deliveries(){if(!window.ShijieSmartSplit?.projects)return;try{const data=await ShijieSmartSplit.projects();ShijieSession.libraryError=null;for(const p of data.items||[])if(!hidden.has(p.id)&&!memory.has(p.id))memory.set(p.id,{...p,kind:p.kind||'image',saveMode:'saved',source:'delivery',revision:p.revision||String(p.updated||0)})}catch(e){ShijieSession.libraryError=e.message}}
  function expectedVersion(key){const old=retired.get(key);return old?{version:old.version,allowMissing:old.version===old.removedVersion}:persisted.get(key)?.persistedVersion||persisted.get(key)?.revision||null}
  function retire(removed){if(!removed)return;const known=persisted.get(removed.id),old=retired.get(removed.id),version=known?.persistedVersion||known?.revision||old?.version||null;retired.set(removed.id,{version,removedVersion:removed.version});persisted.delete(removed.id)}
  const library={
-  async list(){await restoreSaved();await deliveries();return [...memory.values()].map(clone)},
-  async get(key){await restoreSaved();let entry=memory.get(key);if(!entry&&!hidden.has(key)){await deliveries();entry=memory.get(key)}if(entry?.source==='delivery'&&!entry.doc){const doc=await ShijieSmartSplit.project(key);entry={...entry,doc:clone(doc)};memory.set(key,entry)}return entry?clone(entry):undefined},
+  async list(){await restoreSaved();try{await localProjects(true)}catch(e){}await deliveries();return [...memory.values()].map(p=>{if(!localWeb)return clone(p);const {doc,...meta}=p;return clone(meta)})},
+  async get(key){await restoreSaved();try{await localProjects()}catch(e){if(!memory.has(key))throw e}let entry=memory.get(key);if(!entry&&!hidden.has(key)){await deliveries();entry=memory.get(key)}if(entry?.source==='local-disk'&&!entry.doc){try{const result=await ShijieSmartSplit.savedProject(key);entry={...result.project,source:'local-disk'};if(!entry.doc)throw Error('工程正文无效');memory.set(key,entry);persisted.set(key,clone(entry))}catch(e){throw localError(e)}}if(entry?.source==='delivery'&&!entry.doc){const doc=await ShijieSmartSplit.project(key);entry={...entry,doc:clone(doc)};memory.set(key,entry)}return entry?clone(entry):undefined},
   async update(key,change){const previous=await library.get(key),value=change(previous);if(value)return library.put(value.doc,value.kind,{manual:true})},
-  hasSaved(key){return persisted.has(key)||memory.get(key)?.source==='delivery'},
+  hasSaved(key){return persisted.has(key)||memory.get(key)?.source==='delivery'||memory.get(key)?.source==='local-disk'},
   isDirty(doc){const saved=persisted.get(doc?._projectId);return !!doc&&(!saved||!sameDoc(doc,saved.doc))},
   put(doc,kind,options={}){
    // Callers from old edit/flush paths are intentionally inert. Only explicit saves write.
    if(options.manual!==true)return Promise.resolve(undefined);
    if(!doc._projectId)doc._projectId=id();const snapshot=clone(doc),key=doc._projectId,entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,saveMode:'saved',savedAt:Date.now()};
    const task=writeQueue.catch(()=>{}).then(async()=>{
-    await restoreSaved();const saved=await ShijieSession.saveManual(entry,expectedVersion(key));
+    await restoreSaved();let saved;if(localWeb){try{await localProjects();const previous=persisted.get(key),result=await ShijieSmartSplit.saveProject({...entry,_expectedVersion:previous?.source==='local-disk'?previous.persistedVersion:null});if(!result.project?.persistedVersion)throw Error('磁盘未返回保存确认');saved={...entry,...result.project,source:'local-disk'}}catch(e){throw localError(e)}}else saved=await ShijieSession.saveManual(entry,expectedVersion(key));
     retired.delete(key);persisted.set(key,clone(saved));hidden.delete(key);memory.set(key,clone(saved));return clone(saved);
    });writeQueue=task;return task;
   },
   remove(key){
    const entry=memory.get(key),seq=++sequence;const task=writeQueue.catch(()=>{}).then(async()=>{
-    await restoreSaved();if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
+    await restoreSaved();if(entry?.source==='local-disk'){try{await ShijieSmartSplit.deleteSavedProject(key,entry.persistedVersion);persisted.delete(key)}catch(e){throw localError(e)}}else if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
     const current=memory.get(key);if(!current||!Number.isFinite(current.sequence)||current.sequence<=seq){hidden.add(key);memory.delete(key)}
    });writeQueue=task;return task;
   },

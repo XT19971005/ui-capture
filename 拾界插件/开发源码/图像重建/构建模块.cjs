@@ -7,7 +7,7 @@ require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(__dirname,'sc
 for(const name of ['smart-split.js','project-sync.js','codex-settings.js','image-editor.html','image-editor.css','image-editor.js','image-segment-worker.js'])fs.copyFileSync(path.join(__dirname,name),path.join(edge,name));
 console.log('PASS: image import/editor/export module built.');
 
-for(const name of ['project-codec.js','app-session.js','store.js','studio-base.js','project-thumbnail.js','layer-style-panel.js','layer-style-panel.css','workspace-ui.js','workspace-ui.css','workspace-polish.js','workspace-polish.css','region-selection.js','studio.js','studio.css','web-studio.js','image-studio.js','refinement-versions.js','selected-refine.js','layer-order.js','image-replace.js','image-replace.css'])fs.copyFileSync(path.join(root,'开发源码/工作台增强',name),path.join(edge,name));
+for(const name of ['project-codec.js','app-session.js','store.js','studio-base.js','project-thumbnail.js','layer-style-panel.js','layer-style-panel.css','workspace-ui.js','workspace-ui.css','workspace-polish.js','workspace-polish.css','region-selection.js','studio.js','studio.css','web-studio.js','image-studio.js','refinement-versions.js','selected-refine.js','layer-order.js','image-replace.js','image-replace.css','image-generate.js','image-generate.css','workspace-actions.js','workspace-actions.css'])fs.copyFileSync(path.join(root,'开发源码/工作台增强',name),path.join(edge,name));
 
 require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(__dirname,'scene-export.js')],bundle:true,format:'cjs',platform:'node',nodePaths:[nm],outfile:path.join(root,'开发源码/自动拆图/scene-native.cjs'),legalComments:'eof'});
 

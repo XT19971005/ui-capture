@@ -5,10 +5,12 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from werkzeug.serving import make_server
 from image_wire import decode_job,measure,MAX_HTTP_BYTES
+from local_project_store import LocalProjectStore,ProjectConflict
 
 PORT=19217
 TOKEN=secrets.token_urlsafe(32)
 app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=MAX_HTTP_BYTES
+SAVED_PROJECTS=LocalProjectStore(ROOT.parent/'工程文件')
 jobs={};lock=threading.Lock();pool=concurrent.futures.ThreadPoolExecutor(max_workers=1)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 LOCAL_ORIGINS={'http://127.0.0.1:19217','http://localhost:19217'}
@@ -23,6 +25,11 @@ def guard():
     origin=request.headers.get('Origin')
     if origin and origin not in ALLOWED_ORIGINS:return jsonify(error='Origin not allowed'),403
     if request.method=='OPTIONS':return '',204
+    if request.path=='/saved-projects' or request.path.startswith('/saved-projects/'):
+        if origin and origin not in LOCAL_ORIGINS:return jsonify(error='本地工程库仅允许本机网页访问'),403
+        if request.headers.get('Sec-Fetch-Site') not in (None,'same-origin','none'):return jsonify(error='Same-origin request required'),403
+        if not secrets.compare_digest(request.headers.get('X-Shijie-Token',''),TOKEN):return jsonify(error='连接已过期，请重新连接本机引擎'),401
+        return None
     if request.path in ('/ping','/') or request.path.endswith(('.html','.js','.css','.png','.svg','.ico','.wasm','.gz','.traineddata')):return None
     if request.path=='/connection':
         if request.headers.get('Sec-Fetch-Site') not in (None,'same-origin','none'):return jsonify(error='Same-origin connection required'),403
@@ -36,7 +43,7 @@ def cors(response):
         response.headers['Access-Control-Allow-Origin']=origin
         response.headers['Vary']='Origin'
         response.headers['Access-Control-Allow-Headers']='Content-Type, X-Shijie-Token'
-        response.headers['Access-Control-Allow-Methods']='GET, POST, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Methods']='GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Private-Network']='true'
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -50,8 +57,30 @@ def local_connection():return jsonify(url='http://127.0.0.1:19217',token=TOKEN)
 
 @app.get('/<path:name>')
 def static_editor(name):
-    if name.startswith(('api/','projects/')):return jsonify(error='Not found'),404
+    if name.startswith(('api/','projects/','saved-projects/')):return jsonify(error='Not found'),404
     return send_from_directory(ROOT/'插件程序/edge',name)
+
+@app.get('/saved-projects')
+def list_saved_projects():
+    try:return jsonify(projects=SAVED_PROJECTS.list())
+    except OSError:return jsonify(error='无法读取本地工程库；请检查磁盘与目录权限。'),503
+
+@app.route('/saved-projects/<ident>',methods=['GET','PUT','DELETE'])
+def saved_project(ident):
+    try:
+        if request.method=='GET':return jsonify(project=SAVED_PROJECTS.get(ident,wire=True))
+        data=decode_job(request.get_json(silent=True))
+        expected=data.get('_expectedVersion')
+        if expected is not None and (not isinstance(expected,str) or len(expected)>160):raise ValueError('工程版本无效')
+        if request.method=='DELETE':
+            SAVED_PROJECTS.delete(ident,expected);return jsonify(deleted=True)
+        return jsonify(project=SAVED_PROJECTS.save(ident,data,expected))
+    except ProjectConflict as error:return jsonify(error=str(error)),409
+    except FileNotFoundError:return jsonify(error='本地工程不存在或已被删除'),404
+    except (ValueError,TypeError,RecursionError) as error:return jsonify(error=str(error) or '本地工程内容无效'),400
+    except OSError:
+        logging.exception('Local project disk operation failed')
+        return jsonify(error='本地工程保存或读取失败；请检查磁盘空间与目录权限。当前编辑仍未保存，请重试或导出工程。'),507
 
 def stored_projects():
     import hashlib
@@ -167,7 +196,7 @@ def health():
     try:command();available=True
     except RuntimeError:available=False
     with lock:active_jobs=sum(j['status'] in ('queued','running') for j in jobs.values())
-    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,imageWireVersion=1,regionRefineVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order','replace-image'])
+    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,imageWireVersion=1,regionRefineVersion=1,imageReplaceSelectionVersion=1,imageGenerateVersion=1,localProjectStoreVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order','replace-image'])
 
 @app.get('/codex/status')
 def codex_status():
@@ -287,12 +316,12 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=No
             else:
                 missing=result.get('recognition',{}).get('pendingGenerationIds',[])
                 split_message=('仍有'+str(len(missing))+'项未完成，可继续拆分') if missing else '尚未全部完成，可继续拆分' if result.get('_partial') or result.get('recognition',{}).get('extractionStatus')=='INCOMPLETE' else '拆分完成'
-                item.update(status='completed',progress=1,message='替换候选已生成，请预览后应用' if mode=='replace-image' else '层级修复完成，请核对遮挡关系' if mode=='repair-order' else '选中项处理完成' if mode=='refine-selected' else '精修完成，请校对标记项' if mode=='refine-ui' else split_message,sessionId=result['_sessionId'])
+                item.update(status='completed',progress=1,message=('独立素材已生成，可下载或添加新图层' if replacement.get('intent')=='generate' else '替换候选已生成，请预览后应用') if mode=='replace-image' else '层级修复完成，请核对遮挡关系' if mode=='repair-order' else '选中项处理完成' if mode=='refine-selected' else '精修完成，请校对标记项' if mode=='refine-ui' else split_message,sessionId=result['_sessionId'])
     except InterruptedError:item.update(status='cancelled',message='已取消，临时文件已清理')
     except Exception as e:
         # Local processing errors only; no source pixels or credentials are logged.
         logging.exception('Local pipeline failed')
-        item.update(status='failed',message=('图片替换未完成：' if mode=='replace-image' else '层级修复未完成：' if mode=='repair-order' else '选中项处理未完成：' if mode=='refine-selected' else '精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
+        item.update(status='failed',message=(('独立生图未完成：' if replacement.get('intent')=='generate' else '图片替换未完成：') if mode=='replace-image' else '层级修复未完成：' if mode=='repair-order' else '选中项处理未完成：' if mode=='refine-selected' else '精修未完成：' if mode=='refine-ui' else '智能拆图未完成：')+str(e)[:240])
         if isinstance(getattr(e,'diagnostics',None),dict):item['diagnostics']=e.diagnostics
     finally:
         with lock:
@@ -333,7 +362,7 @@ def submit():
         for key in list(jobs):
             if jobs[key].get('finished',float('inf'))<time.time()-3600:del jobs[key]
         if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='已有图片正在处理，请等待完成或取消'),409
-        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':'准备生成替换候选…' if mode=='replace-image' else '准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
+        ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':('准备生成独立素材…' if replacement.get('intent')=='generate' else '准备生成替换候选…') if mode=='replace-image' else '准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
     try:pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []),**({'replacement':replacement} if mode=='replace-image' else {}))

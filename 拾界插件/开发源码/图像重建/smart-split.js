@@ -79,9 +79,11 @@ window.ShijieSmartSplit=(()=>{
    onProgress(.01,'正在连接本机智能引擎…');const engine=await connect();if(run.cancelled)throw abortError();
    if(Array.isArray(engine.jobModes)&&!engine.jobModes.includes(mode))throw Error('本机后端尚不支持当前操作，请更新并重新连接后重试；原工程已保留。');
    if(options.region&&engine.regionRefineVersion!==1)throw Error('本机后端尚未加载区域检查更新，请等待当前任务结束后重新连接或重启后端；完整工程已保留。');
+   if(options.replacement?.selection&&engine.imageReplaceSelectionVersion!==1)throw Error('本机后端尚未加载自由圈选更新，请等待当前任务结束后重新连接或重启后端；原图已保留。');
+   if(options.replacement?.intent==='generate'&&engine.imageGenerateVersion!==1)throw Error('本机后端尚未加载独立生图更新，请等待当前任务结束后重新连接或重启后端；原图已保留。');
    await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();
    onProgress(.02,'正在整理工程图片，保留原图与全部图层…');await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
-   const transportScene=resumeScene?{...resumeScene}:null;if(transportScene)delete transportScene._splitBaseline;
+   const transportScene=resumeScene?{...resumeScene}:null;if(transportScene){delete transportScene._splitBaseline;delete transportScene._splitDraftCore;}
    const body=serializeJob({image,title,mode,original,...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{})}:{})},engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const job=await request('/jobs',{method:'POST',body});run.id=job.id;
    let revision=0;
@@ -91,7 +93,7 @@ window.ShijieSmartSplit=(()=>{
     if(state.partial){revision=state.partialRevision;if(mode==='codex')run.partial=state.partial}
     if(run.cancelled){releaseCancelledOrderResult(run,state);throw abortError()}
     onProgress(state.progress,state.message,mode==='codex'?state.partial||null:null);
-    if(state.status==='completed')return resumeScene?._splitBaseline?{...state.result,_splitBaseline:resumeScene._splitBaseline}:state.result;
+    if(state.status==='completed')return {...state.result,...(resumeScene?._splitBaseline?{_splitBaseline:resumeScene._splitBaseline}:{}),...(resumeScene?._splitDraftCore?{_splitDraftCore:resumeScene._splitDraftCore}:{})};
     if(['failed','expired'].includes(state.status))throw Error(state.message);
     if(state.status==='cancelled')throw abortError();
     await new Promise(resolve=>setTimeout(resolve,700));
@@ -110,13 +112,24 @@ window.ShijieSmartSplit=(()=>{
  async function replaceImage(doc,replacement,onProgress=()=>{}){
   const validRect=r=>r===null||r&&Object.keys(r).sort().join(',')==='height,width,x,y'&&Object.values(r).every(Number.isSafeInteger)&&r.x>=0&&r.y>=0&&r.width>0&&r.height>0;
   if(!replacement||typeof replacement!=='object'||!doc?.nodes?.some(n=>n.id===replacement.targetId&&n.type==='image'))throw Error('请选择一个要替换的图片图层');
-  const {targetId,region=null,prompt='',reference=null}=replacement;
+  const {targetId,region=null,prompt='',reference=null,selection=null}=replacement;
+  if(Object.hasOwn(replacement,'intent')&&replacement.intent!=='generate')throw Error('图片操作类型无效');
   if(typeof prompt!=='string'||prompt.length>6000||!validRect(region))throw Error('替换描述或框选区域无效');
+  if(selection!==null){
+   const multi=selection?.type==='polygons',polygons=multi?selection.polygons:selection?.type==='polygon'?[selection.points]:null;
+   if(!selection||Object.keys(selection).sort().join(',')!==(multi?'polygons,type':'points,type')||!Array.isArray(polygons)||!polygons.length||polygons.length>32||polygons.some(ps=>!Array.isArray(ps)||ps.length<3||ps.some(p=>!Array.isArray(p)||p.length!==2||p.some(v=>!Number.isSafeInteger(v)||v<0)))||polygons.reduce((n,p)=>n+p.length,0)>2048)throw Error('自由圈选轮廓无效');
+   const points=polygons.flat(),xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),x=Math.min(...xs),y=Math.min(...ys),width=Math.max(...xs)-x,height=Math.max(...ys)-y;
+   if(!region||!width||!height||region.x!==x||region.y!==y||region.width!==width||region.height!==height)throw Error('自由圈选轮廓与选区不一致');
+  }
   if(reference!==null&&(!reference||typeof reference.src!=='string'||!reference.src.startsWith('data:image/')||!validRect(reference.region??null)))throw Error('参考图或参考选区无效');
   if(!prompt.trim()&&!reference)throw Error('请输入替换描述或上传参考图');
   const source=doc.comparisonSource||doc.source||doc.originalSource;if(!source)throw Error('工程缺少原图，无法替换');
-  return run(source,doc.title,onProgress,doc.originalSource||source,doc,{mode:'replace-image',replacement:{targetId,region,prompt,reference:reference?{src:reference.src,region:reference.region??null}:null}});
+  return run(source,doc.title,onProgress,doc.originalSource||source,doc,{mode:'replace-image',replacement:{targetId,region,prompt,reference:reference?{src:reference.src,region:reference.region??null}:null,...(selection?{selection:JSON.parse(JSON.stringify(selection))}:{}),...(replacement.intent?{intent:replacement.intent}:{})}});
  }
+ async function savedProjects(){connection=await nativeConnect();return request('/saved-projects')}
+ async function savedProject(id){connection=await nativeConnect();const result=await request('/saved-projects/'+encodeURIComponent(id)),wire=result.project;if(wire?.wireFormat==='shijie-image-table'&&wire.wireVersion===1)result.project=ShijieProjectCodec.decode({format:'shijie-project',version:1,doc:wire.job,images:wire.images});return result}
+ async function saveProject(record){connection=await nativeConnect();return request('/saved-projects/'+encodeURIComponent(record.id),{method:'PUT',body:serializeJob(record,true)})}
+ async function deleteSavedProject(id,expectedVersion){connection=await nativeConnect();return request('/saved-projects/'+encodeURIComponent(id),{method:'DELETE',body:JSON.stringify({_expectedVersion:expectedVersion})})}
  function renderState(scene){const keys=['id','name','type','x','y','width','height','src','text','fontSize','fontWeight','fontFamily','fontStyle','fitWidth','textSkew','rotation','fill','stroke','strokeWidth','d','radius','opacity','visible','gradient'];const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;return JSON.stringify(stable({width:scene.width,height:scene.height,background:scene.background??null,nodes:scene.nodes.map(n=>Object.fromEntries(keys.filter(k=>n[k]!==undefined).map(k=>[k,n[k]]))),edges:scene.edges||[],groups:scene.groups||[]}))}
  async function downloadPsd(scene){assertExportable(scene);if([...scene.nodes,...(scene.groups||[])].some(n=>n.versionArchived||n.visible===false||n.hidden===true))return null;if(scene?._partial||(scene?.delivery?.storage==='memory'&&!scene.delivery.psdSHA256))return null;if(scene?.recognition?.reviewStatus==='MANUAL_CONFIRMED')return null;if(!scene?.delivery)return null;const id=scene._sessionId||scene.delivery.sessionId;const route=id?'/sessions/'+encodeURIComponent(id):scene._projectId?.startsWith('codex-')?'/projects/'+encodeURIComponent(scene._projectId):null;if(!route)return null;connection=await nativeConnect();let saved;try{saved=await request(route+(id?'/scene':''))}catch(e){if(e.status===404)return null;throw e}if(renderState(saved)!==renderState(scene))return null;const r=await fetch(connection.url+route+'/psd',{headers:{'X-Shijie-Token':connection.token},cache:'no-store'});if(r.status===404)return null;if(!r.ok){const data=await r.json();throw Error(data.error||'已审计PSD暂不可用')}const blob=await r.blob();if(scene.delivery.psdSHA256){const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');if(hash!==scene.delivery.psdSHA256)throw Error('PSD校验失败，请重新拆分')}return blob}
  function assertExportable(scene,type='psd'){
@@ -124,5 +137,5 @@ window.ShijieSmartSplit=(()=>{
  }
  function releaseSession(scene){const id=scene?._sessionId||scene?.delivery?.sessionId;if(id&&connection)request('/sessions/'+encodeURIComponent(id),{method:'DELETE',keepalive:true}).catch(()=>{})}
  window.addEventListener('pagehide',()=>{cancel()});
- return {run,refine,refineSelected,repairOrder,replaceImage,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
+ return {run,refine,refineSelected,repairOrder,replaceImage,savedProjects,savedProject,saveProject,deleteSavedProject,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
 })();
