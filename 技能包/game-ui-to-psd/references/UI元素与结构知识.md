@@ -90,6 +90,6 @@
 6. 旋转两行英文带斜体：核对文案、基线和实际墨迹，逐行拟合，不用框高当字号或宽度拉伸。
 7. 半透明且有蒙版的组：整体透明度和蒙版不丢；不能无损解组时拒绝，不为了叶层“更独立”改变画面。
 8. 看似九宫格面板：记录可见角/边与内容槽位，未观察到的伸缩参数保留未知，不拆成九张图。
-9. 隐藏旧版与当前修正版重叠：旧版不进当前实体候选；未选中节点和图片字节不变，修正成功保留旧版、可撤销并事务保存。
+9. 隐藏旧版与当前修正版重叠：旧版不进当前实体候选；未选中节点和图片字节不变，修正成功保留旧版、可撤销；按2.36仅点击“保存工程”才持久保存。
 
 外部技能筛选：已阅读[Anthropic frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md)，其原创/重设计目标不适合替换原图；已阅读[Vercel web-design-guidelines](https://github.com/vercel-labs/agent-skills/blob/main/skills/web-design-guidelines/SKILL.md)及其[检查规则](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md)，可用于工作台交互、可访问性与性能检查，不能作为语义拆层器。未盲目安装或引入风格美化。

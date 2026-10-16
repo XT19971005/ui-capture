@@ -1,4 +1,4 @@
-/* Recovery projects persist in IndexedDB; temporary previews stay in RAM. */
+/* Only explicit manual project saves persist; working edits stay in RAM. */
 window.ShijieSession=(()=>{
  const session={library:new Map(),drafts:{web:null,image:null,region:null},workspaceColor:'#12151c',writerId:crypto.randomUUID()};
  session.cleanup=(async()=>{if(globalThis.caches)for(const name of await caches.keys())if(name.startsWith('shijie-temporary-'))await caches.delete(name)})().catch(()=>{});
@@ -29,12 +29,12 @@ window.ShijieSession=(()=>{
  function versionOf(entry){return entry?.persistedVersion||entry?.revision||null}
  function assertVersion(old,expected){const wanted=expected&&typeof expected==='object'?expected.version:expected;if(versionOf(old)!==wanted&&!(expected?.allowMissing===true&&!old)){const conflict=Error('工程已在另一个页面更新；当前修改仍在页面中，请下载或另存副本。');conflict.name='RecoveryConflictError';throw conflict}}
  session.saveEntry=async (entry,expectedVersion=null)=>{
+  if(entry.saveMode!=='saved')throw Error('工程仅在点击保存工程时写入');
   const value=structuredClone(entry),db=await open();
   return new Promise((resolve,reject)=>{
    const tx=db.transaction('projects','readwrite'),store=tx.objectStore('projects'),get=store.get(value.id),evictions=[];let failure;
    get.onsuccess=()=>{try{
     const old=get.result;assertVersion(old,expectedVersion);value.persistedVersion=value.revision;value.writerId=session.writerId;if(old?.saveMode==='saved'){value.saveMode='saved';value.savedAt=old.savedAt||value.savedAt}value.storageVersion='recovery-v3';value.persistedAt=Date.now();store.put(pack(value));
-    const all=store.getAll();all.onsuccess=()=>{try{const recent=all.result.filter(p=>p.saveMode==='auto'&&p.id!==value.id).sort((a,b)=>(b.updated||0)-(a.updated||0)||(b.sequence||0)-(a.sequence||0));for(const p of recent.slice(value.saveMode==='auto'?19:20)){store.delete(p.id);evictions.push({id:p.id,version:versionOf(p)})}}catch(e){failure=e;tx.abort()}};
    }catch(e){failure=e;tx.abort()}};
    tx.oncomplete=()=>{db.close();Object.defineProperty(value,'recoveryEvictions',{value:evictions});resolve(value)};
    tx.onerror=tx.onabort=()=>{db.close();reject(failure||tx.error||Error('工程恢复保存失败；请立即下载工程文件'))};

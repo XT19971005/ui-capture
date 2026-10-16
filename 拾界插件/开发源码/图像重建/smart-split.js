@@ -41,7 +41,7 @@ window.ShijieSmartSplit=(()=>{
  }
  const abortError=()=>new DOMException('已取消','AbortError');
  function releaseCancelledOrderResult(run,state){
-  if(run.mode!=='repair-order'||state?.status!=='completed')return;
+  if(!['repair-order','replace-image'].includes(run.mode)||state?.status!=='completed')return;
   for(const id of new Set([state.result?._sessionId,state.result?.delivery?.sessionId]))if(typeof id==='string'&&id&&!run.keptSessions.has(id)&&!run.releasedSessions.has(id)){run.releasedSessions.add(id);try{releaseSession({_sessionId:id})}catch(_){}}
  }
  function nativeConnect(){if(location.protocol==='http:'&&['127.0.0.1:19217','localhost:19217'].includes(location.host))return fetch('/connection',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('本机连接失败');return r.json()});return new Promise((resolve,reject)=>{
@@ -74,14 +74,15 @@ window.ShijieSmartSplit=(()=>{
   }
  }
  async function run(image,title,onProgress=()=>{},original=image,resumeScene=null,options={}){
-  const mode=options?.mode||'codex';if(!['codex','refine-ui','refine-selected','repair-order'].includes(mode))throw Error('处理方式无效');if(active)throw Error('已有图片正在拆分');const run={mode,cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set([resumeScene?._sessionId,resumeScene?.delivery?.sessionId]),releasedSessions:new Set()};active=run;
+  const mode=options?.mode||'codex';if(!['codex','refine-ui','refine-selected','repair-order','replace-image'].includes(mode))throw Error('处理方式无效');if(active)throw Error('已有图片正在处理');const run={mode,cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set([resumeScene?._sessionId,resumeScene?.delivery?.sessionId]),releasedSessions:new Set()};active=run;
   try{
    onProgress(.01,'正在连接本机智能引擎…');const engine=await connect();if(run.cancelled)throw abortError();
    if(Array.isArray(engine.jobModes)&&!engine.jobModes.includes(mode))throw Error('本机后端尚不支持当前操作，请更新并重新连接后重试；原工程已保留。');
    if(options.region&&engine.regionRefineVersion!==1)throw Error('本机后端尚未加载区域检查更新，请等待当前任务结束后重新连接或重启后端；完整工程已保留。');
    await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();
    onProgress(.02,'正在整理工程图片，保留原图与全部图层…');await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
-   const body=serializeJob({image,title,mode,original,...(resumeScene?{resume:resumeScene}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{})}:{})},engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
+   const transportScene=resumeScene?{...resumeScene}:null;if(transportScene)delete transportScene._splitBaseline;
+   const body=serializeJob({image,title,mode,original,...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{})}:{})},engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const job=await request('/jobs',{method:'POST',body});run.id=job.id;
    let revision=0;
    while(true){
@@ -90,7 +91,7 @@ window.ShijieSmartSplit=(()=>{
     if(state.partial){revision=state.partialRevision;if(mode==='codex')run.partial=state.partial}
     if(run.cancelled){releaseCancelledOrderResult(run,state);throw abortError()}
     onProgress(state.progress,state.message,mode==='codex'?state.partial||null:null);
-    if(state.status==='completed')return state.result;
+    if(state.status==='completed')return resumeScene?._splitBaseline?{...state.result,_splitBaseline:resumeScene._splitBaseline}:state.result;
     if(['failed','expired'].includes(state.status))throw Error(state.message);
     if(state.status==='cancelled')throw abortError();
     await new Promise(resolve=>setTimeout(resolve,700));
@@ -106,6 +107,16 @@ window.ShijieSmartSplit=(()=>{
  async function refine(doc,onProgress=()=>{}){if(!canRefine(doc))throw Error(doc?._partial?'请先继续拆分，完成后再精修。':'当前工程没有可精修的完整文字或矢量图层。');return run(doc.comparisonSource||doc.source,doc.title,onProgress,doc.originalSource||doc.comparisonSource||doc.source,doc,{mode:'refine-ui'})}
  async function refineSelected(doc,selectedIds,onProgress=()=>{},region){if(!doc?.nodes?.length||!(doc.comparisonSource||doc.source)||!Array.isArray(selectedIds)||!selectedIds.length||new Set(selectedIds).size!==selectedIds.length||selectedIds.some(id=>!doc.nodes.some(n=>n.id===id)))throw Error('请选择要检查的图层');if(region!==undefined&&(!region||Object.keys(region).sort().join(',')!=='height,width,x,y'||Object.values(region).some(v=>typeof v!=='number'||!Number.isFinite(v))||region.x<0||region.y<0||region.width<=0||region.height<=0||region.x+region.width>doc.width||region.y+region.height>doc.height))throw Error('检查区域必须完整位于画布内');return run(doc.comparisonSource||doc.source,doc.title,onProgress,doc.originalSource||doc.comparisonSource||doc.source,doc,{mode:'refine-selected',selectedIds,...(region?{region:{...region}}:{})})}
  async function repairOrder(doc,onProgress=()=>{}){if(!doc?.nodes||doc.nodes.length<2||!(doc.comparisonSource||doc.source||doc.originalSource))throw Error('至少需要两个图层和原图');return run(doc.comparisonSource||doc.source||doc.originalSource,doc.title,onProgress,doc.originalSource||doc.comparisonSource||doc.source,doc,{mode:'repair-order'})}
+ async function replaceImage(doc,replacement,onProgress=()=>{}){
+  const validRect=r=>r===null||r&&Object.keys(r).sort().join(',')==='height,width,x,y'&&Object.values(r).every(Number.isSafeInteger)&&r.x>=0&&r.y>=0&&r.width>0&&r.height>0;
+  if(!replacement||typeof replacement!=='object'||!doc?.nodes?.some(n=>n.id===replacement.targetId&&n.type==='image'))throw Error('请选择一个要替换的图片图层');
+  const {targetId,region=null,prompt='',reference=null}=replacement;
+  if(typeof prompt!=='string'||prompt.length>6000||!validRect(region))throw Error('替换描述或框选区域无效');
+  if(reference!==null&&(!reference||typeof reference.src!=='string'||!reference.src.startsWith('data:image/')||!validRect(reference.region??null)))throw Error('参考图或参考选区无效');
+  if(!prompt.trim()&&!reference)throw Error('请输入替换描述或上传参考图');
+  const source=doc.comparisonSource||doc.source||doc.originalSource;if(!source)throw Error('工程缺少原图，无法替换');
+  return run(source,doc.title,onProgress,doc.originalSource||source,doc,{mode:'replace-image',replacement:{targetId,region,prompt,reference:reference?{src:reference.src,region:reference.region??null}:null}});
+ }
  function renderState(scene){const keys=['id','name','type','x','y','width','height','src','text','fontSize','fontWeight','fontFamily','fontStyle','fitWidth','textSkew','rotation','fill','stroke','strokeWidth','d','radius','opacity','visible','gradient'];const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;return JSON.stringify(stable({width:scene.width,height:scene.height,background:scene.background??null,nodes:scene.nodes.map(n=>Object.fromEntries(keys.filter(k=>n[k]!==undefined).map(k=>[k,n[k]]))),edges:scene.edges||[],groups:scene.groups||[]}))}
  async function downloadPsd(scene){assertExportable(scene);if([...scene.nodes,...(scene.groups||[])].some(n=>n.versionArchived||n.visible===false||n.hidden===true))return null;if(scene?._partial||(scene?.delivery?.storage==='memory'&&!scene.delivery.psdSHA256))return null;if(scene?.recognition?.reviewStatus==='MANUAL_CONFIRMED')return null;if(!scene?.delivery)return null;const id=scene._sessionId||scene.delivery.sessionId;const route=id?'/sessions/'+encodeURIComponent(id):scene._projectId?.startsWith('codex-')?'/projects/'+encodeURIComponent(scene._projectId):null;if(!route)return null;connection=await nativeConnect();let saved;try{saved=await request(route+(id?'/scene':''))}catch(e){if(e.status===404)return null;throw e}if(renderState(saved)!==renderState(scene))return null;const r=await fetch(connection.url+route+'/psd',{headers:{'X-Shijie-Token':connection.token},cache:'no-store'});if(r.status===404)return null;if(!r.ok){const data=await r.json();throw Error(data.error||'已审计PSD暂不可用')}const blob=await r.blob();if(scene.delivery.psdSHA256){const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');if(hash!==scene.delivery.psdSHA256)throw Error('PSD校验失败，请重新拆分')}return blob}
  function assertExportable(scene,type='psd'){
@@ -113,5 +124,5 @@ window.ShijieSmartSplit=(()=>{
  }
  function releaseSession(scene){const id=scene?._sessionId||scene?.delivery?.sessionId;if(id&&connection)request('/sessions/'+encodeURIComponent(id),{method:'DELETE',keepalive:true}).catch(()=>{})}
  window.addEventListener('pagehide',()=>{cancel()});
- return {run,refine,refineSelected,repairOrder,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
+ return {run,refine,refineSelected,repairOrder,replaceImage,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
 })();

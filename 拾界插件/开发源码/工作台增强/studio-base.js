@@ -15,17 +15,16 @@ window.StudioBase=(()=>{
   async list(){await restoreSaved();await deliveries();return [...memory.values()].map(clone)},
   async get(key){await restoreSaved();let entry=memory.get(key);if(!entry&&!hidden.has(key)){await deliveries();entry=memory.get(key)}if(entry?.source==='delivery'&&!entry.doc){const doc=await ShijieSmartSplit.project(key);entry={...entry,doc:clone(doc)};memory.set(key,entry)}return entry?clone(entry):undefined},
   async update(key,change){const previous=await library.get(key),value=change(previous);if(value)return library.put(value.doc,value.kind,{manual:true})},
+  hasSaved(key){return persisted.has(key)||memory.get(key)?.source==='delivery'},
   isDirty(doc){const saved=persisted.get(doc?._projectId);return !!doc&&(!saved||!sameDoc(doc,saved.doc))},
   put(doc,kind,options={}){
-   if(!doc._projectId)doc._projectId=id();const snapshot=clone(doc),key=doc._projectId,seq=++sequence,manual=options.manual===true,previous=memory.get(key),entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:seq,revision:id(),doc:snapshot,saveMode:manual||previous?.saveMode==='saved'?'saved':'auto',savedAt:manual?Date.now():previous?.savedAt};hidden.delete(key);memory.set(key,entry);
+   // Callers from old edit/flush paths are intentionally inert. Only explicit saves write.
+   if(options.manual!==true)return Promise.resolve(undefined);
+   if(!doc._projectId)doc._projectId=id();const snapshot=clone(doc),key=doc._projectId,entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,saveMode:'saved',savedAt:Date.now()};
    const task=writeQueue.catch(()=>{}).then(async()=>{
-    await restoreSaved();const current=memory.get(key),baseline=persisted.get(key);
-    if(baseline&&!retired.has(key)&&sameDoc(entry.doc,baseline.doc)&&!manual){if(memory.get(key)?.sequence===seq)memory.set(key,clone(baseline));return clone(baseline)}
-    const saved=await ShijieSession.saveEntry(entry,expectedVersion(key));retired.delete(key);persisted.set(key,clone(saved));if(current?.saveMode==='saved')saved.saveMode='saved';if(memory.get(key)?.sequence===seq)memory.set(key,saved);
-    // Only a completed IndexedDB transaction can authorize a missing-record recreation.
-    for(const removed of saved.recoveryEvictions||[]){const known=persisted.get(removed.id);retire(removed);if(known&&memory.get(removed.id)?.revision===known.revision)memory.delete(removed.id)}
-    return clone(saved);
-   }).catch(e=>{if(memory.get(key)?.sequence===seq){const failed=memory.get(key);failed.persistenceError=e.message;if(manual&&previous?.saveMode!=='saved'){failed.saveMode='auto';delete failed.savedAt}}throw e});writeQueue=task;return task;
+    await restoreSaved();const saved=await ShijieSession.saveManual(entry,expectedVersion(key));
+    retired.delete(key);persisted.set(key,clone(saved));hidden.delete(key);memory.set(key,clone(saved));return clone(saved);
+   });writeQueue=task;return task;
   },
   remove(key){
    const entry=memory.get(key),seq=++sequence;const task=writeQueue.catch(()=>{}).then(async()=>{
@@ -36,6 +35,12 @@ window.StudioBase=(()=>{
   async retain(key){const entry=await library.get(key);if(!entry)throw Error('本次工程已关闭');return library.put(entry.doc,entry.kind,{manual:true})},
   async cacheThumbnail(key,revision,thumbnail){const p=memory.get(key);if(p?.revision===revision){p.thumbnail=thumbnail;p.thumbnailRevision=revision}}
  };
+ // The baseline is embedded once so project codec/image deduplication also covers it.
+ function completedSplit(doc){const r=doc?.recognition;return !!doc&&doc.format==='shijie-scene'&&Array.isArray(doc.nodes)&&doc.nodes.length>0&&!doc._partial&&!!r&&(r.extractionStatus==='COMPLETED'||r.automatic===true)&&r.extractionStatus!=='INCOMPLETE'&&!r.pendingGenerationIds?.length&&!r.resumePendingNodes?.length&&!doc.nodes.some(n=>!n.versionArchived&&(n.pendingGeneration||['pending-image-generation','source-crop-fallback'].includes(n.provenance)||n.type==='image'&&n.generationRecord?.actualImageGeneration===false))}
+ const splitBaseline={
+  capture(doc){if(!completedSplit(doc))return false;const snapshot=clone(doc);delete snapshot._splitBaseline;delete snapshot._sessionId;delete snapshot.delivery;delete snapshot._studioStep;doc._splitBaseline={version:1,kind:'completed-split',createdAt:new Date().toISOString(),scene:snapshot};return true},
+  read(doc){const baseline=doc?._splitBaseline;if(baseline?.version!==1||baseline.kind!=='completed-split'||!baseline.scene||Object.hasOwn(baseline.scene,'_splitBaseline')||!completedSplit(baseline.scene))return null;try{const snapshot=clone(baseline.scene);window.ShijieScene?.validate(snapshot);snapshot._projectId=doc._projectId;snapshot._splitBaseline=clone(baseline);return snapshot}catch{return null}}
+ };
  function snap(box,targets,threshold){let dx=0,dy=0,bestX=threshold,bestY=threshold,gx=null,gy=null;const xs=[box.x,box.x+box.width/2,box.x+box.width],ys=[box.y,box.y+box.height/2,box.y+box.height];for(const t of targets){for(const tx of [t.x,t.x+t.width/2,t.x+t.width])for(const x of xs){const d=tx-x;if(Math.abs(d)<bestX){bestX=Math.abs(d);dx=d;gx=tx}}for(const ty of [t.y,t.y+t.height/2,t.y+t.height])for(const y of ys){const d=ty-y;if(Math.abs(d)<bestY){bestY=Math.abs(d);dy=d;gy=ty}}}return {dx,dy,gx,gy}}
  function path(p){const k=p.knots;if(!k?.length)return '';let d=`M${k[0].points[2]} ${k[0].points[3]}`;for(let i=1;i<k.length+(p.open?0:1);i++){const a=k[(i-1)%k.length].points,b=k[i%k.length].points;d+=`C${a[4]} ${a[5]} ${b[0]} ${b[1]} ${b[2]} ${b[3]}`}return d+(p.open?'':'Z')}
  function renderedSVG(render){let seq=0,defs=[];const w=render.psd.width,h=render.psd.height,rgb=c=>`rgb(${c?.r||0},${c?.g||0},${c?.b||0})`;
@@ -43,5 +48,5 @@ window.StudioBase=(()=>{
   function layer(n){let body;if(n.children)body=n.children.map(layer).join('');else if(n.text){const t=n.text,st=t.style||{};function attributes(style){const font=style.font?.name||'Arial',family=/MicrosoftYaHei/.test(font)?'Microsoft YaHei':/ArialNarrow/i.test(font)?'Arial Narrow':/Impact/i.test(font)?'Impact':/Haettenschweiler/i.test(font)?'Haettenschweiler':/Arial/.test(font)?'Arial':/TimesNewRoman/.test(font)?'Times New Roman':/SegoeUIEmoji/.test(font)?'Segoe UI Emoji':/SegoeUISymbol/.test(font)?'Segoe UI Symbol':/SegoeUI/.test(font)?'Segoe UI':font;return 'font-family="'+escape(family)+'" font-size="'+(style.fontSize||14)+'" font-weight="'+(/Bold/.test(font)||style.fauxBold?700:400)+'" font-style="'+(/Italic/.test(font)||style.fauxItalic?'italic':'normal')+'" letter-spacing="'+(style.tracking||0)*(style.fontSize||14)/1000+'"';}let content=escape(t.text);if(t.styleRuns?.length){let offset=0;content=t.styleRuns.map(r=>{const text=t.text.slice(offset,offset+r.length);offset+=r.length;return '<tspan '+attributes({...st,...r.style})+'>'+escape(text)+'</tspan>'}).join('');}body='<text transform="matrix('+(t.transform||[1,0,0,1,n.left,n.top]).join(' ')+')" '+attributes(st)+' text-decoration="'+[st.underline?'underline':'',st.strikethrough?'line-through':''].filter(Boolean).join(' ')+'" fill="'+rgb(st.fillColor)+'" xml:space="preserve">'+content+'</text>';body=clips(body,n.vectorMask?.paths||[])} else if(n.vectorFill||n.vectorStroke){const paths=n.vectorMask?.paths||[],base=paths.filter(p=>p.operation!=='intersect'),inter=paths.filter(p=>p.operation==='intersect');if(n.vectorStroke?.strokeEnabled){const s=n.vectorStroke;body=`<path d="${base.map(path).join(' ')}" fill="none" stroke="${rgb(s.content?.color)}" stroke-width="${s.lineWidth?.value||1}" stroke-linecap="${s.lineCapType||'butt'}" stroke-linejoin="${s.lineJoinType||'miter'}"/>`}else{const key='mask-'+(++seq);defs.push(`<mask id="${key}" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="black"/>${base.map(p=>`<path d="${path(p)}" fill="${p.operation==='subtract'?'black':'white'}" fill-rule="${p.fillRule==='even-odd'?'evenodd':'nonzero'}"/>`).join('')}</mask>`);body=`<rect width="${w}" height="${h}" fill="${rgb(n.vectorFill?.color)}" mask="url(#${key})"/>`}body=clips(body,inter)}else if(n.canvas)body=`<image x="${n.left||0}" y="${n.top||0}" width="${n.canvas.width}" height="${n.canvas.height}" href="${n.canvas.toDataURL('image/png')}"/>`;else body='';return `<g opacity="${n.opacity??1}" data-name="${escape(n.name)}">${body}</g>`}
   const body=render.psd.children.map(layer).join('');return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${defs.join('')}</defs>${body}</svg>`;
  }
- return {clone,id,bounds,overlap,escape,library,snap,renderedSVG,recoveryTime};
+ return {clone,id,bounds,overlap,escape,library,snap,renderedSVG,recoveryTime,splitBaseline};
 })();
