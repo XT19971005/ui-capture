@@ -29,7 +29,8 @@ def check_errors(checks,expected):
 def check_schema(names):
  return {'type':'array','items':{'type':'object','properties':{'name':{'type':'string','enum':list(names)},'status':{'type':'string','enum':['PASS','FAIL']},'notes':{'type':'string'}},'required':['name','status','notes'],'additionalProperties':False}}
 
-ASSET_REVIEW={'type':'object','properties':{'status':{'type':'string','enum':['PASS','FAIL']},'checks':check_schema(ASSET_CRITERIA),'issues':{'type':'array','items':{'type':'string'}}},'required':['status','checks','issues'],'additionalProperties':False}
+from asset_geometry import PLACEMENT,PLACEMENT_PROMPT
+ASSET_REVIEW={'type':'object','properties':{'status':{'type':'string','enum':['PASS','FAIL','NEEDS_REVIEW']},'checks':check_schema(ASSET_CRITERIA),'issues':{'type':'array','items':{'type':'string'}},'placement':PLACEMENT},'required':['status','checks','issues','placement'],'additionalProperties':False}
 
 def review_asset(source,node,structure,cancelled,on_status=None):
  structure=Path(structure);tag='逐件临时_'+uuid.uuid4().hex;files=[]
@@ -42,14 +43,15 @@ def review_asset(source,node,structure,cancelled,on_status=None):
   for name,color in [('深底',(24,25,28,255)),('浅底',(240,240,240,255))]:
    file=structure/(tag+'_'+name+'.png');bg=Image.new('RGBA',(w,h),color);bg.alpha_composite(actual);bg.save(file);files.append(file)
   prompt='逐件检查实际提取素材“'+node['name']+'”。第一张是原图对应准确坐标区域，后两张是当前完整底稿按相同位置/比例放在深浅底。必须实际对照，每项填写观察，不能仅凭生成完成PASS。'+GRANULARITY_RULES+'\n颜色检查肤色/服装/主色的色相、饱和度、明度和光照，不允许自动增强。比例检查五官、肢体、物体外形及画布定位，补全遮挡部分不改变已有可见区域。身份检查脸型、发型、神态、姿势；不是人物则检查完整物体。透明边缘排除背景/相邻物品残留、锯齿、毛刺、断笔、误透明。材质文字不能错字/变形。仅原图已有的毛边和纹理保留。'+'\n检查名称：'+json.dumps(ASSET_CRITERIA,ensure_ascii=False)
-  result=CLIENT.analyze(prompt,files,ASSET_REVIEW,cancelled,on_status=on_status)
+  prompt+='\n'+PLACEMENT_PROMPT+'\n当前图层绝对坐标：'+json.dumps({k:node[k] for k in ('x','y','width','height')})+'。最后一张为完整原图，仅用于定位该所选物体。'
+  result=CLIENT.analyze(prompt,[*files,source],ASSET_REVIEW,cancelled,on_status=on_status)
   # Incomplete evidence is a failed check attempt, not evidence that pixels
   # need regeneration. Manual selected-layer callers retain the old asset.
-  if not isinstance(result,dict) or result.get('status') not in ('PASS','FAIL') or not isinstance(result.get('issues'),list) or any(not isinstance(issue,str) for issue in result['issues']):raise ValueError('素材复核响应无效，保留原素材')
+  if not isinstance(result,dict) or result.get('status') not in ('PASS','FAIL','NEEDS_REVIEW') or not isinstance(result.get('issues'),list) or any(not isinstance(issue,str) for issue in result['issues']):raise ValueError('素材复核响应无效，保留原素材')
   checks=result.get('checks')
   if not isinstance(checks,list) or len(checks)!=len(ASSET_CRITERIA) or any(not isinstance(check,dict) or check.get('name') not in ASSET_CRITERIA or check.get('status') not in ('PASS','FAIL') or not isinstance(check.get('notes'),str) or not check['notes'].strip() for check in checks) or len({check['name'] for check in checks})!=len(ASSET_CRITERIA):raise ValueError('素材复核缺少完整、唯一的实际观察记录，保留原素材')
   errors=check_errors(result.get('checks',[]),ASSET_CRITERIA)
-  if errors or result.get('status')!='PASS' or result.get('issues'):
+  if result.get('status')!='NEEDS_REVIEW' and (errors or result.get('status')!='PASS' or result.get('issues')):
    result={**result,'status':'FAIL','issues':list(result.get('issues',[]))+errors or ['实际逐件复核未通过']}
   record=structure/('逐件复核_'+re.sub(r'[^\w-]','_',node['id'])+'.json');record.write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
   return result

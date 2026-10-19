@@ -1,4 +1,4 @@
-async function capturePage(includeImages,scope='page',region=null) {
+async function capturePage(includeImages,scope='page',region=null,captureKey='') {
   const Text=(/* Shared browser typography for capture, preview and native export. */
 function textLayoutTools(){
  const fontCache=new Map(),probe=document.createElement('canvas').getContext('2d');
@@ -25,31 +25,115 @@ function textLayoutTools(){
  return {family,font,resolveFamily,measureLines,apply,lines,baseline,properties,normalized,whiteSpace};
 }
 )();
-  const warnings=new Set(),maxNodes=6000;let count=0,imageBytes=0;
+  const warnings=new Set(),maxNodes=6000,fonts=[],fontDocuments=new WeakMap(),fontBuffers=new WeakMap(),fontAbort=new AbortController(),fontDeadline=performance.now()+7000,fontJobKey=Symbol.for('shijie.capture.fontJobs');let count=0,imageBytes=0,fontBytes=0;
+  if(captureKey){const jobs=window[fontJobKey]||(window[fontJobKey]=new Map());while(jobs.size>=16){const first=jobs.keys().next().value;jobs.get(first).abort();jobs.delete(first)}jobs.set(captureKey,fontAbort)}
+  const familyName=value=>String(value||'').trim().replace(/^['"]|['"]$/g,'');
+  // Font bytes are kept solely in the capture object. Credentials are never sent by font repair.
+  function postScriptName(buffer){try{const v=new DataView(buffer),tag=offset=>String.fromCharCode(...new Uint8Array(buffer,offset,4));if(!['\u0000\u0001\u0000\u0000','OTTO','true'].includes(tag(0)))return null;const tables=v.getUint16(4);for(let i=0;i<tables;i++)if(tag(12+i*16)==='fvar')return null;for(let i=0;i<tables;i++){const p=12+i*16;if(tag(p)!=='name')continue;const base=v.getUint32(p+8),records=v.getUint16(base+2),strings=base+v.getUint16(base+4);for(let j=0;j<records;j++){const r=base+6+j*12;if(v.getUint16(r+6)!==6)continue;const platform=v.getUint16(r),length=v.getUint16(r+8),start=strings+v.getUint16(r+10);let name='';if(platform===0||platform===3){for(let k=0;k+1<length;k+=2)name+=String.fromCharCode(v.getUint16(start+k))}else name=String.fromCharCode(...new Uint8Array(buffer,start,length));if(/^[\w .-]{1,100}$/.test(name))return name;}}}catch{}return null}
+  function fontCovers(face,text){try{const buffer=fontBuffers.get(face),v=new DataView(buffer),tables=v.getUint16(4);let cmap;for(let i=0;i<tables;i++){const p=12+i*16;if(v.getUint32(p)===0x636d6170){cmap=v.getUint32(p+8);break}}if(cmap===undefined)return false;const maps=[];for(let i=0;i<v.getUint16(cmap+2);i++){const p=cmap+4+i*8,platform=v.getUint16(p),encoding=v.getUint16(p+2),offset=cmap+v.getUint32(p+4);if(platform===0||platform===3&&[1,10].includes(encoding))maps.push(offset)}
+    return [...text].every(char=>{const cp=char.codePointAt(0);if(cp<33||cp===0x200d||cp>=0xfe00&&cp<=0xfe0f)return true;return maps.some(offset=>{const format=v.getUint16(offset);if(format===12){const groups=v.getUint32(offset+12);let lo=0,hi=groups-1;while(lo<=hi){const mid=(lo+hi)>>1,p=offset+16+mid*12,start=v.getUint32(p),end=v.getUint32(p+4);if(cp<start)hi=mid-1;else if(cp>end)lo=mid+1;else return v.getUint32(p+8)+cp-start>0}return false}if(format===4&&cp<=65535){const segments=v.getUint16(offset+6)/2,end=offset+14,start=end+segments*2+2,delta=start+segments*2,range=delta+segments*2;for(let i=0;i<segments;i++){if(cp>v.getUint16(end+i*2))continue;if(cp<v.getUint16(start+i*2))return false;const shift=v.getInt16(delta+i*2),pointer=v.getUint16(range+i*2);if(!pointer)return ((cp+shift)&65535)!==0;const glyph=v.getUint16(range+i*2+pointer+(cp-v.getUint16(start+i*2))*2);return glyph!==0&&((glyph+shift)&65535)!==0}}return false})});
+  }catch{return false}}
+  async function documentFonts(doc){
+    if(fontDocuments.has(doc))return;const available=[...doc.fonts||[]].filter(f=>f.status==='loaded'),record={families:new Set(available.map(f=>familyName(f.family))),faces:[]};fontDocuments.set(doc,record);
+    if(fontAbort.signal.aborted)throw Error('已取消抓取');
+    const roots=[doc];for(let i=0;i<roots.length;i++)for(const el of roots[i].querySelectorAll('*'))if(el.shadowRoot&&!el.inert&&el.getClientRects().length)roots.push(el.shadowRoot);
+    const needed=new Set();for(const root of roots)for(const el of root.querySelectorAll('*')){if(!el.getClientRects().length||el.inert||el.closest('[inert]'))continue;if(![...el.childNodes].some(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim())&&!['INPUT','TEXTAREA','SELECT'].includes(el.tagName))continue;const s=doc.defaultView.getComputedStyle(el);if(s.visibility!=='visible'||+s.opacity===0)continue;for(const family of s.fontFamily.split(',').map(familyName))if(record.families.has(family))needed.add(family)}
+    const rules=[],seen=new Set();function inspect(sheet){if(!sheet||seen.has(sheet))return;seen.add(sheet);try{for(const rule of sheet.cssRules){if(rule.type===5)rules.push({style:rule.style,base:sheet.href||doc.baseURI});else if(rule.styleSheet)inspect(rule.styleSheet);else if(rule.cssRules)for(const nested of rule.cssRules)if(nested.type===5)rules.push({style:nested.style,base:sheet.href||doc.baseURI})}}catch{}}
+    for(const root of roots){for(const sheet of root.styleSheets||[])inspect(sheet);for(const sheet of root.adoptedStyleSheets||[])inspect(sheet);for(const style of root.querySelectorAll('style,link[rel="stylesheet"]'))inspect(style.sheet)}
+    for(const {style,base} of rules.slice(0,48)){
+      if(fontAbort.signal.aborted)throw Error('已取消抓取');if(performance.now()>fontDeadline)break;
+      const family=familyName(style.getPropertyValue('font-family'));if(!needed.has(family))continue;
+      const fontStyle=style.getPropertyValue('font-style')||'normal',weight=style.getPropertyValue('font-weight')||'400';
+      // A local() face or a unicode subset cannot be identified by family alone. Do not
+      // replace the browser's actual chosen face with a different downloadable font.
+      if(/\blocal\s*\(/i.test(style.getPropertyValue('src'))||style.getPropertyValue('unicode-range')&&!/^U\+0-10FFFF$/i.test(style.getPropertyValue('unicode-range').trim()))continue;
+      for(const match of style.getPropertyValue('src').matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)){
+        if(fontAbort.signal.aborted)throw Error('已取消抓取');
+        const controller=new AbortController(),abort=()=>controller.abort(),timeout=setTimeout(abort,Math.min(4000,Math.max(1,fontDeadline-performance.now())));fontAbort.signal.addEventListener('abort',abort,{once:true});
+        try{const url=new URL(match[2],base);if(!['http:','https:','data:'].includes(url.protocol)||url.username||url.password)continue;
+          const response=await fetch(url.href,{credentials:'omit',cache:'no-store',signal:controller.signal});if(!response.ok)continue;
+          const declared=Number(response.headers.get('content-length'));if(declared>2000000)continue;
+          const reader=response.body?.getReader(),chunks=[];let received=0;if(!reader)continue;try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>2000000||fontBytes+received>6000000)throw Error('字体数据超过限制');chunks.push(item.value)}}finally{await reader.cancel().catch(()=>{})}if(received<12)continue;
+          const joined=new Uint8Array(received);let at=0;for(const chunk of chunks){joined.set(chunk,at);at+=chunk.length}const body=joined.buffer;
+          const signature=String.fromCharCode(...new Uint8Array(body,0,4)),mime=signature==='wOFF'?'font/woff':signature==='wOF2'?'font/woff2':signature==='OTTO'?'font/otf':signature==='\u0000\u0001\u0000\u0000'||signature==='true'?'font/ttf':null;if(!mime)continue;
+          const ps=postScriptName(body);if(!ps){warnings.add('网页字体「'+family+'」无法确认 PSD 字体名称，相关文字采用浏览器画面。');continue}
+          const test=new FontFace(family,body,{style:fontStyle,weight});await test.load();
+          let binary='';const bytes=new Uint8Array(body);for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+          const face={id:'webfont-'+(fonts.length+1),family,style:fontStyle,weight,mime,dataUrl:'data:'+mime+';base64,'+btoa(binary),sourceUrl:url.href,postScriptName:ps};fontBytes+=body.byteLength;fonts.push(face);record.faces.push(face);fontBuffers.set(face,body);break;
+        }catch{if(fontAbort.signal.aborted)throw Error('已取消抓取')}finally{clearTimeout(timeout);fontAbort.signal.removeEventListener('abort',abort)}
+      }
+    }
+    for(const root of roots)for(const frame of root.querySelectorAll('iframe'))try{if(frame.getClientRects().length&&!frame.inert&&!frame.closest('[inert]')&&frame.contentDocument)await documentFonts(frame.contentDocument)}catch{if(fontAbort.signal.aborted)throw Error('已取消抓取')}
+  }
+  function resolvedFont(s,doc){const props=Text.properties(s);let family=Text.resolveFamily(props);if(doc!==document){const ctx=doc.createElement('canvas').getContext('2d'),width=f=>{ctx.font=(s.fontStyle||'normal')+' '+(s.fontWeight||400)+' 32px '+f;return ctx.measureText('mmmmWWiiii0123汉字').width};family='sans-serif';for(const value of s.fontFamily.match(/(?:"[^"]*"|'[^']*'|[^,])+/g)||[]){const name=familyName(value);if(/^(serif|sans-serif|monospace|system-ui|cursive|fantasy|ui-serif|ui-sans-serif|ui-monospace)$/i.test(name)){family=name;break}const quoted='"'+name.replace(/["\\]/g,'')+'"';if(['monospace','serif'].some(f=>Math.abs(width(quoted+','+f)-width(f))>.01)){family=name;break}}}
+    const record=fontDocuments.get(doc),custom=record?.families.has(family),weight=parseInt(s.fontWeight)||400;const face=custom?record.faces.find(f=>(f.sourceFamily||f.family)===family&&f.style===(s.fontStyle||'normal')&&(f.weight===s.fontWeight||f.weight==='normal'&&weight===400||Number(f.weight)===weight)):null;return {family,custom,face};}
   const color=value=>{const m=value.match(/^rgba?\(([^)]+)\)$/);if(!m)return null;const a=m[1].split(/[,\s/]+/).filter(Boolean).map(Number);return a.length>=3&&a.every(Number.isFinite)?{r:a[0]/255,g:a[1]/255,b:a[2]/255,a:a[3]??1}:null;};
   const area=scope==='region'&&region?{x:region.documentX,y:region.documentY,width:region.width,height:region.height}:scope==='viewport'?{x:scrollX,y:scrollY,width:innerWidth,height:innerHeight}:null;
   const intersects=(x,y,w,h)=>!area||(x<area.x+area.width&&y<area.y+area.height&&x+w>area.x&&y+h>area.y);
   const styleKeys=['background-color','background-image','background-size','background-position','background-repeat','border-top','border-right','border-bottom','border-left','border-top-left-radius','border-top-right-radius','border-bottom-right-radius','border-bottom-left-radius','box-shadow'];
+  function visibleSubtreeBounds(host,env){
+    // Raster branches return before native child extraction. Measure the painted DOM
+    // independently so visible overflow is retained without allocating child assets.
+    let measured=0,bounds=null;const clipped=v=>['hidden','clip','scroll','auto'].includes(v);
+    function add(rect,clip){let left=rect.left+env.dx,top=rect.top+env.dy,right=rect.right+env.dx,bottom=rect.bottom+env.dy;if(clip){left=Math.max(left,clip.left);top=Math.max(top,clip.top);right=Math.min(right,clip.right);bottom=Math.min(bottom,clip.bottom)}if(right<=left||bottom<=top)return;if(!bounds)bounds={left,top,right,bottom};else {bounds.left=Math.min(bounds.left,left);bounds.top=Math.min(bounds.top,top);bounds.right=Math.max(bounds.right,right);bounds.bottom=Math.max(bounds.bottom,bottom)}}
+    function measure(el,clip,depth){if(depth>100||++measured>maxNodes){warnings.add('一处复杂画面超过可见边界测量上限，保留已测得区域。');return}if(el.hasAttribute('data-shijie-overlay')||el.hidden||el.inert||['SCRIPT','STYLE','NOSCRIPT','TEMPLATE','HEAD','LINK','META'].includes(el.tagName))return;const view=el.ownerDocument.defaultView,s=view.getComputedStyle(el),r=el.getBoundingClientRect();if(s.display==='none'||+s.opacity===0)return;if(el.getAttribute('aria-hidden')==='true'&&(el.getAttribute('role')==='dialog'||el.tagName==='DIALOG'||el.classList.contains('pswp')))return;
+      if(s.visibility==='visible')add(r,clip);let inner=clip;if(clipped(s.overflowX)||clipped(s.overflowY)){inner={left:clipped(s.overflowX)?r.left+env.dx:-Infinity,top:clipped(s.overflowY)?r.top+env.dy:-Infinity,right:clipped(s.overflowX)?r.right+env.dx:Infinity,bottom:clipped(s.overflowY)?r.bottom+env.dy:Infinity};if(clip){inner.left=Math.max(inner.left,clip.left);inner.top=Math.max(inner.top,clip.top);inner.right=Math.min(inner.right,clip.right);inner.bottom=Math.min(inner.bottom,clip.bottom)}}
+      // A frame is a browser viewport. Its outside paint is bounded by its own box;
+      // no cross-origin frame or closed shadow tree is inspected for these bounds.
+      if(el.tagName==='IFRAME')return;
+      const children=el.shadowRoot?[...el.shadowRoot.childNodes]:el.tagName==='SLOT'&&el.assignedNodes().length?el.assignedNodes():el.childNodes;
+      for(const child of children){if(measured>=maxNodes)break;if(child.nodeType===Node.ELEMENT_NODE)measure(child,inner,depth+1);else if(child.nodeType===Node.TEXT_NODE&&s.visibility==='visible'){const range=el.ownerDocument.createRange();range.selectNodeContents(child);for(const rect of range.getClientRects())add(rect,inner)}}
+    }
+    measure(host,null,0);return bounds;
+  }
   function imageData(img){try{if(!img.complete||!img.naturalWidth)return null;const scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight),Math.sqrt(2000000/(img.naturalWidth*img.naturalHeight))),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);const alpha=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let transparent=false;for(let i=3;i<alpha.length;i+=4){if(alpha[i]<255){transparent=true;break}}const result=c.toDataURL(transparent?'image/png':'image/jpeg',.94);imageBytes+=result.length;if(imageBytes>24000000){warnings.add('图片总量超过 24 MB，后续图片未嵌入。');return null;}return result;}catch{return null;}}
-  function walk(el){
+  function walk(el,env={dx:scrollX,dy:scrollY,doc:document}){
     if(count>=maxNodes){warnings.add('页面超过 6000 个图层，已截断。');return null;}
     if(el.hasAttribute('data-shijie-overlay'))return null;
     if(['SCRIPT','STYLE','NOSCRIPT','TEMPLATE','HEAD','LINK','META'].includes(el.tagName))return null;
-    const s=getComputedStyle(el),r=el.getBoundingClientRect();
+    const s=el.ownerDocument.defaultView.getComputedStyle(el),r=el.getBoundingClientRect();
     if(s.display==='none'||+s.opacity===0||el.hidden||el.inert)return null;
     if(el.getAttribute('aria-hidden')==='true'&&(el.getAttribute('role')==='dialog'||el.tagName==='DIALOG'||el.classList.contains('pswp')))return null;
-    if(!r.width||!r.height)return {type:'group',children:[...el.children].map(walk).filter(Boolean)};
-    if(!intersects(r.left+scrollX,r.top+scrollY,r.width,r.height)&&(!el.children.length||['hidden','clip','scroll','auto'].includes(s.overflow)))return null;
+    const pseudos=[],pseudoStyles=[];for(const kind of ['::before','::after']){const pseudo=el.ownerDocument.defaultView.getComputedStyle(el,kind);if(pseudo.content&&pseudo.content!=='none'&&pseudo.content!=='normal'&&pseudo.display!=='none'&&pseudo.visibility==='visible'&&+pseudo.opacity!==0){pseudoStyles.push(pseudo);pseudos.push({kind,content:pseudo.content,background:pseudo.backgroundColor,color:pseudo.color,fontFamily:pseudo.fontFamily,fontSize:pseudo.fontSize,position:pseudo.position,left:pseudo.left,top:pseudo.top,right:pseudo.right,bottom:pseudo.bottom,width:pseudo.width,height:pseudo.height,transform:pseudo.transform,rasterStyle:Object.fromEntries(styleKeys.map(k=>[k,pseudo.getPropertyValue(k)]))});}}
+    if(!r.width||!r.height)return {type:'group',children:[...el.children].map(c=>walk(c,env)).filter(Boolean)};
+    if(!intersects(r.left+env.dx,r.top+env.dy,r.width,r.height)&&(!el.children.length||['hidden','clip','scroll','auto'].includes(s.overflow)))return null;
     const visible=s.visibility==='visible';if(!visible&&!el.children.length)return null;
-    const node={type:'box',name:el.getAttribute('aria-label')||el.id||el.tagName.toLowerCase()+(el.classList.length?'.'+el.classList[0]:''),x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height,opacity:+s.opacity,z:parseInt(s.zIndex)||0,background:visible?color(s.backgroundColor):null,radii:[s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomRightRadius,s.borderBottomLeftRadius].map(v=>Math.max(0,v.includes('%')?parseFloat(v)*Math.min(r.width,r.height)/100:parseFloat(v)||0)),borders:['Top','Right','Bottom','Left'].map(side=>({width:parseFloat(s['border'+side+'Width'])||0,color:color(s['border'+side+'Color']),style:s['border'+side+'Style']})),clip:['hidden','clip','scroll','auto'].includes(s.overflowX)||['hidden','clip','scroll','auto'].includes(s.overflowY),children:[],rasterStyle:visible?Object.fromEntries(styleKeys.map(k=>[k,s.getPropertyValue(k)])):{}};
+    const node={type:'box',name:el.getAttribute('aria-label')||el.id||el.tagName.toLowerCase()+(el.classList.length?'.'+el.classList[0]:''),x:r.left+env.dx,y:r.top+env.dy,width:r.width,height:r.height,opacity:+s.opacity,z:parseInt(s.zIndex)||0,background:visible?color(s.backgroundColor):null,radii:[s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomRightRadius,s.borderBottomLeftRadius].map(v=>Math.max(0,v.includes('%')?parseFloat(v)*Math.min(r.width,r.height)/100:parseFloat(v)||0)),borders:['Top','Right','Bottom','Left'].map(side=>({width:parseFloat(s['border'+side+'Width'])||0,color:color(s['border'+side+'Color']),style:s['border'+side+'Style']})),clip:['hidden','clip','scroll','auto'].includes(s.overflowX)||['hidden','clip','scroll','auto'].includes(s.overflowY),children:[],rasterStyle:visible?Object.fromEntries(styleKeys.map(k=>[k,s.getPropertyValue(k)])):{}};
     count++;
-    if(s.transform!=='none')warnings.add('CSS 旋转和倾斜暂按外接边界转换。');
+    function browserRaster(reason,details={}){
+      const measured=visibleSubtreeBounds(el,env);if(measured){const left=Math.min(node.x,measured.left),top=Math.min(node.y,measured.top),right=Math.max(node.x+node.width,measured.right),bottom=Math.max(node.y+node.height,measured.bottom);Object.assign(node,{x:left,y:top,width:right-left,height:bottom-top})}
+      if(!node.clip&&node.children.length){const add=child=>{if(child.type!=='group'){const left=Math.min(node.x,child.x),top=Math.min(node.y,child.y),right=Math.max(node.x+node.width,child.x+child.width),bottom=Math.max(node.y+node.height,child.y+child.height);Object.assign(node,{x:left,y:top,width:right-left,height:bottom-top})}if(!child.clip)for(const c of child.children||[])add(c)};for(const child of node.children)add(child)}
+      // Absolute pseudos can paint outside their host's border box. Include their measured CSS extent.
+      if(!node.clip&&s.transform==='none')for(const p of pseudoStyles){if(!['absolute','fixed'].includes(p.position))continue;let anchor=el;if(p.position==='absolute'&&s.position==='static'){anchor=el.parentElement;while(anchor&&el.ownerDocument.defaultView.getComputedStyle(anchor).position==='static')anchor=anchor.parentElement}const ar=anchor?.getBoundingClientRect()||{left:0,top:0,width:el.ownerDocument.defaultView.innerWidth,height:el.ownerDocument.defaultView.innerHeight};
+        let w=parseFloat(p.width),h=parseFloat(p.height);if(!Number.isFinite(w)||!Number.isFinite(h))continue;const px=k=>parseFloat(p[k])||0;if(p.boxSizing!=='border-box'){w+=px('paddingLeft')+px('paddingRight')+px('borderLeftWidth')+px('borderRightWidth');h+=px('paddingTop')+px('paddingBottom')+px('borderTopWidth')+px('borderBottomWidth')}
+        let left=parseFloat(p.left),top=parseFloat(p.top);if(!Number.isFinite(left))left=(anchor?.clientWidth||ar.width)-parseFloat(p.right)-w;if(!Number.isFinite(top))top=(anchor?.clientHeight||ar.height)-parseFloat(p.bottom)-h;if(!Number.isFinite(left)||!Number.isFinite(top))continue;
+        const x=ar.left+env.dx+(anchor?.clientLeft||0)+left+px('marginLeft'),y=ar.top+env.dy+(anchor?.clientTop||0)+top+px('marginTop');let points=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]];
+        if(p.transform!=='none')try{const matrix=new DOMMatrix(p.transform),origin=p.transformOrigin.split(' ').map(parseFloat),ox=x+(origin[0]||0),oy=y+(origin[1]||0);points=points.map(([a,b])=>{const v=matrix.transformPoint({x:a-ox,y:b-oy});return [v.x+ox,v.y+oy]})}catch{}
+        const minX=Math.min(node.x,...points.map(v=>v[0])),minY=Math.min(node.y,...points.map(v=>v[1])),right=Math.max(node.x+node.width,...points.map(v=>v[0])),bottom=Math.max(node.y+node.height,...points.map(v=>v[1]));Object.assign(node,{x:minX,y:minY,width:right-minX,height:bottom-minY});
+      }
+      Object.assign(node,{type:'image',captureKind:'special-web',captureReason:reason,captureProvenance:'browser-raster-pending',rasterFallback:true,editableText:false,fit:'STRETCH',objectFit:'fill',opacity:1,background:null,borders:[],radii:[0,0,0,0],rasterStyle:{},sourceBBox:{x:node.x,y:node.y,width:node.width,height:node.height},sourceDetails:{tag:el.tagName,sourceUrl:el.ownerDocument.location.href,transform:s.transform,text:[...el.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join('').slice(0,100000),...details},browserRasterFallback:includeImages,children:[]});if(!includeImages)node.imageOmitted=true;warnings.add('「'+node.name+'」采用浏览器画面保真（'+reason+'），文字不可编辑。');return node;
+    }
+    if(visible&&(s.transform!=='none'||s.rotate&&s.rotate!=='none'||s.scale&&s.scale!=='none'))return browserRaster('affine-transform',{transformOrigin:s.transformOrigin,rotate:s.rotate,scale:s.scale,translate:s.translate});
+    if(visible&&pseudos.length)return browserRaster('pseudo-elements',{pseudoElements:pseudos});
+    if(visible&&el.localName.includes('-')&&!el.shadowRoot&&el.ownerDocument.defaultView.customElements.get(el.localName))return browserRaster('opaque-custom-element',{shadowDom:'closed-or-unexposed'});
+    const ownText=[...el.childNodes].some(c=>c.nodeType===Node.TEXT_NODE&&c.textContent.trim())||['INPUT','TEXTAREA','SELECT'].includes(el.tagName),font=resolvedFont(s,el.ownerDocument);
+    if(visible&&ownText&&font.custom&&!font.face)return browserRaster('custom-font-unavailable',{fontFamily:s.fontFamily,resolvedFamily:font.family});
+    if(visible&&ownText&&font.custom&&(s.fontVariationSettings!=='normal'||s.fontFeatureSettings!=='normal'||!['normal','100%'].includes(s.fontStretch)))return browserRaster('custom-font-typography',{fontFamily:s.fontFamily,fontVariationSettings:s.fontVariationSettings,fontFeatureSettings:s.fontFeatureSettings,fontStretch:s.fontStretch});
+    if(visible&&ownText&&font.face){const value=['INPUT','TEXTAREA','SELECT'].includes(el.tagName)?el.type==='password'?'••••••':el.tagName==='SELECT'?el.options[el.selectedIndex]?.text||'':el.value||el.placeholder||'':[...el.childNodes].filter(c=>c.nodeType===Node.TEXT_NODE).map(c=>c.textContent).join('');if(!fontCovers(font.face,Text.normalized(value,s)))return browserRaster('custom-font-glyph-fallback',{fontFamily:s.fontFamily,resolvedFamily:font.family,fontPostScriptName:font.face.postScriptName})}
     if(s.backgroundImage.includes('url('))warnings.add('部分 CSS 背景图片需要进一步嵌入，暂不保证还原。');
     if(s.filter!=='none')warnings.add('复杂滤镜暂不保证还原。');
-    if(['CANVAS','VIDEO','IFRAME'].includes(el.tagName))warnings.add('画布、视频和嵌入页面暂仅保留占位框。');
+    if(visible&&el.tagName==='IFRAME'){let doc;try{doc=el.contentDocument;if(!doc?.body)throw Error('inaccessible')}catch{return browserRaster('cross-origin-frame')}
+      node.clip=true;node.captureKind='same-origin-frame';node.sourceUrl=doc.location.href;const child=walk(doc.body,{dx:env.dx+r.left+el.clientLeft,dy:env.dy+r.top+el.clientTop,doc});if(child)node.children.push(child);return node;}
+    if(visible&&el.tagName==='VIDEO')return browserRaster('video-frame');
+    if(visible&&el.tagName==='CANVAS'){
+      node.type='image';node.name=el.getAttribute('aria-label')||el.id||'Canvas 画面';node.fit='STRETCH';node.captureKind='canvas';node.canvasIndex=[...document.querySelectorAll('canvas')].indexOf(el);node.sourceBBox={x:node.x,y:node.y,width:node.width,height:node.height};
+      if(includeImages){try{node.image=el.toDataURL('image/png');node.canvasRasterFallback=!el.getContext('2d');imageBytes+=node.image.length;if(imageBytes>24000000){node.image=null;node.canvasRasterFallback=true}}catch{node.image=null;node.canvasRasterFallback=true}}
+      else node.imageOmitted=true;
+      return node;
+    }
     if(visible&&el.tagName==='IMG'){
       node.type='image';node.name=el.alt||'图片';node.fit=s.objectFit==='contain'?'FIT':s.objectFit==='fill'?'STRETCH':'FILL';
-      node.objectFit=s.objectFit;node.objectPosition=s.objectPosition;node.maskImage=s.maskImage;node.imageSource=el.currentSrc||el.src;
+      node.objectFit=s.objectFit;node.objectPosition=s.objectPosition;node.maskImage=s.maskImage;node.imageSource=el.currentSrc||el.src;node.referrerPolicy=el.referrerPolicy||'';node.imagePageUrl=el.ownerDocument.location.href==='about:srcdoc'?location.href:el.ownerDocument.location.href;node.imageDocumentPolicy=el.ownerDocument.querySelector('meta[name="referrer" i]')?.content||el.ownerDocument.referrerPolicy||'';
       if(includeImages)node.image=imageData(el);else node.imageOmitted=true;
       return node;
     }
@@ -59,31 +143,35 @@ function textLayoutTools(){
       clone.setAttribute('opacity','1');clone.style.opacity='1';clone.setAttribute('xmlns','http://www.w3.org/2000/svg');clone.setAttribute('width',r.width);clone.setAttribute('height',r.height);node.type='svg';node.svg=new XMLSerializer().serializeToString(clone);return node;
     }
     function text(value,bounds,runs){
-      if(!intersects(bounds.left+scrollX,bounds.top+scrollY,bounds.width,bounds.height)||!value.trim()||!bounds.width||!bounds.height||count>=maxNodes)return;count++;
-      node.children.push({type:'text',name:value.slice(0,30),text:value,x:bounds.left+scrollX,y:bounds.top+scrollY,width:bounds.width,height:bounds.height,...Text.properties(s),fontResolved:Text.resolveFamily(Text.properties(s)),color:color(s.color),runs});
+      if(!intersects(bounds.left+env.dx,bounds.top+env.dy,bounds.width,bounds.height)||!value.trim()||!bounds.width||!bounds.height||count>=maxNodes)return;count++;
+      node.children.push({type:'text',name:value.slice(0,30),text:value,x:bounds.left+env.dx,y:bounds.top+env.dy,width:bounds.width,height:bounds.height,...Text.properties(s),fontResolved:font.face?.family||font.family,...(font.face?{fontFaceId:font.face.id,fontPostScriptName:font.face.postScriptName,...(font.face.sourceFamily?{sourceFontFamily:s.fontFamily,fontFamily:font.face.family}: {})}:{}),color:color(s.color),runs});
     }
-    function runsFor(child){return Text.measureLines(child,s)}
+    function runsFor(child){return Text.measureLines(child,s).map(run=>({...run,x:run.x-scrollX+env.dx,y:run.y-scrollY+env.dy}))}
     if(visible&&['INPUT','TEXTAREA','SELECT'].includes(el.tagName)){
       const value=el.type==='password'?'••••••':el.tagName==='SELECT'?el.options[el.selectedIndex]?.text:el.value||el.placeholder;
       const left=r.left+(parseFloat(s.paddingLeft)||0)+(parseFloat(s.borderLeftWidth)||0),top=r.top+(parseFloat(s.paddingTop)||0)+(parseFloat(s.borderTopWidth)||0);
       text(value||'',{left,top,width:Math.max(1,r.width-(left-r.left)-(parseFloat(s.paddingRight)||0)),height:Math.max(parseFloat(s.fontSize)*1.2,r.height-(top-r.top)-(parseFloat(s.paddingBottom)||0))});
-    }else for(const child of el.childNodes){if(child.nodeType===Node.TEXT_NODE&&visible){const range=document.createRange();range.selectNodeContents(child);const bounds=range.getBoundingClientRect();let value=child.textContent;value=Text.normalized(value,s);text(value,bounds,runsFor(child));}else if(child.nodeType===Node.ELEMENT_NODE){const c=walk(child);if(c)node.children.push(c);}}
+    }else {const children=el.shadowRoot?[...el.shadowRoot.childNodes]:el.tagName==='SLOT'&&el.assignedNodes().length?el.assignedNodes():el.childNodes;for(const child of children){if(child.nodeType===Node.TEXT_NODE&&visible){const range=el.ownerDocument.createRange();range.selectNodeContents(child);const bounds=range.getBoundingClientRect();let value=child.textContent;value=Text.normalized(value,s);text(value,bounds,runsFor(child));}else if(child.nodeType===Node.ELEMENT_NODE){const c=walk(child,env);if(c)node.children.push(c);}}if(el.shadowRoot)node.captureKind='open-shadow-root';}
 
     if(visible&&count<maxNodes&&s.display==='list-item'&&s.listStyleType!=='none'){
       const markerStyle=getComputedStyle(el,'::marker');let label,kind=s.listStyleType;const content=markerStyle.content;if(content&&content!=='normal'&&content!=='none')label=content.replace(/^['"]|['"]$/g,'');
       const first=(function firstText(n){if(n.type==='text')return n;for(const c of n.children||[]){const found=firstText(c);if(found)return found}})(node),line=first?.runs?.[0],props=Text.properties(markerStyle);props.fontFamily=markerStyle.fontFamily||s.fontFamily;props.fontSize=parseFloat(markerStyle.fontSize)||parseFloat(s.fontSize)||14;const f=props.fontSize,ctx=document.createElement('canvas').getContext('2d');ctx.font=Text.font(props);
       if(!label&&!['disc','circle','square'].includes(kind)){const siblings=[...el.parentElement.children].filter(n=>getComputedStyle(n).display==='list-item'),reverse=el.parentElement.hasAttribute('reversed');let ordinal=Number(el.parentElement.getAttribute('start'))||(reverse?siblings.length:1);for(const item of siblings){if(item.hasAttribute('value'))ordinal=Number(item.getAttribute('value'));if(item===el)break;ordinal+=reverse?-1:1}let value=String(ordinal);if(kind==='decimal-leading-zero')value=value.padStart(2,'0');if(/alpha|latin/.test(kind)){let v=Math.max(1,ordinal);value='';while(v){v--;value=String.fromCharCode(97+v%26)+value;v=Math.floor(v/26)}if(kind.startsWith('upper'))value=value.toUpperCase()}if(/roman/.test(kind)){let v=Math.max(1,ordinal);value='';for(const [num,roman] of [[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']])while(v>=num){value+=roman;v-=num}if(kind.startsWith('lower'))value=value.toLowerCase()}label=value+'.';}
-      const inside=s.listStylePosition==='inside',left=r.left+scrollX+(parseFloat(s.paddingLeft)||0),y=line?.y??r.top+scrollY+(parseFloat(s.paddingTop)||0),ink=color(markerStyle.color||s.color);
+      const inside=s.listStylePosition==='inside',left=r.left+env.dx+(parseFloat(s.paddingLeft)||0),y=line?.y??r.top+env.dy+(parseFloat(s.paddingTop)||0),ink=color(markerStyle.color||s.color);
       if(!label&&['disc','circle','square'].includes(kind)){const size=Math.max(2,f*.32),x=inside?left:left-f*.75,yc=y+Text.baseline(props,{text:'Ag'})-f*.28;const css='rgba('+[ink?.r||0,ink?.g||0,ink?.b||0].map(v=>Math.round(v*255)).join(',')+','+(ink?.a??1)+')',shape=kind==='square'?'<rect x="0" y="0" width="'+size+'" height="'+size+'" fill="'+css+'"/>':'<circle cx="'+size/2+'" cy="'+size/2+'" r="'+(size/2-(kind==='circle'?.5:0))+'" fill="'+(kind==='circle'?'none':css)+'" stroke="'+css+'" stroke-width="'+(kind==='circle'?1:0)+'"/>';node.children.unshift({type:'svg',name:'列表符号',x,y:yc-size/2,width:size,height:size,svg:'<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'">'+shape+'</svg>',children:[]});count++;}
       else if(label){const width=ctx.measureText(label).width,x=inside?left:left-width-f*.5;node.children.unshift({type:'text',name:'列表序号 '+label,text:label,x,y,width:Math.max(1,width),height:line?.height||f*1.2,...props,fontResolved:Text.resolveFamily(props),color:ink,whiteSpace:'pre',runs:[{text:label,x,y,width:Math.max(1,width),height:line?.height||f*1.2}],children:[]});count++;}
     }
 
+    const containsRaster=n=>n.rasterFallback||n.canvasRasterFallback||(n.children||[]).some(containsRaster);
+    if(+s.opacity<1&&node.children.some(containsRaster))return browserRaster('ancestor-compositing',{sourceOpacity:+s.opacity,compositingBaked:true});
     node.children.sort((a,b)=>(a.z||0)-(b.z||0));return node;
   }
   try{
     await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,2000))]);
+    await documentFonts(document);
+    const identities=new Map();for(const face of fonts){const key=face.family+'|'+face.style+'|'+face.weight,existing=identities.get(key);if(existing&&existing!==face.dataUrl){face.sourceFamily=face.family;face.family+='__shijie_'+face.id}else identities.set(key,face.dataUrl)}
     const root=walk(document.body),body=color(getComputedStyle(document.body).backgroundColor),html=color(getComputedStyle(document.documentElement).backgroundColor);
-    if(area){function offset(n){if(!n)return null;const inside=n.type==='group'||intersects(n.x,n.y,n.width,n.height);n.children=(n.children||[]).map(offset).filter(Boolean);if(!inside&&!n.children.length)return null;if(n.type!=='group'){n.x-=area.x;n.y-=area.y}if(n.runs)n.runs.forEach(r=>{r.x-=area.x;r.y-=area.y});return n}offset(root);}
-    return {format:'gugu-page-to-figma',version:1,captureVersion:'0.7.6',scope,captureRegion:area,title:document.title||'网页',url:location.href,background:body?.a?body:html,width:area?area.width:Math.min(30000,Math.max(innerWidth,document.documentElement.scrollWidth)),height:area?area.height:Math.min(30000,Math.max(innerHeight,document.documentElement.scrollHeight)),count,root,warnings:[...warnings],capturedAt:new Date().toISOString()};
-  }catch(error){return {error:error.message};}
+    if(area){function offset(n){if(!n)return null;const inside=n.type==='group'||intersects(n.x,n.y,n.width,n.height);n.children=(n.children||[]).map(offset).filter(Boolean);if(!inside&&!n.children.length)return null;if(n.type!=='group'){n.x-=area.x;n.y-=area.y}if(n.runs)n.runs.forEach(r=>{r.x-=area.x;r.y-=area.y});return n}offset(root);} 
+    return {format:'gugu-page-to-figma',version:1,captureVersion:'0.8.0',scope,captureRegion:area,title:document.title||'网页',url:location.href,background:body?.a?body:html,width:area?area.width:Math.min(30000,Math.max(innerWidth,document.documentElement.scrollWidth)),height:area?area.height:Math.min(30000,Math.max(innerHeight,document.documentElement.scrollHeight)),count,root,fonts,warnings:[...warnings],capturedAt:new Date().toISOString()};
+  }catch(error){return {error:error.message};}finally{if(captureKey){window[fontJobKey]?.delete(captureKey);if(window[fontJobKey]?.size===0)delete window[fontJobKey]}}
 }

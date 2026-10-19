@@ -80,6 +80,20 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
   except Exception as error:
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='检查未完成，保留原素材：'+str(error)[:200]);notes.append(n['name']+'：'+n['reviewIssue']);continue
   checked.append(n['id'])
+  placement=quality.get('placement')
+  if placement is not None:
+   try:
+    from asset_geometry import validate_placement,correct_placement
+    validate_placement(placement,scene,region)
+    if n.get('assetKind')=='background':raise ValueError('完整背景不使用前景尺寸校对')
+    if quality.get('status')=='NEEDS_REVIEW':raise ValueError('尺寸证据尚未确认')
+    if placement['contentCorrect']:
+     candidate=correct_placement(n,placement,scene,region)
+     candidate.update(assetReviewStatus='NOT_REVIEWED',review=True)
+     scene['nodes'][scene['nodes'].index(n)]=candidate;changed.append(n['id']);continue
+    quality={**quality,'status':'FAIL'}
+   except ValueError as error:
+    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='尺寸校对未应用：'+str(error));notes.append(n['name']+'：'+n['reviewIssue']);continue
   if quality.get('status')=='PASS':
    n.update(assetReviewStatus='PASS',review=False);n.pop('reviewIssue',None);continue
   if quality.get('status')=='NEEDS_REVIEW':
@@ -97,7 +111,10 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
     remember_record(candidate,structure,True)
    except InterruptedError:raise
    except Exception as error:candidate={**n,'provenance':'source-crop-fallback','reviewIssue':str(error)[:200]}
-  else:candidate=extract_once(work,n,assets,structure,cancelled,original,lambda m:progress(.1+.75*index/total,m))
+  else:
+   extraction=copy.deepcopy(n)
+   if placement is not None:extraction['_placementBounds']={k:placement[k] for k in ('x','y','width','height')}
+   candidate=extract_once(work,extraction,assets,structure,cancelled,original,lambda m:progress(.1+.75*index/total,m))
   n.pop('_repairNotes',None)
   if candidate.get('provenance')=='source-crop-fallback':
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='修正未完成，保留原素材：'+candidate.get('reviewIssue',''));notes.append(n['name']+'：'+n['reviewIssue']);continue

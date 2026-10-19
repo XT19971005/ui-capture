@@ -1,5 +1,5 @@
 from runtime import ROOT, STATE
-import concurrent.futures, copy, io, json, logging, math, os, re, secrets, threading, time, uuid
+import concurrent.futures, copy, io, json, logging, math, os, re, secrets, tempfile, threading, time, uuid
 from session_outputs import SESSIONS,CAPTURES
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, send_file
@@ -10,7 +10,28 @@ from local_project_store import LocalProjectStore,ProjectConflict
 PORT=19217
 TOKEN=secrets.token_urlsafe(32)
 app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=MAX_HTTP_BYTES
-SAVED_PROJECTS=LocalProjectStore(ROOT.parent/'工程文件')
+PROJECT_LOCATION_CONFIG=STATE/'project-library.local.json'
+DEFAULT_PROJECT_DIRECTORY=ROOT.parent/'工程文件'
+PROJECT_LOCATION_ERROR=None
+def configured_project_directory():
+    if not PROJECT_LOCATION_CONFIG.exists():return DEFAULT_PROJECT_DIRECTORY
+    value=json.loads(PROJECT_LOCATION_CONFIG.read_text('utf8'))
+    directory=Path(value['directory'])
+    return (directory if directory.is_absolute() else ROOT.parent/directory).resolve()
+def persist_project_location(directory):
+    try:value=str(directory.relative_to(ROOT.parent.resolve()))
+    except ValueError:value=str(directory)
+    temp=None
+    try:
+        with tempfile.NamedTemporaryFile(dir=PROJECT_LOCATION_CONFIG.parent,suffix='.tmp',delete=False) as stream:
+            temp=Path(stream.name);stream.write(json.dumps({'directory':value},ensure_ascii=False).encode('utf8'));stream.flush();os.fsync(stream.fileno())
+        os.replace(temp,PROJECT_LOCATION_CONFIG)
+    finally:
+        if temp is not None:temp.unlink(missing_ok=True)
+try:SAVED_PROJECTS=LocalProjectStore(configured_project_directory())
+except (OSError,ValueError,KeyError,TypeError):
+    SAVED_PROJECTS=LocalProjectStore(DEFAULT_PROJECT_DIRECTORY);PROJECT_LOCATION_ERROR='本地工程目录配置损坏，请重新连接工程目录'
+PROJECT_LOCATION_LOCK=threading.RLock()
 jobs={};lock=threading.Lock();pool=concurrent.futures.ThreadPoolExecutor(max_workers=1)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 LOCAL_ORIGINS={'http://127.0.0.1:19217','http://localhost:19217'}
@@ -26,8 +47,9 @@ def guard():
     if origin and origin not in ALLOWED_ORIGINS:return jsonify(error='Origin not allowed'),403
     if request.method=='OPTIONS':return '',204
     if request.path=='/saved-projects' or request.path.startswith('/saved-projects/'):
-        if origin and origin not in LOCAL_ORIGINS:return jsonify(error='本地工程库仅允许本机网页访问'),403
-        if request.headers.get('Sec-Fetch-Site') not in (None,'same-origin','none'):return jsonify(error='Same-origin request required'),403
+        registered_extension=origin in ALLOWED_ORIGINS-LOCAL_ORIGINS
+        if origin and origin not in ALLOWED_ORIGINS:return jsonify(error='本地工程库仅允许本机网页或已注册的拾界扩展访问'),403
+        if not registered_extension and request.headers.get('Sec-Fetch-Site') not in (None,'same-origin','none'):return jsonify(error='Same-origin request required'),403
         if not secrets.compare_digest(request.headers.get('X-Shijie-Token',''),TOKEN):return jsonify(error='连接已过期，请重新连接本机引擎'),401
         return None
     if request.path in ('/ping','/') or request.path.endswith(('.html','.js','.css','.png','.svg','.ico','.wasm','.gz','.traineddata')):return None
@@ -62,25 +84,61 @@ def static_editor(name):
 
 @app.get('/saved-projects')
 def list_saved_projects():
-    try:return jsonify(projects=SAVED_PROJECTS.list())
+    if PROJECT_LOCATION_ERROR:return jsonify(error=PROJECT_LOCATION_ERROR),503
+    store=SAVED_PROJECTS
+    try:return jsonify(projects=store.list(),directory=str(store.root.resolve()))
     except OSError:return jsonify(error='无法读取本地工程库；请检查磁盘与目录权限。'),503
+
+@app.route('/saved-projects/settings/location',methods=['GET','PUT'])
+def project_location():
+    global SAVED_PROJECTS,PROJECT_LOCATION_ERROR
+    if request.method=='GET':
+        if PROJECT_LOCATION_ERROR:return jsonify(error=PROJECT_LOCATION_ERROR),503
+        return jsonify(directory=str(SAVED_PROJECTS.root.resolve()),defaultDirectory=str(DEFAULT_PROJECT_DIRECTORY.resolve()))
+    try:
+        data=request.get_json(silent=True);value=data.get('directory') if isinstance(data,dict) else None
+        if not isinstance(value,str) or not value.strip() or '\x00' in value:raise ValueError('请填写有效的本地工程目录')
+        directory=Path(value.strip())
+        if not directory.is_absolute() or not directory.is_dir():raise ValueError('工程目录不存在，请填写现有文件夹的完整路径')
+        directory=directory.resolve();candidate=LocalProjectStore(directory);candidate.list()
+        with PROJECT_LOCATION_LOCK:
+            persist_project_location(directory);SAVED_PROJECTS=candidate;PROJECT_LOCATION_ERROR=None
+        return jsonify(directory=str(directory),defaultDirectory=str(DEFAULT_PROJECT_DIRECTORY.resolve()))
+    except (ValueError,TypeError) as error:return jsonify(error=str(error)),400
+    except OSError:return jsonify(error='目录连接或配置保存失败；仍保留原工程目录'),507
 
 @app.route('/saved-projects/<ident>',methods=['GET','PUT','DELETE'])
 def saved_project(ident):
     try:
-        if request.method=='GET':return jsonify(project=SAVED_PROJECTS.get(ident,wire=True))
+        store=SAVED_PROJECTS
+        if request.method=='GET':
+            check_project_directory(store,request.args.get('directory'))
+            return jsonify(project=store.get(ident,wire=True),directory=str(store.root.resolve()))
         data=decode_job(request.get_json(silent=True))
+        check_project_directory(store,data.pop('_expectedDirectory',None))
         expected=data.get('_expectedVersion')
         if expected is not None and (not isinstance(expected,str) or len(expected)>160):raise ValueError('工程版本无效')
         if request.method=='DELETE':
-            SAVED_PROJECTS.delete(ident,expected);return jsonify(deleted=True)
-        return jsonify(project=SAVED_PROJECTS.save(ident,data,expected))
+            store.delete(ident,expected);return jsonify(deleted=True)
+        return jsonify(project=store.save(ident,data,expected),directory=str(store.root.resolve()))
     except ProjectConflict as error:return jsonify(error=str(error)),409
     except FileNotFoundError:return jsonify(error='本地工程不存在或已被删除'),404
     except (ValueError,TypeError,RecursionError) as error:return jsonify(error=str(error) or '本地工程内容无效'),400
     except OSError:
         logging.exception('Local project disk operation failed')
         return jsonify(error='本地工程保存或读取失败；请检查磁盘空间与目录权限。当前编辑仍未保存，请重试或导出工程。'),507
+
+@app.post('/saved-projects/archive-browser')
+def archive_browser_project():
+    try:
+        store=SAVED_PROJECTS;record=decode_job(request.get_json(silent=True));check_project_directory(store,record.pop('_expectedDirectory',None))
+        return jsonify(store.archive_browser(record))
+    except ProjectConflict as error:return jsonify(error=str(error)),409
+    except (ValueError,TypeError,RecursionError) as error:return jsonify(error=str(error)),400
+    except OSError:return jsonify(error='本地备份未完成，浏览器原记录保留'),507
+
+def check_project_directory(store,expected):
+    if expected is not None and (not isinstance(expected,str) or not Path(expected).is_absolute() or Path(expected).resolve()!=store.root.resolve()):raise ProjectConflict('工程目录已在其他页面切换，请刷新工程库后重试；当前修改仍在页面中。')
 
 def stored_projects():
     import hashlib

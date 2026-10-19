@@ -23,8 +23,8 @@ window.ShijieEditorUI=(()=>{
   function apply(value){if(!valid(value)){sync();return;}last=value.toLowerCase();set(last);}
   $('canvas-color').onchange=e=>apply(e.target.value);$('canvas-hex').onchange=e=>{let value=e.target.value.trim();if(!value.startsWith('#'))value='#'+value;if(/^#[0-9a-f]{3}$/i.test(value))value='#'+[...value.slice(1)].map(c=>c+c).join('');apply(value)};
   $('canvas-transparent').onchange=e=>set(e.target.checked?null:last);
-  function work(value){if(!valid(value))return;workspace.style.backgroundColor=value;$('workspace-color').value=value;$('workspace-hex').value=value;try{localStorage.setItem('shijie-workspace-color',value)}catch{}}
-  let stored;try{stored=localStorage.getItem('shijie-workspace-color')}catch{}work(valid(stored||'')?stored:'#34363c');
+  function work(value){if(!valid(value))return;workspace.style.backgroundColor=value;$('workspace-color').value=value;$('workspace-hex').value=value;ShijieSession.workspaceColor=value}
+  work(ShijieSession.workspaceColor||'#12151c');
   $('workspace-color').onchange=e=>work(e.target.value);$('workspace-hex').onchange=e=>{let value=e.target.value.trim();if(!value.startsWith('#'))value='#'+value;if(valid(value))work(value);else $('workspace-hex').value=$('workspace-color').value};
   sync();return {sync};
  }

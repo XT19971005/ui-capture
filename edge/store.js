@@ -1,12 +1,9 @@
+let regionCaptureRevision=0;
 const CaptureStore={
-  async transaction(mode,action){
-    const db=await new Promise((resolve,reject)=>{const req=indexedDB.open('shijie-capture',1);req.onupgradeneeded=()=>req.result.createObjectStore('captures');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
-    return new Promise((resolve,reject)=>{const tx=db.transaction('captures',mode);const req=action(tx.objectStore('captures'));let result;req.onsuccess=()=>{result=req.result};tx.oncomplete=()=>{db.close();resolve(result)};tx.onerror=()=>{db.close();reject(tx.error)};tx.onabort=()=>{db.close();reject(tx.error||Error('本地存储操作未完成'))};});
-  },
-  setRegion(data){return this.transaction('readwrite',store=>store.put(data,'region-import'));},
-  getRegion(){return this.transaction('readonly',store=>store.get('region-import'));},
-  clearRegion(){return this.transaction('readwrite',store=>store.delete('region-import'));},
-  get(){return this.transaction('readonly',store=>store.get('latest'));},
-  set(data){return this.transaction('readwrite',store=>store.put(data,'latest'));},
-  clear(){return this.transaction('readwrite',store=>store.delete('latest'));}
+ async get(){return ShijieSession.drafts.web?structuredClone(ShijieSession.drafts.web):null},
+ async set(data){ShijieSession.drafts.web=structuredClone(data)},
+ async clear(){ShijieSession.drafts.web=null},
+ async setRegion(data){const revision=++regionCaptureRevision,id=await ShijieSmartSplit.storeCapture(data);if(revision===regionCaptureRevision)ShijieSession.drafts.region=id;else if(id!==ShijieSession.drafts.region)await ShijieSmartSplit.clearCapture(id);return id},
+ async getRegion(id){const revision=++regionCaptureRevision,entry=await ShijieSmartSplit.capture(id);if(revision===regionCaptureRevision)ShijieSession.drafts.region=id;return entry},
+ async clearRegion(){++regionCaptureRevision;const id=ShijieSession.drafts.region;ShijieSession.drafts.region=null;if(id)await ShijieSmartSplit.clearCapture(id)}
 };

@@ -50,13 +50,19 @@ def reuse_current_asset(cached,current,structure=None):
    (folder/('补全_'+current['id']+'.json')).write_text(json.dumps(record,ensure_ascii=False,indent=2),'utf8')
  return result
 
-def image_node(file,name,box,background=False):
+def image_node(file,name,box,background=False,preserve_canvas=False):
  x,y,w,h=box
- with Image.open(file) as generated:iw,ih=generated.size
+ with Image.open(file) as generated:
+  iw,ih=generated.size
+  alpha=generated.convert('RGBA').getchannel('A').getbbox()
+  visible=(0,0,iw,ih) if background or preserve_canvas else alpha
+  if not background and not alpha:raise ValueError('生成素材「'+name+'」完全透明，不能作为成功素材')
+ if not visible:raise ValueError('生成素材「'+name+'」完全透明，不能作为成功素材')
  # ImageGen can return a different canvas ratio. Preserve the complete RGBA,
  # use one scale for both axes, and keep the requested crop centre fixed.
- scale=(max if background else min)(w/iw,h/ih)
- dw,dh=iw*scale,ih*scale;x+=(w-dw)/2;y+=(h-dh)/2;w,h=dw,dh
+ left,top,right,bottom=visible;vw,vh=right-left,bottom-top
+ scale=(max if background else min)(w/vw,h/vh)
+ x+=(w-vw*scale)/2-left*scale;y+=(h-vh*scale)/2-top*scale;w,h=iw*scale,ih*scale
  if min(w,h)<1 or max(w,h)>6000 or w*h>6000000:raise ValueError('生成素材「'+name+'」的比例与画布不兼容，不能拉伸或创建超限图层')
  return {'id':uuid.uuid4().hex,'name':name,'type':'image','x':x,'y':y,'width':w,'height':h,'src':'data:image/png;base64,'+base64.b64encode(Path(file).read_bytes()).decode(),'provenance':'codex-image-generation','assetKind':'background' if background else 'complete-asset','inferred':True,'review':True}
 
@@ -131,8 +137,10 @@ def complete_asset(source,node,assets,structure,cancelled,original_source=None,f
   for k in ['gradient','layerStyle','displayMask']:reused.pop(k,None)
   return {**reused,**design_fields(node)}
  # Use a local source crop to constrain camera/layout; never paste original RGB into generated alpha.
- original=Image.open(source).convert('RGB');pad=max(8,round(min(node['width'],node['height'])*.07))
- x=max(0,int(node['x'])-pad);y=max(0,int(node['y'])-pad);right=min(original.width,int(node['x']+node['width'])+pad);bottom=min(original.height,int(node['y']+node['height'])+pad)
+ from asset_geometry import extraction_bounds
+ target=extraction_bounds(node);tx,ty,tw,th=target
+ original=Image.open(source).convert('RGB');pad=max(8,round(min(tw,th)*.07))
+ x=max(0,int(tx)-pad);y=max(0,int(ty)-pad);right=min(original.width,int(tx+tw)+pad);bottom=min(original.height,int(ty+th)+pad)
  crop=structure/'图像编辑局部参照.png';original.crop((x,y,right,bottom)).save(crop)
  prompt=f'编辑目标是局部参考，只提取完整素材“{node["name"]}”。画布{right-x}x{bottom-y}，保持原位置、比例、颜色、光照、纹理、人物身份与姿势。'+COLOR_PRESERVATION+'去掉背景及非该素材的相邻物体；真正被遮挡的部分补全，但不重设计。白色实体、牌面、布料和皮肤必须保留，不能当背景去掉；字形、手指、发丝和孔洞完整。真实透明背景，不是白底或棋盘格。'
  if node.get('layerStyle'):prompt+='图层样式将单独原生重建：不要把外挂投影、发光、描边、颜色叠加或渐变叠加烘焙进完整底稿。保留物体材质本身的光照与纹理，完整可见/遮挡后实体先补全。'
@@ -141,7 +149,9 @@ def complete_asset(source,node,assets,structure,cancelled,original_source=None,f
  finally:crop.unlink(missing_ok=True)
  record.update(sourceOriginalSHA256=original_sha,generatedAssetSHA256=hashlib.sha256(file.read_bytes()).hexdigest(),**{k:node[k] for k in ('sourceAssetId','sourceEntityId','sourceEntityParts','sourceTextParts') if k in node})
  (structure/('补全_'+node['id']+'.json')).write_text(json.dumps(record,ensure_ascii=False,indent=2),'utf8')
- complete=image_node(file,node['name'],[x,y,right-x,bottom-y])
+ # Padding is reference context, never additional display size. Place the
+ # visible alpha against the requested object bounds, preserving source bytes.
+ complete=image_node(file,node['name'],target,preserve_canvas=bool(node.get('_fixedExtractionCanvas')))
  complete['id']=node['id'];complete['assetKind']=node.get('assetKind','complete-asset');complete.update({k:node[k] for k in ('sourceAssetId','sourceEntityId','sourceEntityParts','sourceTextParts') if k in node});complete.update(design_fields(node))
  return complete
 

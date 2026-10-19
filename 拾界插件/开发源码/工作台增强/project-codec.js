@@ -43,6 +43,22 @@
  function stringify(doc){const packed=transform(doc);if(packed.logical<=4*MiB)return JSON.stringify(doc);if(packed.metadata+packed.encodedImageBytes+packed.images.length+128>LIMITS.fileBytes)fail('去重工程文件超过276MiB容量限制。');return JSON.stringify({format:'shijie-project',version:1,doc:packed.result,images:packed.images})}
  function fileLimit(){fail('工程文件超过276MiB容量限制；请先从新版导出去重工程文件，再导入。')}
  function parse(text){if(typeof text!=='string')fail('工程文件内容无效。');if(text.length>LIMITS.fileBytes||utf8(text)>LIMITS.fileBytes)fileLimit();let value;try{value=JSON.parse(text.charCodeAt(0)===0xfeff?text.slice(1):text)}catch(_){fail('工程文件不是有效JSON。')}return decode(value)}
- async function readFile(file){if(!file||!Number.isFinite(file.size)||file.size>LIMITS.fileBytes)fileLimit();return parse(await file.text())}
+ async function readFile(file){
+  if(!file||!Number.isFinite(file.size)||file.size>LIMITS.fileBytes)fileLimit();
+  const prefix=new Uint8Array(await file.slice(0,65537).arrayBuffer()),newline=prefix.indexOf(10);let header;
+  if(newline>=0&&newline<65536){try{header=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(prefix.subarray(0,newline)))}catch{}}
+  if(header?.storageVersion!=='local-disk-v1')return parse(await file.text());
+  if(typeof DecompressionStream!=='function')fail('当前浏览器不支持本地工程解压，请使用新版浏览器。');
+  const reader=file.slice(newline+1).stream().pipeThrough(new DecompressionStream('gzip')).getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let bytes=0,text='';
+  try{while(true){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>LIMITS.fileBytes){await reader.cancel();fileLimit()}text+=decoder.decode(chunk.value,{stream:true})}text+=decoder.decode()}
+  catch(error){await reader.cancel().catch(()=>{});if(bytes>LIMITS.fileBytes)fileLimit();fail('本地工程压缩内容损坏或不完整，原文件已保留。')}
+  let wire;try{wire=JSON.parse(text)}catch{fail('本地工程内容损坏，原文件已保留。')}
+  if(wire?.wireFormat!=='shijie-image-table'||wire.wireVersion!==1)fail('本地工程格式或版本不支持。');
+  const record=decode({format:'shijie-project',version:1,doc:wire.job,images:wire.images});
+  if(!record||typeof header.id!=='string'||record.id!==header.id)fail('本地工程标识不匹配，原文件已保留。');
+  const doc=record.legacyOriginal?.doc||record.doc;
+  if(!doc||typeof doc!=='object'||Array.isArray(doc))fail('本地工程缺少有效文档。');
+  return doc;
+ }
  window.ShijieProjectCodec={LIMITS,encode,decode,stringify,parse,readFile};
 })();

@@ -1,0 +1,4 @@
+interface:
+  display_name: "游戏UI拆图转PSD"
+  short_description: "集成识别补全、完整素材登记、原生文字矢量、PSD导出及实际画面复核"
+  default_prompt: "使用 $game-ui-to-psd 拆分这张界面，补全被遮挡的素材，保留完整人物与字形，使用集成工具导出可编辑 PSD 并实际看图自检，只保存到项目文件夹。"

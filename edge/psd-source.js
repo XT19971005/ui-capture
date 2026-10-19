@@ -1,3 +1,4 @@
+import {normalizeStyle,normalizeGradient,normalizeMask,nativeEffects,nativeMask,styleCanvas,gradientData,gradientPaint,displayMaskCanvas,transformMask,nativeToStyle,fitGradientEffects,alphaBounds} from '../../开发源码/图像重建/layer-style.js';
 // Source for the bundled psd-exporter.js. Build dependencies are listed in BUILD.txt.
 import {writePsd} from 'ag-psd';
 import {textLayoutTools} from '../../开发源码/文字排版/text-layout.js';
@@ -8,7 +9,7 @@ const MAX_PAGE_PIXELS=12000000,MAX_LAYER_PIXELS=32000000;
 export function validateCapture(data){
   if(!data||!['gugu-page-to-figma','shijie-ui-capture'].includes(data.format)||data.version!==1||!data.root)throw Error('请选择拾界或旧版咕咕扩展生成的 JSON 文件。');
   if(!Number.isFinite(data.width)||!Number.isFinite(data.height)||data.width<=0||data.height<=0||data.width>30000||data.height>30000)throw Error('画布尺寸无效。');
-  let count=0,bytes=0;
+  let count=0,bytes=0;const uniqueImages=new Set();
   function visit(n,depth){
     if(!n||depth>100||++count>6000)throw Error('图层过多或层级过深。');
     if(!['group','box','text','image','svg'].includes(n.type))throw Error('未知图层类型。');
@@ -16,17 +17,18 @@ export function validateCapture(data){
       for(const key of ['x','y','width','height'])if(!Number.isFinite(n[key])||Math.abs(n[key])>100000)throw Error('无效的图层坐标。');
       if(n.width<=0||n.height<=0)throw Error('无效的图层尺寸。');
     }
-    if(n.image){if(typeof n.image!=='string'||!/^data:image\/(png|jpeg|webp);base64,/.test(n.image))throw Error('图片必须为内嵌 PNG、JPEG 或 WebP。');bytes+=n.image.length;}
+    normalizeStyle(n.layerStyle);normalizeGradient(n.gradient);normalizeMask(n.displayMask);
+    if(n.image){if(typeof n.image!=='string'||!/^data:image\/(png|jpeg|webp);base64,/.test(n.image))throw Error('图片必须为内嵌 PNG、JPEG 或 WebP。');if(!uniqueImages.has(n.image)){uniqueImages.add(n.image);bytes+=n.image.length}}
     if(bytes>26000000||n.text?.length>100000||n.svg?.length>2000000)throw Error('图层数据超过安全处理上限。');
     if(n.children){if(!Array.isArray(n.children))throw Error('图层结构无效。');n.children.forEach(c=>visit(c,depth+1));}
   }
-  visit(data.root,0);return count;
+  visit(data.root,0);if(data.fonts!==undefined){if(!Array.isArray(data.fonts)||data.fonts.length>100)throw Error('字体数量超限');let fontBytes=0;for(const f of data.fonts){if(typeof f.family!=='string'||f.family.length>200||typeof f.dataUrl!=='string'||!/^data:[\w+./-]+;base64,[\w+/=]+$/.test(f.dataUrl))throw Error('内嵌字体无效');fontBytes+=f.dataUrl.length}if(fontBytes>26000000)throw Error('字体数据超限')}return count;
 }
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,Number.isFinite(v)?v:min));
 const rgba=c=>`rgba(${Math.round(clamp(c?.r,0,1)*255)},${Math.round(clamp(c?.g,0,1)*255)},${Math.round(clamp(c?.b,0,1)*255)},${clamp(c?.a??1,0,1)})`;
 function canvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
 function path(ctx,n,inset=0){ctx.beginPath();ctx.roundRect(n.x+inset,n.y+inset,Math.max(.01,n.width-inset*2),Math.max(.01,n.height-inset*2),(n.radii||[0,0,0,0]).map(r=>clamp(r-inset,0,Math.min(n.width,n.height)/2)));}
-function loadImage(url){return new Promise((resolve,reject)=>{const image=new Image(),timeout=setTimeout(()=>reject(Error('图片读取超时')),8000);image.onload=()=>{clearTimeout(timeout);resolve(image)};image.onerror=()=>{clearTimeout(timeout);reject(Error('图片读取失败'))};image.src=url;});}
+function loadImage(url){if(globalThis.ShijieNodeCanvas)return globalThis.ShijieNodeCanvas.loadImage(url);return new Promise((resolve,reject)=>{const image=new Image(),timeout=setTimeout(()=>reject(Error('图片读取超时')),8000);image.onload=()=>{clearTimeout(timeout);resolve(image)};image.onerror=()=>{clearTimeout(timeout);reject(Error('图片读取失败'))};image.src=url;});}
 function safeSVG(source){
   const doc=new DOMParser().parseFromString(source,'image/svg+xml');
   if(doc.querySelector('parsererror'))throw Error('SVG 解析失败');
@@ -41,7 +43,7 @@ function drawText(ctx,n){
  for(const run of Text.lines(n)){const baseline=run.y+Text.baseline(n,run),x=n.direction==='rtl'?run.x+run.width:run.x;ctx.textAlign=n.direction==='rtl'?'right':'left';ctx.fillText(run.text,x,baseline);if(n.textDecoration&&n.textDecoration!=='none'){ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=Math.max(1,(n.fontSize||14)/15);for(const kind of n.textDecoration.split(' ')){if(!['underline','line-through'].includes(kind))continue;const y=kind==='underline'?baseline+1:baseline-(n.fontSize||14)*.3;ctx.beginPath();ctx.moveTo(run.x,y);ctx.lineTo(run.x+run.width,y);ctx.stroke()}}}
 }
 
-function hasVisual(n){return (n.rasterStyle?.['background-image']&&n.rasterStyle['background-image']!=='none')||(n.rasterStyle?.['box-shadow']&&n.rasterStyle['box-shadow']!=='none')||n.type==='text'||n.type==='image'||n.type==='svg'||n.background?.a>0||(n.borders||[]).some(b=>b.width>0&&b.color?.a>0&&b.style!=='none');}
+function hasVisual(n){return !!n.gradient||(n.rasterStyle?.['background-image']&&n.rasterStyle['background-image']!=='none')||(n.rasterStyle?.['box-shadow']&&n.rasterStyle['box-shadow']!=='none')||n.type==='text'||n.type==='image'||n.type==='svg'||n.background?.a>0||(n.borders||[]).some(b=>b.width>0&&b.color?.a>0&&b.style!=='none');}
 
 // Browser-native CSS rasterization restores gradients, shadows, rounded borders and image masks.
 function xml(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -63,7 +65,7 @@ async function nativeRaster(n,pad,region){
 }
 
 export async function renderCapture(data,onProgress=()=>{}){
-  validateCapture(data);const width=Math.ceil(data.width),height=Math.ceil(data.height);
+  validateCapture(data);if(data.fonts?.length&&globalThis.FontFace){for(const f of data.fonts){try{const face=new FontFace(f.family,`url(${f.dataUrl})`,{style:f.style||'normal',weight:String(f.weight||400)});await face.load();document.fonts.add(face);}catch{throw Error('抓取字体无法注册: '+f.family)}}}const width=Math.ceil(data.width),height=Math.ceil(data.height);
   if(width*height>MAX_PAGE_PIXELS)throw Error('PSD 预览最多支持 1200 万像素。请抓取较短页面；Figma JSON 仍可导出。');
   let allocated=width*height*(data.background?.a>0?2:1),created=0;const warnings=new Set();
   async function bitmap(n,clips){
@@ -120,7 +122,7 @@ export async function renderCapture(data,onProgress=()=>{}){
         if(!run.text?.trim())continue;
         const item={...n,text:run.text,x:run.x,y:run.y,width:Math.max(run.width||n.width,ctx.measureText(run.text).width+2),height:Math.max(run.height||n.height,size*1.3),runs:[run],color:{...(n.color||{}),a:1}};
         const layer=nativeText(await bitmap(item,clips),{...item,color:n.color,fontResolved:n.fontResolved||Text.resolveFamily(n)},run.y+Text.baseline(n,run));
-        if(layer){if(clips.length)layer.vectorMask={fillStartsWithAllPixels:false,paths:clips.map((clip,i)=>roundedPath(clip,[0,0,0,0],i?'intersect':'combine'))};result.push(layer);}
+        if(layer){if(n.gradient){layer.effects=nativeEffects({gradientOverlay:{...normalizeGradient(n.gradient),enabled:true,opacity:1}});fitGradientEffects(layer,item);}if(n.fontPostScriptName){const old=layer.text.style.font.name;layer.text.style.font.name=n.fontPostScriptName;for(const r of layer.text.styleRuns||[])if(r.style.font.name===old)r.style.font.name=n.fontPostScriptName;}if(clips.length)layer.vectorMask={fillStartsWithAllPixels:false,paths:clips.map((clip,i)=>roundedPath(clip,[0,0,0,0],i?'intersect':'combine'))};result.push(layer);}
       }return result;
     }
     if(n.type==='svg'){
@@ -141,9 +143,9 @@ export async function renderCapture(data,onProgress=()=>{}){
     const shadows=(n.rasterStyle?.['box-shadow']||'none').split(/,(?![^(]*\))/);
     const outer=shadows.filter(s=>s!=='none'&&!s.includes('inset')).join(','),inner=shadows.filter(s=>s.includes('inset')).join(',');
     if(outer){const l=await bitmap({...n,background:null,borders:[],rasterStyle:cleanStyle(n,{'box-shadow':outer})},clips);if(l)l.name='阴影 · '+n.name;add(l);}
-    if(n.background?.a>0){
-      const solid={...n.background,a:1};
-      add(shape(await bitmap({...n,background:solid,borders:[],rasterStyle:cleanStyle(n,{'background-color':rgba(solid)})},clips),n.background,[roundedPath(n)],clips));
+    if(n.background?.a>0||n.gradient){
+      const gradientBase=n.background||{r:1,g:1,b:1,a:1},solid={...gradientBase,a:1};
+      const l=shape(await bitmap({...n,background:solid,borders:[],rasterStyle:cleanStyle(n,{'background-color':rgba(solid)})},clips),gradientBase,[roundedPath(n)],clips);if(l&&n.gradient){l.vectorFill=gradientData(n.gradient,n.name);const cc=l.canvas.getContext('2d');cc.globalCompositeOperation='source-in';cc.fillStyle=gradientPaint(cc,n.gradient,{x:n.x-l.left,y:n.y-l.top,width:n.width,height:n.height});cc.fillRect(0,0,l.canvas.width,l.canvas.height);cc.globalCompositeOperation='source-over';}add(l);
     }
     const gradient=n.rasterStyle?.['background-image'];
     if(gradient&&gradient!=='none'){
@@ -173,23 +175,19 @@ export async function renderCapture(data,onProgress=()=>{}){
 
   // ag-psd writes children in paint order: bottom first, top last, at EVERY depth.
   async function visit(n,clips){
-    if(n.visible===false)return null;
     const children=n.type==='group'?[]:await visualParts(n,clips);
     const childClips=n.clip?[...clips,n]:clips;
     for(const child of n.children||[]){const layer=await visit(child,childClips);if(layer)children.push(layer);}
     if(!children.length)return null;
-    if(children.length===1){const only=children[0];only.opacity=(only.opacity??1)*clamp(n.opacity??1,0,1);return only;}
-    return {name:String(n.name||'图层组').slice(0,120),children:children,opacity:clamp(n.opacity??1,0,1),blendMode:'normal',opened:false};
+    const state={hidden:n.visible===false,...(n.locked?{protected:{transparency:true,composite:true,position:true}}:{})};
+    // Named containers are semantic folders, including those with a single child.
+    if(n.type!=='group'&&!n.children?.length&&children.length===1&&!n.displayMask){const only=children[0];Object.assign(only,state);only.opacity=(only.opacity??1)*clamp(n.opacity??1,0,1);if(n.layerStyle){const fx=nativeEffects(n.layerStyle);if(n.type==='text'&&fx.gradientOverlay)fitGradientEffects({...only,effects:fx},n);only.effects={...(only.effects||{}),...fx};only.blendMode=normalizeStyle(n.layerStyle).blendMode;only._bounds=n;}return only;}
+    return {name:String(n.name||'图层组').slice(0,120),children:children,...state,opacity:clamp(n.opacity??1,0,1),blendMode:normalizeStyle(n.layerStyle)?.blendMode||'normal',opened:false,...(n.layerStyle?{effects:nativeEffects(n.layerStyle)}:{}),...(n.displayMask?{mask:nativeMask(n.displayMask,width,height,(w,h)=>canvas(w,h),Path2D),_displayMask:n.displayMask}:{}),_bounds:n.type==='group'?null:n};
   }
   const tree=await visit(data.root,[]),composite=canvas(width,height),ctx=composite.getContext('2d');
   let pageBackground;
   if(data.background?.a>0){const c=canvas(width,height),cctx=c.getContext('2d');cctx.fillStyle=rgba({...data.background,a:1});cctx.fillRect(0,0,width,height);pageBackground=shape({name:'页面背景',left:0,top:0,canvas:c},data.background,[roundedPath({x:0,y:0,width,height})]);ctx.save();ctx.globalAlpha=data.background.a;ctx.drawImage(c,0,0);ctx.restore();}
-  function paint(layer,target){
-    if(layer.children){
-      if((layer.opacity??1)<1){const scratch=canvas(width,height);layer.children.forEach(child=>paint(child,scratch.getContext('2d')));target.save();target.globalAlpha*=layer.opacity;target.drawImage(scratch,0,0);target.restore();scratch.width=1;scratch.height=1;}
-      else layer.children.forEach(child=>paint(child,target));
-    }else{target.save();target.globalAlpha*=layer.opacity??1;target.drawImage(layer.canvas,layer.left,layer.top);target.restore();}
-  }
+  function paint(layer,target){if(layer.hidden)return;let base,left=layer.left||0,top=layer.top||0;if(layer.children){base=canvas(width,height);layer.children.forEach(child=>paint(child,base.getContext('2d')));left=top=0;}else base=layer.canvas;const effectBounds=alphaBounds(base);if(normalizeMask(layer._displayMask)?.enabled){const masked=canvas(base.width,base.height),mc=masked.getContext('2d');mc.drawImage(base,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(displayMaskCanvas(layer._displayMask,width,height,(w,h)=>canvas(w,h),Path2D),-left,-top);base=masked;}const rendered=styleCanvas(base,nativeToStyle(layer.effects,layer.blendMode||'normal'),(w,h)=>canvas(w,h),effectBounds),scratch=canvas(width,height),sc=scratch.getContext('2d');sc.drawImage(rendered.canvas,left-rendered.pad,top-rendered.pad);target.save();target.globalAlpha*=layer.opacity??1;target.globalCompositeOperation=layer.blendMode==='normal'?'source-over':layer.blendMode||'source-over';target.drawImage(scratch,0,0);target.restore();scratch.width=scratch.height=1;}
   if(tree)paint(tree,ctx);
   const stats={text:0,vector:0,raster:0};function types(l){if(l.children)l.children.forEach(types);else stats[l.text?'text':l.vectorFill?'vector':'raster']++;}if(pageBackground)types(pageBackground);if(tree)types(tree);
   return {stats,psd:{width,height,canvas:composite,children:[...(pageBackground?[pageBackground]:[]),...(tree?[tree]:[])]},canvas:composite,count:created+(pageBackground?1:0),warnings:[...warnings]};
@@ -201,14 +199,14 @@ export function exportPlan(data,requested='auto'){
   validateCapture(data);let layerPixels=0,opacityDepth=0;
   const page={x:0,y:0,width:data.width,height:data.height};
   function area(n,clips){const pad=shadowPad(n);let l=Math.max(0,n.x-pad),t=Math.max(0,n.y-pad),r=Math.min(data.width,n.x+n.width+pad),b=Math.min(data.height,n.y+n.height+pad);for(const c of clips){l=Math.max(l,c.x);t=Math.max(t,c.y);r=Math.min(r,c.x+c.width);b=Math.min(b,c.y+c.height)}return Math.max(0,r-l)*Math.max(0,b-t)}
-  function visit(n,clips,depth){if(n.visible===false)return;const d=depth+((n.opacity??1)<1&&n.children?.length?1:0);opacityDepth=Math.max(opacityDepth,d);let parts=0;if(n.type==='text')parts=Math.max(1,n.runs?.length||String(n.text||'').split('\n').length);else if(n.type==='image')parts=1;else if(n.type==='svg'){try{parts=Math.max(1,solidSVG(n).length)}catch{parts=1}}else if(n.type==='box'){parts=(n.background?.a>0?1:0)+(n.rasterStyle?.['background-image']&&n.rasterStyle['background-image']!=='none'?1:0)+(n.rasterStyle?.['box-shadow']&&n.rasterStyle['box-shadow']!=='none'?2:0)+(n.borders||[]).filter(b=>b.width>0&&b.color?.a>0&&b.style!=='none').length;}if(parts)layerPixels+=area(n,clips)*parts;(n.children||[]).forEach(c=>visit(c,n.clip?[...clips,n]:clips,d))}
+  function visit(n,clips,depth){const d=depth+((n.opacity??1)<1&&n.children?.length?1:0);opacityDepth=Math.max(opacityDepth,d);let parts=0;if(n.type==='text')parts=Math.max(1,n.runs?.length||String(n.text||'').split('\n').length);else if(n.type==='image')parts=1;else if(n.type==='svg'){try{parts=Math.max(1,solidSVG(n).length)}catch{parts=1}}else if(n.type==='box'){parts=(n.background?.a>0?1:0)+(n.rasterStyle?.['background-image']&&n.rasterStyle['background-image']!=='none'?1:0)+(n.rasterStyle?.['box-shadow']&&n.rasterStyle['box-shadow']!=='none'?2:0)+(n.borders||[]).filter(b=>b.width>0&&b.color?.a>0&&b.style!=='none').length;}if(parts)layerPixels+=area(n,clips)*parts;(n.children||[]).forEach(c=>visit(c,n.clip?[...clips,n]:clips,d))}
   visit(data.root,[],0);const pagePixels=data.width*data.height,estimated=layerPixels+pagePixels*(3+opacityDepth);const safe=Math.min(1,Math.sqrt(10000000/pagePixels),Math.sqrt(24000000/Math.max(1,estimated))),scale=requested==='auto'?Math.min(1,safe*.98):Number(requested);
   if(!Number.isFinite(scale)||scale<=0||scale>1)throw Error('导出比例无效');if(requested!=='auto'&&scale>safe*1.04)throw Error('这个比例的图层缓存过大，请选择“自动适配”。原始图层尺寸会保留在工程与 Figma 数据中。');
   return {scale:scale>.97&&safe===1?1:scale,width:Math.max(1,Math.ceil(data.width*(scale>.97&&safe===1?1:scale))),height:Math.max(1,Math.ceil(data.height*(scale>.97&&safe===1?1:scale))),estimatedPixels:estimated};
 }
 export function scaledCapture(data,scale){
   const px=v=>typeof v==='string'?v.replace(/(-?(?:\d*\.)?\d+)px\b/g,(_,n)=>(+n*scale)+'px'):v;
-  function node(n){const v={...n};for(const k of ['x','y','width','height','fontSize','lineHeight','letterSpacing','wordSpacing'])if(Number.isFinite(v[k]))v[k]*=scale;if(n.radii)v.radii=n.radii.map(r=>r*scale);if(n.borders)v.borders=n.borders.map(b=>({...b,width:b.width*scale}));if(n.rasterStyle)v.rasterStyle=Object.fromEntries(Object.entries(n.rasterStyle).map(([k,v])=>[k,px(v)]));if(n.runs)v.runs=n.runs.map(r=>({...r,x:r.x*scale,y:r.y*scale,width:r.width*scale,height:r.height*scale}));if(n.children)v.children=n.children.map(node);return v;}
+  function node(n){const v={...n};for(const k of ['x','y','width','height','fontSize','lineHeight','letterSpacing','wordSpacing'])if(Number.isFinite(v[k]))v[k]*=scale;if(n.displayMask)v.displayMask=transformMask(n.displayMask,{sx:scale,sy:scale});if(n.layerStyle){v.layerStyle=structuredClone(normalizeStyle(n.layerStyle));for(const key of ['stroke','dropShadow','innerShadow','outerGlow','innerGlow'])if(v.layerStyle[key]){v.layerStyle[key].size*=scale;if(v.layerStyle[key].distance!==undefined)v.layerStyle[key].distance*=scale;}}if(n.radii)v.radii=n.radii.map(r=>r*scale);if(n.borders)v.borders=n.borders.map(b=>({...b,width:b.width*scale}));if(n.rasterStyle)v.rasterStyle=Object.fromEntries(Object.entries(n.rasterStyle).map(([k,v])=>[k,px(v)]));if(n.runs)v.runs=n.runs.map(r=>({...r,x:r.x*scale,y:r.y*scale,width:r.width*scale,height:r.height*scale}));if(n.children)v.children=n.children.map(node);return v;}
   return {...data,width:Math.max(1,Math.ceil(data.width*scale)),height:Math.max(1,Math.ceil(data.height*scale)),root:node(data.root)};
 }
 export async function renderForExport(data,onProgress=()=>{},requested='auto'){

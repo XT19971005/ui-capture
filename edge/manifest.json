@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
   "name": "拾界 · UI Capture",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "抓取网页，编辑图层、文字与矢量，导出 Figma 插件数据、分层 PSD、SVG 和 PNG。Designed by XT。",
   "permissions": [
     "activeTab",
     "scripting",
     "downloads",
-    "storage"
+    "storage",
+    "nativeMessaging"
   ],
   "host_permissions": [
-    "file:///*"
+    "file:///*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -29,5 +31,9 @@
     "48": "icons/shijie-48.png",
     "128": "icons/shijie-128.png"
   },
-  "author": "XT"
+  "author": "XT",
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
 }

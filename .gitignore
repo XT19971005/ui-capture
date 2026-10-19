@@ -24,3 +24,6 @@
 **/依赖/
 **/运行临时/
 !/源码备份说明.md
+
+# User artwork and generated demo outputs are not source backups.
+/拾界插件/插件程序/示例/
