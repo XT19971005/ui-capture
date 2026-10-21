@@ -1,0 +1,81 @@
+{
+  "purpose": "导入仅创建可复用定义，image是运行时输入，不立即执行",
+  "already_tested_nodes": [
+    "LoadImage",
+    "ImageCrop",
+    "LoadBackgroundRemovalModel",
+    "RemoveBackground",
+    "InvertMask",
+    "JoinImageWithAlpha",
+    "ImageCompositeMasked",
+    "ImageBatch",
+    "UNETLoader",
+    "CLIPLoader",
+    "VAELoader",
+    "CLIPTextEncode",
+    "ReferenceLatent",
+    "Flux2Scheduler",
+    "CFGGuider",
+    "SamplerCustomAdvanced",
+    "VAEDecode",
+    "SaveImage"
+  ],
+  "native_psd_nodes": {
+    "ShijieAnalyze": {
+      "required": [
+        "image",
+        "minimum_score"
+      ],
+      "output": [
+        "STRING: OCR候选方案"
+      ]
+    },
+    "ShijieTextBranch": {
+      "required": [
+        "original",
+        "plan_json",
+        "font"
+      ],
+      "output": [
+        "IMAGE: 去字输入",
+        "SHIJIE_BRANCH: 原生文字资产"
+      ]
+    },
+    "ShijieVectorBranch": {
+      "required": [
+        "original",
+        "clean_image",
+        "plan_json"
+      ],
+      "output": [
+        "IMAGE: 干净输入",
+        "SHIJIE_BRANCH: 原生矢量资产"
+      ]
+    },
+    "ShijieReassemble": {
+      "required": [
+        "image_layers",
+        "text_assets",
+        "vector_assets",
+        "project_name"
+      ],
+      "optional": [
+        "layer_names",
+        "expert_plan"
+      ],
+      "output": [
+        "STRING: PSD路径",
+        "STRING: 分支检查JSON"
+      ]
+    }
+  },
+  "scope": "这是服务器已有节点接口证据，不代表平台Skill目录已注册；不能捏造tool_id。若缺映射，应指出具体项并保留有效定义。",
+  "generation": "当前用户已明确授权TYGPT专家规划API；实际图像与PSD仍由服务器开源节点执行",
+  "reference_workflows": "既有森之鹿灵测试快照，仅参考，运行输入应暴露为用户选择的图像，不固定旧案例文件",
+  "runtime_knowledge": {
+    "request": "QPExpertRequest自动读取完整版本知识与当前画布尺寸",
+    "validation": "QPBindExternalPlan校验knowledge_ack与图像来源",
+    "execution": "QPAutoPSD按现有五种资产类型执行，未支持复用/分组/任意层序须列待修",
+    "source_files": "所有两份技能及references中的规范和示例全文，来源摘要可核验"
+  }
+}

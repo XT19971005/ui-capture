@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-20",
+  "target": "按照既有拾界能力还原ComfyUI，稳定准确优先",
+  "status": "IN_PROGRESS_NOT_ACCEPTED",
+  "server": "当前安装旧版；完整环境等待运维",
+  "capabilities": [
+    {
+      "capability": "素材登记与组件引用",
+      "existing_shijie_source": "ui_components.py、design_properties.py",
+      "comfy_adapter": "shijie_source、shijie_contract.validate_ui_structure",
+      "verified_scope_and_gap": "纯校验已迁移；尚未接入完整专家输出"
+    },
+    {
+      "capability": "逐项验收与禁止假PASS",
+      "existing_shijie_source": "acceptance.py",
+      "comfy_adapter": "shijie_source/acceptance_rules.py、verify_asset_review",
+      "verified_scope_and_gap": "六项素材与十六项整图标准已保留；复制节点绑定实际素材摘要，实际视觉判断另行执行"
+    },
+    {
+      "capability": "同款底稿独立实例",
+      "existing_shijie_source": "ui_components.py、asset_geometry.py",
+      "comfy_adapter": "instances.py、ShijieReuseLayers",
+      "verified_scope_and_gap": "源码及回归完成；服务器未部署；同款身份和各位置尚须实测"
+    },
+    {
+      "capability": "普通文字原生化",
+      "existing_shijie_source": "字体匹配、场景与PSD导出实现",
+      "comfy_adapter": "ocr.py、branches.py、write_psd.cjs",
+      "verified_scope_and_gap": "已有服务器旧版；复杂图仍错字漏字、字体未通过；新版颜色修正待部署"
+    },
+    {
+      "capability": "完整纯色矢量",
+      "existing_shijie_source": "轮廓拟合及原生形状导出",
+      "comfy_adapter": "branches.py、core.py、write_psd.cjs",
+      "verified_scope_and_gap": "有渐变拒绝与孔洞处理；当前案例尚无合格服务器原生矢量"
+    },
+    {
+      "capability": "完整图片实体",
+      "existing_shijie_source": "plan_contract.py、asset_geometry.py",
+      "comfy_adapter": "Qwen分层现有工作流",
+      "verified_scope_and_gap": "生成鹿仍混层；不得把逐层提示当精确分割；检测/分割路线待接入及许可核验"
+    },
+    {
+      "capability": "坐标与避免反复缩放",
+      "existing_shijie_source": "asset_geometry.py",
+      "comfy_adapter": "instances.py及工作流坐标记录",
+      "verified_scope_and_gap": "复制仅等比；完整配准约束尚未迁全"
+    },
+    {
+      "capability": "有界修复和保留已好素材",
+      "existing_shijie_source": "plan_contract.py、incremental_assets.py",
+      "comfy_adapter": "部分独立分支、来源摘要校验",
+      "verified_scope_and_gap": "完整按ID续拆与失败恢复尚未迁全"
+    },
+    {
+      "capability": "PSD原生层与合成预览",
+      "existing_shijie_source": "拾界PSD导出实现",
+      "comfy_adapter": "exporter.py、write_psd.cjs、audit.py",
+      "verified_scope_and_gap": "13层RGBA独立回读一致；复杂图片美术验收仍失败"
+    },
+    {
+      "capability": "本地开源自动专家",
+      "existing_shijie_source": "拾界规划结构和完整性要求",
+      "comfy_adapter": "vision.py、expert",
+      "verified_scope_and_gap": "权重已下载；完整节点环境受平台配置阻塞，未完成服务器推理验收"
+    }
+  ],
+  "acceptance": "单元回归、部署、实际模型运行、实际画面验收分别记录；没有合格最终PSD"
+}

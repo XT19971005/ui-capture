@@ -1,0 +1,850 @@
+{
+  "version": 0.4,
+  "revision": 0,
+  "last_node_id": 41,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        440,
+        100
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2,
+            4,
+            7,
+            14,
+            21
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "森之鹿灵.png",
+        "image"
+      ],
+      "title": "原图保留，所有分支只读"
+    },
+    {
+      "id": 2,
+      "type": "LoadBackgroundRemovalModel",
+      "pos": [
+        780,
+        100
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "bg_model",
+          "type": "BACKGROUND_REMOVAL",
+          "links": [
+            1,
+            8,
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadBackgroundRemovalModel"
+      },
+      "widgets_values": [
+        "birefnet.safetensors"
+      ],
+      "title": "只加载服务器已有BiRefNet"
+    },
+    {
+      "id": 11,
+      "type": "RemoveBackground",
+      "pos": [
+        1800,
+        320
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bg_removal_model",
+          "type": "BACKGROUND_REMOVAL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            3,
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RemoveBackground"
+      }
+    },
+    {
+      "id": 12,
+      "type": "InvertMask",
+      "pos": [
+        100,
+        540
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    },
+    {
+      "id": 13,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        440,
+        540
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      }
+    },
+    {
+      "id": 14,
+      "type": "SaveImage",
+      "pos": [
+        780,
+        540
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "森之鹿灵_12BiRefNet_整图_前景待验收"
+      ]
+    },
+    {
+      "id": 20,
+      "type": "ImageCrop",
+      "pos": [
+        780,
+        760
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            9,
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageCrop"
+      },
+      "widgets_values": [
+        288,
+        512,
+        336,
+        316
+      ],
+      "title": "鹿区域原像素裁取，无生成"
+    },
+    {
+      "id": 21,
+      "type": "RemoveBackground",
+      "pos": [
+        1120,
+        760
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bg_removal_model",
+          "type": "BACKGROUND_REMOVAL",
+          "link": 8
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RemoveBackground"
+      }
+    },
+    {
+      "id": 22,
+      "type": "InvertMask",
+      "pos": [
+        1460,
+        760
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    },
+    {
+      "id": 23,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1800,
+        760
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      }
+    },
+    {
+      "id": 24,
+      "type": "SaveImage",
+      "pos": [
+        100,
+        980
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "森之鹿灵_12BiRefNet_鹿区域_前景待验收"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "ImageCrop",
+      "pos": [
+        100,
+        1200
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            16,
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageCrop"
+      },
+      "widgets_values": [
+        96,
+        80,
+        120,
+        230
+      ],
+      "title": "宝箱区域原像素裁取，无生成"
+    },
+    {
+      "id": 31,
+      "type": "RemoveBackground",
+      "pos": [
+        440,
+        1200
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "bg_removal_model",
+          "type": "BACKGROUND_REMOVAL",
+          "link": 15
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RemoveBackground"
+      }
+    },
+    {
+      "id": 32,
+      "type": "InvertMask",
+      "pos": [
+        780,
+        1200
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    },
+    {
+      "id": 33,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1120,
+        1200
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      }
+    },
+    {
+      "id": 34,
+      "type": "SaveImage",
+      "pos": [
+        1460,
+        1200
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "森之鹿灵_12BiRefNet_宝箱区域_前景待验收"
+      ]
+    },
+    {
+      "id": 40,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1460,
+        1420
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      },
+      "title": "背景保留区域：有洞，不冒充补全背景"
+    },
+    {
+      "id": 41,
+      "type": "SaveImage",
+      "pos": [
+        1800,
+        1420
+      ],
+      "size": [
+        300,
+        160
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "森之鹿灵_12BiRefNet_背景保留区_未补全"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      11,
+      0,
+      "BACKGROUND_REMOVAL"
+    ],
+    [
+      2,
+      1,
+      0,
+      11,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      11,
+      0,
+      12,
+      0,
+      "MASK"
+    ],
+    [
+      4,
+      1,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      12,
+      0,
+      13,
+      1,
+      "MASK"
+    ],
+    [
+      6,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      1,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      2,
+      0,
+      21,
+      0,
+      "BACKGROUND_REMOVAL"
+    ],
+    [
+      9,
+      20,
+      0,
+      21,
+      1,
+      "IMAGE"
+    ],
+    [
+      10,
+      21,
+      0,
+      22,
+      0,
+      "MASK"
+    ],
+    [
+      11,
+      20,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      22,
+      0,
+      23,
+      1,
+      "MASK"
+    ],
+    [
+      13,
+      23,
+      0,
+      24,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      1,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      2,
+      0,
+      31,
+      0,
+      "BACKGROUND_REMOVAL"
+    ],
+    [
+      16,
+      30,
+      0,
+      31,
+      1,
+      "IMAGE"
+    ],
+    [
+      17,
+      31,
+      0,
+      32,
+      0,
+      "MASK"
+    ],
+    [
+      18,
+      30,
+      0,
+      33,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      32,
+      0,
+      33,
+      1,
+      "MASK"
+    ],
+    [
+      20,
+      33,
+      0,
+      34,
+      0,
+      "IMAGE"
+    ],
+    [
+      21,
+      1,
+      0,
+      40,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      11,
+      0,
+      40,
+      1,
+      "MASK"
+    ],
+    [
+      23,
+      40,
+      0,
+      41,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {}
+}
