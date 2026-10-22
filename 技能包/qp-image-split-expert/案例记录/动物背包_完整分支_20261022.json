@@ -1,0 +1,20 @@
+{
+  "case": "动物背包 Inventory",
+  "run_id": "ceb34e04-1ee8-40a6-8c45-61f6c8c06644",
+  "workflow_id": "c7e53a88-efb9-437c-a0f1-99c9d9f4b040",
+  "server_elapsed": "00:04:02",
+  "status": "不合格_可局部使用",
+  "psd_readback": true,
+  "layers": 80,
+  "native_text": 20,
+  "native_shape": 23,
+  "issues": [
+    "棕色Inventory标题条清字后仍有竖向白色残影。",
+    "部分分类图标保留三角杂点及像素轮廓噪点，需要连通域清理和曲线复核。",
+    "原生文字可编辑，但字体与原图不一致，细节风格尚未还原。",
+    "背景和空白纸张由模型近似重建，遮挡内容不能视作原始底稿。",
+    "胶带目前为不透明位图外形，软透明材质未恢复。"
+  ],
+  "planner": "Codex人工QP方案，服务器开源节点执行；未验证自动分类能力",
+  "downloaded_assets": 77
+}

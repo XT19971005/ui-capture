@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "source": "拾界插件/开发源码/自动拆图/design_properties.py",
+      "source_sha256": "1fe62d5fa7f2da142c0313eccc2d90b3652aabf431f029e3b5faec06d82ae9c4",
+      "target": "shijie_source/design_properties.py",
+      "target_sha256": "17c2a7659dd017979d280a181cec3be49700df4df58bcbf8ed91ee1a1571e07b",
+      "adaptation": "unchanged source"
+    },
+    {
+      "source": "拾界插件/开发源码/自动拆图/ui_components.py",
+      "source_sha256": "66b1913f4dcd84fd941c8bd7150d94913655ba07037ee1df291ab872c2a9cdb0",
+      "target": "shijie_source/ui_components.py",
+      "target_sha256": "ba71ecdb1de69de06972d005599960873f68db66da63916682415dcc33a3503a",
+      "adaptation": "relative import only"
+    },
+    {
+      "source": "拾界插件/开发源码/自动拆图/acceptance.py",
+      "source_sha256": "e2cff9bd765c41eac5f53fd81a1187c080d8d40be3662691b1bfbffc217b0311",
+      "target": "shijie_source/acceptance_rules.py",
+      "target_sha256": "73eca2b78d3ce8186264ca2c73e6c49a5d2740c940990f468d3d3126f40655e3",
+      "adaptation": "criteria and pure check_errors only; exclude model client"
+    }
+  ],
+  "scope": "pure UI structure and named acceptance contracts; not the full plugin or a deployed server implementation"
+}

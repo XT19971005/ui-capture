@@ -1,0 +1,50 @@
+{
+  "round07": {
+    "status": "NEEDS_REVIEW",
+    "run_id": "d9bd41a9-4738-4e38-b5ba-e6818a605fa3",
+    "server_duration_seconds": 194,
+    "server_report_layers": 65,
+    "server_report_native_text": 9,
+    "png_files_downloaded": 66,
+    "psd_local_download": "FAILED：pageAssets两次、媒体下载和直接文件下载均未取得PSD字节；不能宣称PSD独立回读通过。",
+    "visual_observations": [
+      "整图大体可重组，公鸡主图与动物小图已实际显示",
+      "木板与纸张底稿得到独立输出，模型补绘纹理仍与原图不同",
+      "进度轨道补全仍有原彩色填充，属于子层残留",
+      "动物按钮内底有抹除痕迹",
+      "部分藤蔓带木板残片，后方照片还包含被前照片遮挡的原图片段",
+      "字体是近似字体，非原字形复原",
+      "胶带暂为可见表面，未得到可靠软透明"
+    ],
+    "next_round": "08_控件底稿返修_待验收",
+    "final": "暂无合格最终成品"
+  },
+  "round08": {
+    "status": "PARTIAL_NEEDS_REVIEW",
+    "run_id": "040c9108-12c4-4c82-a786-df6142fc48d1",
+    "workflow_id": "bc23cfd4-2723-4506-9ecb-a9693cb470e9",
+    "server_duration_seconds": 203,
+    "server_report_layers": 65,
+    "server_report_native_text_layers": 9,
+    "png_files_saved": 66,
+    "review_basis": "实际查看纠正文件映射后的08_汇总检查_待验收.jpg。PNG按服务器返回的裁紧坐标重组；不是PSD独立合成。",
+    "improvements": [
+      "四个木质进度底槽已去掉原彩色填充，可与填充层分开",
+      "四个动物按钮内底去掉了动物主体残影，保留分开的动物小图",
+      "金币数值底板已清除左侧金币残片",
+      "整图可按原位置重组，主公鸡、动物小图、控件、文字分别成层"
+    ],
+    "remaining": [
+      "藤蔓仍带少量木板残片，尚不是干净完整底稿",
+      "后方照片仅保留可见部分，带有被前照片遮住的重复内容，未还原独立完整后照",
+      "胶带未完成可靠半透明去底",
+      "文字用近似字体；未证明字体与原图一致",
+      "四个按钮内底材质/色彩有模型补绘差异",
+      "原图隐藏的环境是模型近似重建，不是像素级还原",
+      "PSD下载失败，未完成实际PSD独立回读及原生文字/形状复核；不能以服务器计数代替此项"
+    ],
+    "inspection_script_correction": "平台输出顺序不稳定：本轮SaveImage在前，PSD图层索引整体偏移1。已按RGB/尺寸与服务器裁紧坐标重新配对，错误命名已修正；今后不能复用上轮下载序号映射。",
+    "psd_download_url": "http://47.117.156.236:8000/tycomfyui/workspace/runs/040c9108-12c4-4c82-a786-df6142fc48d1/output/66/?download=1",
+    "final_acceptance": "暂无合格最终成品；完整流程已执行，部分成果可用，不虚构70%评分。"
+  }
+}
