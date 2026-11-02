@@ -40,8 +40,11 @@ def render(state,source,target):
    for x,y in (pts[0],pts[-1]):draw.ellipse((x-width/2,y-width/2,x+width/2,y+width/2),fill=item['color'])
  canvas.save(target);canvas.close();return target
 
+PALETTE_COLORS=['#ffdf24', '#ff5c87', '#39d8ff', '#a78bfa', '#ff9838', '#6bf08c', '#ff4545', '#ff80c0', '#d060ff', '#705cff', '#4080ff', '#00a6b8', '#00c882', '#8ac926', '#c5e84c', '#ffa800', '#dc793d', '#a86d53', '#e8b6a5', '#ffffff', '#b8c0cc', '#687789', '#343a46', '#111111']
+
 def summary(state):
- return [{'color':i['color'],'name':i['label'] or '未命名标注','purpose':i.get('purpose','keep'),'strokes':i['strokes']} for i in state['items'] if i['strokes']]
+ customs=[i['color'] for i in state['items'] if i['color'] not in PALETTE_COLORS]
+ return [{'number':(PALETTE_COLORS.index(i['color'])+1 if i['color'] in PALETTE_COLORS else len(PALETTE_COLORS)+customs.index(i['color'])+1),'color':i['color'],'name':i['label'] or '未命名标注','purpose':i.get('purpose','keep'),'strokes':i['strokes']} for i in state['items'] if i['strokes']]
 
 def install(state,source,structure):
  if state and any(i['strokes'] for i in state['items']):

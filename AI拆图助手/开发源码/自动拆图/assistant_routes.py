@@ -44,7 +44,9 @@ def register(app,jobs,lock,pool):
      from assistant_split import generate
      def progress(value,message):
       with lock:item.update(progress=value,message=message)
-     result=generate(body,Path(folder),item['cancel'].is_set,progress)
+     def checkpoint(scene):
+      with lock:item.update(partial=scene,partialRevision=item.get('partialRevision',0)+1)
+     result=generate(body,Path(folder),item['cancel'].is_set,progress,on_scene=checkpoint)
     else:
      def reply(text):
       with lock:
@@ -71,7 +73,7 @@ def register(app,jobs,lock,pool):
   with lock:
    for key in list(jobs):
     if jobs[key].get('finished',float('inf'))<time.time()-3600:jobs.pop(key,None)
-   if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='已有任务正在处理，请等待或停止'),409
+   if sum(j['status'] in ('queued','running') for j in jobs.values())>=8:return jsonify(error='任务队列已满（2个执行、最多6个等待），请稍后提交'),409
    ident=uuid.uuid4().hex;jobs[ident]={'mode':'assistant','status':'queued','progress':0,'message':'准备对话…','cancel':threading.Event()}
   try:pool.submit(work,ident,body,split)
   except Exception:

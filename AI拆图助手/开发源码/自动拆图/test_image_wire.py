@@ -94,7 +94,7 @@ class ImageWireTests(unittest.TestCase):
   from pathlib import Path
   root=Path(__file__).resolve().parents[2];node_exe=root/'依赖/运行环境/node/node.exe'
   if not node_exe.is_file():self.skipTest('bundled Node runtime unavailable')
-  script=root.parent/'测试结果/AI拆图助手_工程容量_20261015/transport.test.cjs';ident=None;captured=[]
+  script=root/'开发源码/工作台增强/test-transport.cjs';ident=None;captured=[]
   try:
    with tempfile.TemporaryDirectory() as tmp:
     output=Path(tmp)/'wire.json';environment={**os.environ,'SHIJIE_TRANSPORT_FIXTURE':str(output)}

@@ -34,3 +34,9 @@
 
 /* Keep both controls inside the fixed layer sidebar; indentation consumes name space. */
 .studio-enabled #layer-list{overflow-x:hidden;scrollbar-gutter:stable;padding-right:4px}.studio-enabled #layer-list .studio-layer-row{box-sizing:border-box;min-width:0;width:100%;max-width:100%;margin-left:0!important;padding-left:calc(7px + min(var(--studio-layer-indent,0px),30%))!important;flex-shrink:0}.studio-enabled #layer-list .studio-layer-row :is(.label,.layer-name,strong){flex:1 1 0%;min-width:0}.studio-enabled #layer-list .studio-layer-controls{flex:0 0 46px;width:46px;justify-content:flex-end}.studio-enabled #layer-list .studio-layer-row small{flex:none}
+
+/* Lock state must remain recognizable without hovering or relying on color. */
+.studio-layer-controls [data-layer-control=locked]{border:1px solid transparent;border-radius:5px;min-height:26px;height:26px;color:#c1c5d2}
+.studio-layer-controls [data-layer-control=locked][aria-pressed=true]{color:#ffda86;background:#554329;border-color:#92733b}
+.studio-layer-controls [data-layer-control=locked] svg{width:16px;height:16px;stroke-width:2}
+.studio-layer-locked .label,.studio-layer-locked .layer-name{color:#e4d7bc}

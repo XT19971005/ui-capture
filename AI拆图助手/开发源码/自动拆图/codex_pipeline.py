@@ -52,10 +52,8 @@ def process(source,title,progress,cancelled,original_source=None,on_scene=lambda
   try:return _process(source,title,progress,cancelled,original_source,home,on_scene,resume_scene)
   finally:
    # A completed task must also remove the CLI's generated temporary scripts.
-   for attempt in range(60):
-    if CLIENT.close():break
-    time.sleep(.05)
-   else:raise RuntimeError('Codex 仍有请求，临时运行目录尚未清理')
+   # Another concurrent task may own the shared worker. Not idle is not failure.
+   CLIENT.close()
  return run_temporary(generate)
 def _planning_draft_signature(scene):
  data={key:scene.get(key,[]) for key in ('nodes','groups','edges')}

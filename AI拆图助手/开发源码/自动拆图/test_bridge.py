@@ -26,7 +26,9 @@ class BridgeTests(unittest.TestCase):
   import threading
   server.jobs['fixture']={'status':'running','progress':.2,'message':'test','cancel':threading.Event()}
   try:
-   r=self.c.post('/jobs',json={'image':'data:image/png;base64,AA=='},headers=self.headers);self.assertEqual(r.status_code,409)
+   from unittest.mock import patch
+   with patch.object(server.pool,'submit'):
+    r=self.c.post('/jobs',json={'image':'data:image/png;base64,AA=='},headers=self.headers);self.assertEqual(r.status_code,202)
    self.assertEqual(self.c.delete('/jobs/fixture',headers=self.headers).status_code,200);self.assertTrue(server.jobs['fixture']['cancel'].is_set())
    self.assertNotIn('cancel',self.c.get('/jobs/fixture',headers=self.headers).json)
   finally:server.jobs.clear()

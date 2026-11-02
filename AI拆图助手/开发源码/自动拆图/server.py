@@ -32,7 +32,7 @@ try:SAVED_PROJECTS=LocalProjectStore(configured_project_directory())
 except (OSError,ValueError,KeyError,TypeError):
     SAVED_PROJECTS=LocalProjectStore(DEFAULT_PROJECT_DIRECTORY);PROJECT_LOCATION_ERROR='本地工程目录配置损坏，请重新连接工程目录'
 PROJECT_LOCATION_LOCK=threading.RLock()
-jobs={};lock=threading.Lock();pool=concurrent.futures.ThreadPoolExecutor(max_workers=1)
+jobs={};lock=threading.Lock();pool=concurrent.futures.ThreadPoolExecutor(max_workers=2)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 LOCAL_ORIGINS={'http://127.0.0.1:19217','http://localhost:19217'}
 ALLOWED_ORIGINS=LOCAL_ORIGINS|{o.rstrip('/') for o in json.loads(Path(__file__).with_name('native-host.json').read_text('utf-8-sig')).get('allowed_origins',[])}
@@ -426,7 +426,7 @@ def submit():
     with lock:
         for key in list(jobs):
             if jobs[key].get('finished',float('inf'))<time.time()-3600:del jobs[key]
-        if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='已有图片正在处理，请等待完成或取消'),409
+        if sum(j['status'] in ('queued','running') for j in jobs.values())>=8:return jsonify(error='任务队列已满（2个执行、最多6个等待），请稍后提交'),409
         ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':('准备生成独立素材…' if replacement.get('intent')=='generate' else '准备生成替换候选…') if mode=='replace-image' else '准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)

@@ -81,3 +81,23 @@ class AssistantSplitTests(unittest.TestCase):
   self.assertEqual(len(calls),1);self.assertEqual((result['width'],result['height']),(100,160))
   from image_replace import _image
   with _image(result['nodes'][0]['src']) as im:self.assertEqual(im.getpixel((50,80)),(0,0,255,255))
+
+ def test_later_failure_preserves_completed_layers_and_pending_plan(self):
+  import assistant_split as s
+  body=self.body();calls=[];snapshots=[]
+  def extract(source,node,*args):
+   calls.append(node['name'])
+   if len(calls)==2:raise ValueError('第二层失败')
+   return {**node,'src':body['image'],'provenance':'codex-image-generation','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):
+   with self.assertRaises(ValueError) as caught:s.generate(body,Path(folder),lambda:False,lambda *_:None,on_scene=snapshots.append)
+  self.assertEqual(len(calls),2);self.assertEqual(len(snapshots),1)
+  partial=caught.exception.partial;self.assertTrue(partial['_partial']);self.assertEqual([n['name'] for n in partial['nodes']],['勋章'])
+  self.assertEqual(partial['recognition']['pendingLayers'],body['layers'][1:]);self.assertEqual(partial['recognition']['extractionStatus'],'INCOMPLETE')
+
+ def test_edge_risk_is_retained_as_incomplete_not_a_completed_split(self):
+  import assistant_split as s
+  body=self.body()
+  def extract(source,node,*args):return {**node,'src':body['image'],'provenance':'codex-image-generation','boundaryReviewRequired':node['name']=='勋章','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(len(result['nodes']),3);self.assertTrue(result['_partial']);self.assertEqual(result['recognition']['extractionStatus'],'INCOMPLETE');self.assertEqual([l['name'] for l in result['recognition']['pendingLayers']],['勋章'])

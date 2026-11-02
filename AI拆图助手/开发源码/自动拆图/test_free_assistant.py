@@ -110,3 +110,15 @@ class TaishiVisibleModelsTests(unittest.TestCase):
    def __exit__(self,*_):pass
    def json(self):return {'data':[{'id':'gpt-6.1-sol'}]}
   with patch('requests.get',return_value=Response()):self.assertEqual(m.gateway_models('test'),[{'id':'gpt-6.1-sol','name':'gpt-6.1-sol'}])
+class WorkspaceContextTests(FreeAssistantTests):
+ def test_workspace_context_reaches_planner_without_becoming_an_action(self):
+  import free_assistant as f
+  body=self.body();body['workspace']={'title':'金色地球贴图','hiddenLayers':[{'id':'grid','name':'独立经纬线'}],'recentOutcomes':['已放弃候选，未应用'],'earlierUserRequests':['先做地球，再做网格线']}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value={**self.plan(),'action':'discuss'}) as model:
+   f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   prompt=model.call_args.args[0]
+   for text in ['金色地球贴图','独立经纬线','已放弃候选，未应用','先做地球，再做网格线','用户最新纠正优先','应用不等于验收']:self.assertIn(text,prompt)
+ def test_workspace_rejects_unbounded_or_image_payload(self):
+  import free_assistant as f
+  for workspace in ({'title':'x','hiddenLayers':[],'recentOutcomes':['x'*501],'earlierUserRequests':[]},{'title':'x','hiddenLayers':[{'id':'x','name':'x','src':'private'}],'recentOutcomes':[],'earlierUserRequests':[]}):
+   with self.assertRaises(ValueError):f.validate_request({**self.body(),'workspace':workspace})

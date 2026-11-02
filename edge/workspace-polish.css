@@ -163,3 +163,19 @@
 .inline-view-settings{margin-top:18px;border-top:1px solid #343a49;padding-top:12px}
 .inline-view-settings h3{font-size:12px;font-weight:500;margin:0 0 10px}
 .inline-view-settings #background-settings{display:block}
+
+/* Compact layer inspector: state, properties, actions, then canvas settings. */
+.unified-workbench #properties>.property-heading{margin:0 0 8px;height:24px;min-height:24px;align-items:center}
+.unified-workbench #properties label{margin-bottom:10px!important}
+.unified-workbench #properties :is(.grid,.property-grid){margin-bottom:10px;gap:8px}
+.unified-workbench #properties :is(input:not([type=checkbox]),select){margin-top:5px}
+.unified-workbench #properties>.grid:has(.check){margin:6px 0 12px!important}
+.unified-workbench #properties #review{margin:4px 0 6px}
+.unified-workbench .selected-refine-controls{padding:12px 0;margin:12px 0 0;border-top:1px solid #343a49;border-bottom:0}
+.unified-workbench .selected-refine-controls .tip{margin:7px 0 0;line-height:1.6}
+.unified-workbench .inline-view-settings{margin-top:16px;padding-top:14px;border-top:1px solid #343a49}
+
+/* Image editing uses canvas transforms and the layer-list lock controls. */
+.unified-workbench:has(#image-file) #properties>.grid:has(#x),
+.unified-workbench:has(#image-file) #properties label:has(#locked),
+.unified-workbench:has(#image-file) #layer-style-mask{display:none!important}

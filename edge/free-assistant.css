@@ -61,3 +61,8 @@ main>footer{justify-content:flex-start;gap:10px}#split-time-summary{margin-left:
  .unified-workbench .app-header:has(#assistant-text-chip)>.workspace-switch a{font-size:11px;padding-inline:5px;gap:4px;min-width:0}
  body.free-assistant-open #assistant-toggle{right:12px;bottom:12px}
 }
+
+#assistant-confirm-generate{flex:none;align-self:stretch;min-height:36px;margin:8px 14px;padding:8px 12px;border-radius:8px}#assistant-confirm-generate[hidden]{display:none!important}
+#free-assistant .assistant-current-target{display:block;margin:0 0 8px;font-size:12px;line-height:1.6;color:#d8c9f4;white-space:normal;overflow-wrap:anywhere}
+#free-assistant [data-preview]{display:none!important}
+.canvas-comparison-open #image-generate-panel :is(#image-generate-apply,[data-cancel]){display:none!important}

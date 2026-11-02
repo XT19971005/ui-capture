@@ -144,10 +144,8 @@ def process(source,title,progress,cancelled,original_source=None,on_scene=lambda
  def analyze(home):
   try:return _process(source,title,progress,cancelled,original_source or source,home,resume_scene)
   finally:
-   for _ in range(60):
-    if CLIENT.close():break
-    time.sleep(.05)
-   else:raise RuntimeError('层级分析尚未结束，保留原工程')
+   # Another concurrent task may own the shared worker. Not idle is not failure.
+   CLIENT.close()
  return run_temporary(analyze)
 
 

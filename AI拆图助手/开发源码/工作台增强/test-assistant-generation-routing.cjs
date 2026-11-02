@@ -1,0 +1,3 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
+const s={structuredClone,crypto};s.window=s;vm.runInNewContext(fs.readFileSync(__dirname+'/free-assistant.js','utf8'),s);
+test('surface generation uses current selected reference, wide ratio and opaque surface instead of extraction',()=>{const o=s.ShijieFreeAssistant.extractionOptions({source:'old',nodes:[{id:'earth',type:'image',src:'selected'}]},['earth'],{action:'generate',reference:'selection',targetIds:['earth'],instruction:'地球展开为2:1长方形贴图，左右无缝，不带网格线，先生成地球层',name:'地球贴图'});assert.equal(o.referenceSrc,'selected');assert.equal(o.ratio,'equirectangular');assert.equal(o.transparent,false);assert.notEqual(o.task,'extract');assert.match(o.prompt,/不带网格线/)});

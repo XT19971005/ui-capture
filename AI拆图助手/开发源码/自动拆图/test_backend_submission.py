@@ -6,7 +6,7 @@ from PIL import Image
 from engine import png
 
 class SubmissionFailureTests(unittest.TestCase):
- def test_simultaneous_submissions_accept_only_one_job(self):
+ def test_simultaneous_submissions_accept_bounded_queue(self):
   import server
   image=png(Image.new('RGB',(4,4),'red'));barrier=threading.Barrier(8)
   def submit(_):
@@ -14,8 +14,8 @@ class SubmissionFailureTests(unittest.TestCase):
    return server.app.test_client().post('/jobs',json={'image':image},headers={'X-Shijie-Token':server.TOKEN},base_url='http://127.0.0.1:19217').status_code
   with patch.dict(server.jobs,{},clear=True),patch.object(server.pool,'submit'),concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
    codes=list(executor.map(submit,range(8)))
-   self.assertEqual(codes.count(202),1);self.assertEqual(codes.count(409),7)
-   self.assertEqual(len(server.jobs),1)
+   self.assertEqual(codes.count(202),8);self.assertEqual(codes.count(409),0)
+   self.assertEqual(len(server.jobs),8)
 
  def test_later_pipeline_failure_or_cancel_preserves_latest_completed_preview(self):
   import server,codex_pipeline
