@@ -14,7 +14,7 @@
 **/secrets*
 
 # Current source backup (local registrations and credentials excluded)
-!/拾界插件/
+!/AI拆图助手/
 !/技能包/
 **/runtime.local.json
 **/native-host.json
@@ -26,4 +26,19 @@
 !/源码备份说明.md
 
 # User artwork and generated demo outputs are not source backups.
-/拾界插件/插件程序/示例/
+/AI拆图助手/插件程序/示例/
+
+# Machine state, private registrations and user data never enter source backup.
+**/测试结果/
+**/运行/
+**/工程文件/
+**/desktop.ini
+**/*.lnk
+**/runtime.local.json*
+**/native-host.json*
+**/native-host.cmd*
+**/service.json*
+**/assistant-taishi.local.json*
+**/credentials.json*
+**/token.json*
+**/auth.json*

@@ -7,7 +7,7 @@ import {roundedPath,polygon,shape,nativeText,solidSVG,rgb8} from './psd-native.j
 
 const MAX_PAGE_PIXELS=12000000,MAX_LAYER_PIXELS=32000000;
 export function validateCapture(data){
-  if(!data||!['gugu-page-to-figma','shijie-ui-capture'].includes(data.format)||data.version!==1||!data.root)throw Error('请选择拾界或旧版咕咕扩展生成的 JSON 文件。');
+  if(!data||!['gugu-page-to-figma','shijie-ui-capture'].includes(data.format)||data.version!==1||!data.root)throw Error('请选择AI拆图助手或旧版咕咕扩展生成的 JSON 文件。');
   if(!Number.isFinite(data.width)||!Number.isFinite(data.height)||data.width<=0||data.height<=0||data.width>30000||data.height>30000)throw Error('画布尺寸无效。');
   let count=0,bytes=0;const uniqueImages=new Set();
   function visit(n,depth){

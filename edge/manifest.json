@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "拾界 · UI Capture",
+  "name": "AI拆图助手",
   "version": "0.9.0",
   "description": "抓取网页，编辑图层、文字与矢量，导出 Figma 插件数据、分层 PSD、SVG 和 PNG。Designed by XT。",
   "permissions": [
@@ -17,19 +17,19 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/shijie-16.png",
-      "32": "icons/shijie-32.png"
+      "16": "icons/ai-split-16.png",
+      "32": "icons/ai-split-32.png"
     },
-    "default_title": "拾界 · 抓取并编辑图层"
+    "default_title": "AI拆图助手 · 抓取并编辑图层"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "icons": {
-    "16": "icons/shijie-16.png",
-    "32": "icons/shijie-32.png",
-    "48": "icons/shijie-48.png",
-    "128": "icons/shijie-128.png"
+    "16": "icons/ai-split-16.png",
+    "32": "icons/ai-split-32.png",
+    "48": "icons/ai-split-48.png",
+    "128": "icons/ai-split-128.png"
   },
   "author": "XT",
   "optional_host_permissions": [

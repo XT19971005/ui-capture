@@ -3,5 +3,7 @@
 *.wasm binary
 
 # Preserve exact frozen source snapshot bytes.
-拾界插件/** -text
+AI拆图助手/** -text
 技能包/** -text
+
+*.ico binary
