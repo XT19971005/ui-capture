@@ -58,7 +58,28 @@
   return result;
  }
  async function paddedImage(src,width,height,x,y){const image=new Image();image.src=src;await image.decode();const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;canvas.getContext('2d').drawImage(image,x,y);return canvas.toDataURL('image/png')}
- async function growToFit(doc){const ns=doc.nodes.filter(n=>!n.versionArchived&&n.visible!==false&&!n.hidden),x=Math.min(0,...ns.map(n=>n.x)),y=Math.min(0,...ns.map(n=>n.y)),dx=Math.ceil(-x),dy=Math.ceil(-y),width=Math.ceil(Math.max(doc.width,...ns.map(n=>n.x+n.width))+dx),height=Math.ceil(Math.max(doc.height,...ns.map(n=>n.y+n.height))+dy);if(width===doc.width&&height===doc.height&&!dx&&!dy)return doc;if(width*height>6000000||Math.max(width,height)>6000)throw Error('完整部件需要更大的画布，超过当前尺寸上限；未裁切或应用');const src=doc.comparisonSource||doc.source;const padded=await paddedImage(src,width,height,dx,dy);for(const n of [...doc.nodes,...(doc.groups||[])]){if(n.x!==undefined){n.x+=dx;n.y+=dy}if(n.displayMask)n.displayMask=ShijieLayerStyle.transformMask(n.displayMask,{dx,dy})}const marks=doc._sourceAnnotations;if(marks?.version===1&&marks.width===doc.width&&marks.height===doc.height){const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,'0')).join('');if(marks.sourceHash===await hash(src)){const migrated=clone(marks);migrated.width=width;migrated.height=height;migrated.sourceHash=await hash(padded);for(const item of migrated.items)for(const stroke of item.strokes)for(const point of stroke){point[0]+=dx;point[1]+=dy}doc._sourceAnnotations=migrated}}doc.width=width;doc.height=height;doc.source=doc.comparisonSource=padded;return doc}
+ async function growToFit(doc){
+  const entries=new Map([...doc.nodes,...(doc.groups||[])].map(n=>[n.id,n])),parents=new Map();
+  for(const g of doc.groups||[])for(const id of g.children||[])parents.set(id,g.id);
+  const ns=doc.nodes.filter(n=>{const seen=new Set();while(n){if(seen.has(n.id)||n.versionArchived||n.visible===false||n.hidden&&n.visible===undefined||(n.opacity??1)<=0)return false;seen.add(n.id);n=entries.get(parents.get(n.id))}return true}),boxes=[];
+  // ponytail: inspect only out-of-canvas, plain rasters; styled layers retain
+  // their full bounds. Scan sequentially, bounded to one 6 MP buffer at a time.
+  for(const n of ns){
+   let box=n;
+   if(n.type==='image'&&!n.rotation&&!n.layerStyle&&!n.displayMask&&(n.x<0||n.y<0||n.x+n.width>doc.width||n.y+n.height>doc.height)){
+    const im=new Image();im.src=n.src;await im.decode();const w=im.naturalWidth||im.width,h=im.naturalHeight||im.height;
+    if(!(w>0&&h>0)||Math.max(w,h)>6000||w*h>6000000)throw Error('素材像素尺寸无效或超过上限，未扩展画布');
+    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(im,0,0);
+    const ink=ShijieLayerStyle.alphaBounds(canvas,{x:0,y:0,width:0,height:0});
+    if(!ink.width||!ink.height)continue;
+    box={x:n.x+ink.x*n.width/w,y:n.y+ink.y*n.height/h,width:ink.width*n.width/w,height:ink.height*n.height/h};
+   }
+   boxes.push(box);
+  }
+  const x=Math.min(0,...boxes.map(n=>n.x)),y=Math.min(0,...boxes.map(n=>n.y)),dx=Math.ceil(-x),dy=Math.ceil(-y),width=Math.ceil(Math.max(doc.width,...boxes.map(n=>n.x+n.width))+dx),height=Math.ceil(Math.max(doc.height,...boxes.map(n=>n.y+n.height))+dy);
+  if(width===doc.width&&height===doc.height&&!dx&&!dy)return doc;
+  if(width*height>6000000||Math.max(width,height)>6000)throw Error('完整部件需要更大的画布，超过当前尺寸上限；未裁切或应用');
+  const src=doc.comparisonSource||doc.source;const padded=await paddedImage(src,width,height,dx,dy);for(const n of [...doc.nodes,...(doc.groups||[])]){if(n.x!==undefined){n.x+=dx;n.y+=dy}if(n.displayMask)n.displayMask=ShijieLayerStyle.transformMask(n.displayMask,{dx,dy})}const marks=doc._sourceAnnotations;if(marks?.version===1&&marks.width===doc.width&&marks.height===doc.height){const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,'0')).join('');if(marks.sourceHash===await hash(src)){const migrated=clone(marks);migrated.width=width;migrated.height=height;migrated.sourceHash=await hash(padded);for(const item of migrated.items)for(const stroke of item.strokes)for(const point of stroke){point[0]+=dx;point[1]+=dy}doc._sourceAnnotations=migrated}}doc.width=width;doc.height=height;doc.source=doc.comparisonSource=padded;return doc}
  function createFlow(env){
   let state=null,sequence=0;
   function release(result,s){if(result&&(result._sessionId||result.delivery?.sessionId)!==(s.before._sessionId||s.before.delivery?.sessionId))env.release(result)}

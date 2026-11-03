@@ -1241,7 +1241,7 @@ var require_style_runtime = __commonJS({
       };
       return pass(pass(a, true), false);
     }
-    function alphaBounds2(canvas) {
+    function alphaBounds2(canvas, emptyBounds) {
       const w = canvas.width, h = canvas.height, d = canvas.getContext("2d").getImageData(0, 0, w, h).data;
       let x = w, y = h, r = 0, b = 0;
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (d[(j * w + i) * 4 + 3]) {
@@ -1250,7 +1250,7 @@ var require_style_runtime = __commonJS({
         r = Math.max(r, i + 1);
         b = Math.max(b, j + 1);
       }
-      return r > x && b > y ? { x, y, width: r - x, height: b - y } : { x: 0, y: 0, width: w, height: h };
+      return r > x && b > y ? { x, y, width: r - x, height: b - y } : emptyBounds || { x: 0, y: 0, width: w, height: h };
     }
     function fitGradientEffects2(layer, bounds) {
       if (!layer.effects?.gradientOverlay || !layer.canvas) return;

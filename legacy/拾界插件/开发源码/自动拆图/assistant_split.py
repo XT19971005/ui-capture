@@ -46,7 +46,7 @@ def generate(body,home,cancelled,progress,on_scene=None):
  from incremental_assets import extract_once
  nodes=[]
  def partial_scene():
-  return {'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':copy.deepcopy(nodes),'groups':[],'edges':[],'_partial':True,'recognition':{'extractionStatus':'INCOMPLETE','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':copy.deepcopy(body['layers']),'pendingLayers':copy.deepcopy([body['layers'][i] for i,n in enumerate(nodes) if n.get('boundaryReviewRequired')]+body['layers'][len(nodes):]),'timing':{'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}}}
+  return {'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':copy.deepcopy(nodes),'groups':[],'edges':[],'_partial':True,'recognition':{'extractionStatus':'INCOMPLETE','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':copy.deepcopy(body['layers']),'pendingLayers':copy.deepcopy(body['layers'][len(nodes):]),'timing':{'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}}}
  try:
   for index,layer in enumerate(body['layers']):
    if cancelled():raise InterruptedError('已停止指定拆层')
@@ -95,9 +95,9 @@ def generate(body,home,cancelled,progress,on_scene=None):
  result={'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':nodes,'groups':[],'edges':[],'recognition':{'extractionStatus':'COMPLETED','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':body['layers']}}
  if body.get('backgroundOnly'):
   result.update(width=nodes[0]['width'],height=nodes[0]['height'],source=nodes[0]['src'],comparisonSource=nodes[0]['src'],originalSource=nodes[0]['src'],originalSize={'width':nodes[0]['width'],'height':nodes[0]['height']})
- clipped=[body['layers'][i] for i,n in enumerate(nodes) if n.get('boundaryReviewRequired')]
- if clipped:
-  result['_partial']=True;result['recognition'].update(extractionStatus='INCOMPLETE',pendingLayers=copy.deepcopy(clipped),requestedLayers=copy.deepcopy(body['layers']))
+ # Review warnings retain every generated pixel; only absent layers need continuation.
+ if any(n.get('reviewIssue') or n.get('boundaryReviewRequired') or n.get('positionReviewRequired') for n in nodes):
+  result['recognition']['reviewStatus']='NEEDS_REVIEW'
  result['recognition']['timing']={'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}
  progress(1,'指定素材层已生成，等待预览确认')
  return result

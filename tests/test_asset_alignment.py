@@ -49,6 +49,60 @@ class AssetAlignment(SimpleTestCase):
             path = Path(folder) / 'blank.png'; Image.new('RGB', (500, 330), 'white').save(path)
             self.assertIsNone(align_to_source(path, node))
 
+    def test_transparent_padding_does_not_count_against_landmark_coverage(self):
+        source, node = self.sample()
+        raw = base64.b64decode(node['src'].split(',', 1)[1])
+        padded = Image.new('RGBA', (2400, 2400))
+        padded.paste(Image.open(io.BytesIO(raw)), (900, 1300))
+        data = io.BytesIO(); padded.save(data, 'PNG')
+        node['src'] = 'data:image/png;base64,' + base64.b64encode(data.getvalue()).decode()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'source.png'; source.save(path)
+            aligned = align_to_source(path, node)
+        self.assertIsNotNone(aligned)
+        for key, expected in [('x', -330), ('y', -570), ('width', 1200), ('height', 1200)]:
+            self.assertAlmostEqual(aligned[key], expected, delta=2)
+        self.assertEqual(aligned['src'], node['src'])
+
+    def test_expanded_extraction_registers_from_original_pixels_and_keeps_complete_png(self):
+        from expanded_assets import extract
+        source, node = self.sample()
+        node['extractionBrief'] = '完整物体，保留被遮挡的下部'
+        raw = base64.b64decode(node['src'].split(',', 1)[1])
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); original = root / 'source.png'; source.save(original)
+            def generate(prompt, references, target, **kwargs):
+                # The full expanded canvas makes small objects hard to resolve.
+                # A separate unmarked, unscaled source crop must supply details.
+                with Image.open(references[-1]) as detail:
+                    self.assertEqual(detail.size, (180, 130))
+                    self.assertEqual(detail.convert('RGB').tobytes(), source.crop((145, 75, 325, 205)).tobytes())
+                target.write_bytes(raw)
+                return dict(actualImageGeneration=True, provider='codex')
+            with patch('image_provider.CLIENT.generate', side_effect=generate):
+                result = extract(original, node, root, lambda: False, lambda _: None)
+        self.assertAlmostEqual(result['x'], 120, delta=1)
+        self.assertAlmostEqual(result['width'], 260, delta=1)
+        self.assertEqual(result['src'], node['src'])
+        self.assertFalse(result['positionReviewRequired'])
+        self.assertIn(result['assetReviewStatus'], ('NOT_REVIEWED', 'NEEDS_REVIEW'))
+        self.assertGreaterEqual(result['sourceAlignment']['inliers'], 12)
+
+    def test_expanded_extraction_without_evidence_does_not_claim_registration(self):
+        from expanded_assets import extract
+        source, node = self.sample(); node['extractionBrief'] = '完整物体'
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); original = root / 'source.png'
+            Image.new('RGB', source.size, 'white').save(original)
+            def generate(prompt, references, target, **kwargs):
+                target.write_bytes(base64.b64decode(node['src'].split(',', 1)[1]))
+                return dict(actualImageGeneration=True, provider='codex')
+            with patch('image_provider.CLIENT.generate', side_effect=generate):
+                result = extract(original, node, root, lambda: False, lambda _: None)
+        self.assertTrue(result['positionReviewRequired'])
+        self.assertNotIn('sourceAlignment', result)
+        self.assertEqual(result['src'], node['src'])
+
     def test_off_canvas_search_does_not_wrap_around_negative_coordinates(self):
         source, node = self.sample(); node['x'] = -300
         with tempfile.TemporaryDirectory() as folder:

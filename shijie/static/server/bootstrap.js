@@ -69,6 +69,7 @@
         const state = await request('engine/jobs/' + encodeURIComponent(job));
         const scene = state.result || state.partial || state.input;
         if (!scene) throw Error('任务暂未生成图层，请在任务记录中查看进度');
+        if (scene.nodes?.some(node => node.generationRecord?.expandedCanvas)) await ShijieImageReplacement.growToFit(scene);
         await studio.adapter.load(scene);
         studio.setInitial(scene);
         studio.sync(true);

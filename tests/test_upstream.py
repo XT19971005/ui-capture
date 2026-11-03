@@ -159,6 +159,32 @@ class NewCapabilities(TestCase):
             with self.assertRaisesRegex(ValueError,'透明区域'):generate(value,Path(folder),lambda:False,lambda *_:None)
             self.assertEqual(call.call_count,1)
 
+    def test_generated_layers_with_edge_warnings_need_review_not_regeneration(self):
+        import tempfile
+        from pathlib import Path
+        from assistant_split import generate
+        layers=[{'name':name,'instruction':'完整提取','box':{'x':0,'y':0,'width':4,'height':3}} for name in ('人物','玻璃')]
+        value={'image':png(),'width':4,'height':3,'title':'边缘风险','layers':layers}
+        generated={'id':'person','type':'image','src':png(),'boundaryReviewRequired':True,'reviewIssue':'边缘需校对','assetReviewStatus':'NEEDS_REVIEW','generationRecord':{'actualImageGeneration':True}}
+        snapshots=[]
+        with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',return_value=generated) as call:
+            result=generate(value,Path(folder),lambda:False,lambda *_:None,on_scene=snapshots.append)
+        self.assertEqual(call.call_count,2)
+        self.assertFalse(result.get('_partial'))
+        self.assertEqual(result['recognition']['extractionStatus'],'COMPLETED')
+        self.assertEqual(result['recognition']['reviewStatus'],'NEEDS_REVIEW')
+        self.assertFalse(result['recognition'].get('pendingLayers'))
+        self.assertEqual(result['nodes'],[generated,generated])
+        self.assertEqual(snapshots[0]['recognition']['pendingLayers'],layers[1:])
+        with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=[generated,ValueError('生成失败')]):
+            with self.assertRaises(ValueError) as failure:
+                generate(value,Path(folder),lambda:False,lambda *_:None)
+        partial=failure.exception.partial
+        self.assertTrue(partial['_partial'])
+        self.assertEqual(partial['nodes'],[generated])
+        self.assertEqual(partial['recognition']['extractionStatus'],'INCOMPLETE')
+        self.assertEqual(partial['recognition']['pendingLayers'],layers[1:])
+
     def test_poll_tolerates_replaced_streaming_file_without_cancelling_job(self):
         from pathlib import Path
         job=Job.objects.create(owner=self.a,mode='assistant-plan',title='stream',status='running')

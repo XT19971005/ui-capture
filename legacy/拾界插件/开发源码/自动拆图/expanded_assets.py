@@ -50,8 +50,25 @@ def extract(source,layer,assets,cancelled,on_status):
   with Image.open(guide) as im:
    aligned=Image.new('RGBA',(side,side));aligned.paste(im.convert('RGBA'),(px+mx,py+my));aligned.save(marked)
   images.append(marked);prompt+='第二张是同画布彩笔语义标注，'+RULES+'颜色说明：'+info.read_text('utf8')
+ x,y,lw,lh=(layer[k] for k in ('x','y','width','height'));pad=math.ceil(max(lw,lh)*.1)
+ detail_box=(max(0,math.floor(x-pad)),max(0,math.floor(y-pad)),min(w,math.ceil(x+lw+pad)),min(h,math.ceil(y+lh+pad)))
+ if detail_box[2]<=detail_box[0] or detail_box[3]<=detail_box[1]:raise ValueError('素材定位范围没有可读取的原图细节')
+ detail=assets/(layer['id']+'_原始细节.png');original.crop(detail_box).save(detail);images.append(detail)
+ prompt+='最后一张是未经缩放或标注的原图局部细节，仅供精确保留纹理、花纹和光照，不是输出构图或裁切边界。其在原图中的范围为'+str(detail_box)+'；最终仍按第一张扩展画布的位置与比例输出完整对象。'
  record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False)
  if cancelled():raise InterruptedError('已取消')
  if not isinstance(record,dict) or not record.get('actualImageGeneration'):raise ValueError('扩展素材未完成实际生成')
- registered=register_asset(target,side,(-mx-px,-my-py));src=registered['src']
+ registered=register_asset(target,side,(-mx-px,-my-py))
+ from asset_geometry import align_to_source
+ on_status('正在按原图地标校准位置与比例')
+ # The requested box only limits landmark search; never fit the complete object
+ # into the visible fragment or treat the generated square as registration proof.
+ aligned=align_to_source(source,{**registered,'type':'image',**{k:layer[k] for k in ('x','y','width','height')}})
+ if cancelled():raise InterruptedError('已取消')
+ if aligned:
+  registered.update({k:aligned[k] for k in ('src','x','y','width','height','sourceAlignment')})
+  registered['registration']={'method':'source-landmarks','referenceCanvas':registered['registration']}
+  registered['positionReviewRequired']=False
+  registered['reviewIssue']='生成素材触及图片边缘，可能不完整；原始像素已保留，需检查或返修' if registered['boundaryReviewRequired'] else ''
+ src=registered['src']
  return {'id':layer['id'],'name':layer['name'],'type':'image',**registered,'provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','assetKind':'complete-asset','assetReviewStatus':'NEEDS_REVIEW' if registered['reviewIssue'] else 'NOT_REVIEWED','review':True,'generationRecord':{'actualImageGeneration':True,'transparent':True,'sourceOriginalSHA256':hashlib.sha256(Path(source).read_bytes()).hexdigest(),'generatedAssetSHA256':hashlib.sha256(base64.b64decode(src.split(',',1)[1])).hexdigest(),'expandedCanvas':True,**{k:record[k] for k in ('provider','model','genId') if k in record}}}

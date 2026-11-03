@@ -35,7 +35,10 @@ def align_to_source(source,node):
  keep=inside.ravel().astype(bool);count=int(keep.sum())
  if count<12 or count/len(pairs)<(.5 if count>=40 else .6):return None
  aa,bb=aa[keep],bb[keep]
- if np.min(np.ptp(bb,axis=0))<8 or np.any(np.ptp(aa,axis=0)<np.array([iw,ih])*.1):return None
+ # Transparent padding is not object evidence. Require distributed landmarks
+ # across the opaque object, keeping the same coverage gate for its actual size.
+ _,_,opaque_w,opaque_h=cv2.boundingRect(alpha)
+ if np.min(np.ptp(bb,axis=0))<8 or np.any(np.ptp(aa,axis=0)<np.array([opaque_w,opaque_h])*.1):return None
  shear=max(abs(matrix[0,1]/matrix[0,0]),abs(matrix[1,0]/matrix[1,1])) if min(matrix[0,0],matrix[1,1])>0 else math.inf
  if shear>.15 or np.linalg.det(matrix[:,:2])<=0:return None
  sx,tx=np.linalg.lstsq(np.column_stack((aa[:,0],np.ones(count))),bb[:,0],rcond=None)[0]
