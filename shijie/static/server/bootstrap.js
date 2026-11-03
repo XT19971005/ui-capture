@@ -11,6 +11,7 @@
     return data;
   }
   const exportFonts = new Map();
+  let runningSnapshotSource = null;
   const fontFiles = {'Noto Sans CJK SC': 'NotoSansCJKsc', 'Noto Serif CJK SC': 'NotoSerifCJKsc', 'Liberation Sans': 'LiberationSans', 'Liberation Serif': 'LiberationSerif'};
   async function portableArtwork(markup) {
     // ponytail: serializers put family/weight on each text tag; embed only the used deployed faces.
@@ -38,7 +39,10 @@
     }));
     return markup.replace(/<svg\b[^>]*>/, opening => opening + '<style>' + rules.join('') + '</style>');
   }
-  window.ShijieService = {headers, request, portableArtwork};
+  window.ShijieService = {headers, request, portableArtwork,
+    // ponytail: hold this snapshot guard until its task is reopened, without
+    // background polling. Source equality survives edits; new imports still work.
+    isRunningSnapshot: doc => !!runningSnapshotSource && (doc?.comparisonSource || doc?.source) === runningSnapshotSource};
   window.addEventListener('load', async () => {
     // Load the same regular and bold faces used by Ubuntu before recalculating the workbench.
     if (document.fonts && window.studio) {
@@ -70,10 +74,11 @@
         const scene = state.result || state.partial || state.input;
         if (!scene) throw Error('任务暂未生成图层，请在任务记录中查看进度');
         if (scene.nodes?.some(node => node.generationRecord?.expandedCanvas)) await ShijieImageReplacement.growToFit(scene);
+        const active = ['queued', 'running'].includes(state.status);
+        runningSnapshotSource = active ? scene.comparisonSource || scene.source : null;
         await studio.adapter.load(scene);
         studio.setInitial(scene);
         studio.sync(true);
-        const active = ['queued', 'running'].includes(state.status);
         document.getElementById('status').textContent = active
           ? '后台任务仍在运行：' + (state.message || '等待处理') + '。当前是已完成图层的快照；请在任务记录中打开完成结果。'
           : state.input ? '已找回任务原图，尚未产生拆分结果；重新拆分将发起新任务。' : '已找回任务图层，编辑后请保存工程。';

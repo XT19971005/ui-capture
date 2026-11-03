@@ -83,6 +83,34 @@ test('recovering an expanded generated task keeps completed feet inside the rest
  assert.equal((await canvas.loadImage(restored.source)).height,30);assert.equal(scene.height,20);
 });
 
+async function runningSnapshot(status='running'){
+ const elements=new Map(),element=id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);};let loaded;
+ const c={URLSearchParams,location:{search:'?job=active'},structuredClone,Date,task:0,busy:false,selected:'asset',undo:[],redo:[],splitStarted:Date.now(),calls:0,
+  document:{currentScript:{dataset:{prefix:'',user:'2',csrf:'test'}},querySelector:()=>null,getElementById:element},$:element,
+  syncSplitTiming(){},syncExportControls(){},backgroundUI:{sync(){}},splitIncomplete:()=>true,hasSplitScene:()=>true,
+  viewSource:d=>(d||c.scene)?.comparisonSource||(d||c.scene)?.source,replacedImportSource:()=>null,splitResumeScene:d=>d,
+  setBusy(){},startSplitClock(){},stopSplitClock(){},refresh(){},persist:async()=>{},status(){},splitFeedback(){},
+  ShijieSmartSplit:{canRefine:()=>false,releaseSession(){},run:async()=>{c.calls++;throw Error('test request stopped');}},
+  fetch:async()=>({ok:true,json:async()=>({status,partial:{format:'shijie-scene',version:2,width:20,height:20,source:'same-source',_partial:true,nodes:[]}})})};
+ c.window=c;c.addEventListener=(_,callback)=>{loaded=callback;};c.studio={adapter:{load:async d=>{c.scene=structuredClone(d);}},setInitial(){},sync(){c.updateButtons();}};
+ const editor=fs.readFileSync(path.join(edge,'image-editor.js'),'utf8');
+ vm.runInNewContext(editor.slice(editor.indexOf('function updateButtons('),editor.indexOf('function setBusy(')),c);
+ vm.runInNewContext(editor.slice(editor.indexOf('async function recognize('),editor.indexOf('function assertRefineResult(')),c);
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../shijie/static/server/bootstrap.js'),'utf8'),c);await loaded();return c;
+}
+test('selecting or editing a running task snapshot cannot re-enable paid resume, while a different image is usable',async()=>{
+ for(const state of ['queued','running']){
+  const c=await runningSnapshot(state);c.scene=structuredClone(c.scene);c.scene.title='snapshot edit';c.updateButtons();
+  assert.equal(c.$('recognize').disabled,true);assert.equal(c.$('recognize').textContent,'后台任务处理中');
+  c.scene.source='different-image';c.updateButtons();assert.equal(c.$('recognize').disabled,false);
+ }
+ for(const state of ['completed','failed']){const c=await runningSnapshot(state);c.updateButtons();assert.equal(c.$('recognize').disabled,false);}
+});
+test('the split action itself rejects a running snapshot, not only its disabled button',async()=>{
+ const c=await runningSnapshot();await c.recognize();assert.equal(c.calls,0);
+ c.scene.source='different-image';await c.recognize();assert.equal(c.calls,1);
+});
+
 test('expanded split preview puts the original at the same origin and scale as the candidate',async()=>{
  const {api,canvas}=expansionHarness(),source=canvas.createCanvas(20,20);source.getContext('2d').fillStyle='#336699';source.getContext('2d').fillRect(0,0,20,20);
  const doc={format:'shijie-scene',version:2,width:20,height:20,source:source.toDataURL('image/png'),nodes:[{id:'original',type:'rect',fill:'#336699',x:0,y:0,width:20,height:20,src:source.toDataURL('image/png')}],groups:[],edges:[]},candidate=structuredClone(doc);
