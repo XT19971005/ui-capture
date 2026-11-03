@@ -36,7 +36,7 @@ ASSET_REVIEW['properties']['repairRegions']={'type':'array','maxItems':2,'items'
  'required':['x','y','width','height','confidence','reason']}}
 ASSET_REVIEW['required'].append('repairRegions')
 
-def review_asset(source,node,structure,cancelled,on_status=None):
+def review_asset(source,node,structure,cancelled,on_status=None,user_request=""):
  if on_status:on_status('正在对照原图复核完整素材：'+node['name'])
  structure=Path(structure);tag='逐件临时_'+uuid.uuid4().hex;files=[]
  try:
@@ -54,7 +54,10 @@ def review_asset(source,node,structure,cancelled,on_status=None):
   prompt+=ownership_context(node)
   prompt+='\n区分可见保真与推断补绘：原图可见区域必须准确；不可见区域检查结构合理、实体完整、连接自然、无硬切和拼接裂缝。无法从原图证实隐藏姿态的真实性，应记录在相应notes中，不单凭这一事实填issues或判FAIL；具体形体、比例、接缝或边缘缺陷仍必须FAIL。允许完整底稿延伸到原画板外，不能把画板裁切当完整素材裁切。'
   prompt+='\nrepairRegions 仅列可局部修复的具体形体/接缝/边缘或局部材质错误，最多2处；使用完整原图绝对整数坐标，框必须同时覆盖原图正确位置及当前错误部分，并留出自然衔接空间，每框不超过原图面积30%，必须位于当前完整图层范围内；为修复原画板边缘或遮挡处接缝，框必须跨过交界并覆盖两侧，允许超出原图画板但不可超出完整素材。画板外仍为原图绝对坐标，可为负数，隐藏内容只能按合理连续性修复。reason须具体描述原图的姿态/边线应如何恢复，不能只说“有偏差”。置信度至少0.9；整件全局色偏或没有确定局部位置时返回空数组；若某处衣料、印字或纹理被改写，可圈定该材质区域并要求保持现有形体与透明轮廓，只修复表面细节。不要用整个人物框代替局部错误。'
-  result=CLIENT.analyze(prompt,[*files,source],ASSET_REVIEW,cancelled,on_status=on_status)
+  prompt+="\n本次用户要求："+user_request if user_request else ""
+  from source_annotations import append_reference
+  prompt,references=append_reference(prompt,[*files,source],structure)
+  result=CLIENT.analyze(prompt,references,ASSET_REVIEW,cancelled,on_status=on_status)
   # Incomplete evidence is a failed check attempt, not evidence that pixels
   # need regeneration. Manual selected-layer callers retain the old asset.
   if not isinstance(result,dict) or result.get('status') not in ('PASS','FAIL','NEEDS_REVIEW') or not isinstance(result.get('issues'),list) or any(not isinstance(issue,str) for issue in result['issues']):raise ValueError('素材复核响应无效，保留原素材')

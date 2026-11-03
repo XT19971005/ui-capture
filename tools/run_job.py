@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import traceback
+import tempfile
 from contextlib import nullcontext
 from pathlib import Path
 from codex_client import CLIENT, CodexLoginRequired, CodexImageGenerationRequired, CodexImageGenerationFailed, CodexQuotaExceeded
@@ -42,29 +43,60 @@ def main():
     try:
         connection = json.loads(sys.stdin.read(16 * 1024)) or {}
         local_root = connection.get('local_model_root')
-        CLIENT.company = None if local_root else connection or None
-        with (nullcontext() if CLIENT.company or local_root else (Path(os.environ['CODEX_HOME']) / 'account.lock').open('a')) as lock:
+        envelope = 'analysisProvider' in connection
+        CLIENT.company = connection.get('company') if envelope and connection['analysisProvider']=='company' else None if envelope or local_root else connection or None
+        import assistant_models, image_provider
+        assistant_models.CONNECTION = {'key': connection.get('taishi')}
+        image_provider.CONNECTION = connection.get('image', {'provider':'codex','model':'gpt-image-2'})
+        needs_codex = connection.get('needsCodex', not CLIENT.company and not local_root)
+        with (nullcontext() if not needs_codex else (Path(os.environ['CODEX_HOME']) / 'account.lock').open('a')) as lock:
             if lock is not None:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             stage = 'validate_input'
-            value = validate_job(read_scene(root / 'input.json'))
+            raw = read_scene(root / 'input.json')
+            mode = connection.get('mode', raw.get('mode','codex'))
+            if mode=='assistant-plan':
+                from free_assistant import validate_request
+                value = {'mode':mode, 'body':validate_request(raw)}
+                value['body']['provider'] = connection.get('analysisProvider', raw['provider'])
+            elif mode=='assistant-split':
+                from assistant_split import validate
+                value = {'mode':mode, 'body':validate(raw)}
+            else:
+                value = validate_job(raw)
             if cancelled():
                 raise InterruptedError()
             stage = 'check_account'
-            if not local_root:
-                CLIENT.ensure_ready(require_images=requires_generation(value))
+            if needs_codex:
+                CLIENT.ensure_ready(require_images=requires_generation(value) and image_provider.settings()['provider']=='codex')
             stage = 'process'
             modes = {'codex': 'codex_pipeline', 'refine-ui': 'refine_ui', 'refine-selected': 'selected_refine',
                      'repair-order': 'layer_order', 'replace-image': 'image_replace'}
-            process = importlib.import_module(modes[value['mode']]).process if value['mode'] != 'local-layered' else None
+            process = importlib.import_module(modes[value['mode']]).process if value['mode'] not in ('local-layered','assistant-plan','assistant-split') else None
             options = {}
+            if value['mode']=='codex' and value.get('annotations'):
+                options['annotations']=value['annotations']
             if value['mode'] == 'refine-selected':
+                if value.get('dialogue'): options['dialogue']=value['dialogue']
                 options['selected_ids'] = value['selected_ids']
                 if value['region'] is not None:
                     options['region'] = value['region']
             if value['mode'] == 'replace-image':
                 options['replacement'] = value['replacement']
-            if value['mode'] == 'local-layered':
+            if value['mode'] in ('assistant-plan','assistant-split'):
+                def assistant_run(folder):
+                    if value['mode']=='assistant-plan':
+                        from free_assistant import plan
+                        return plan(value['body'], folder, cancelled, lambda m:progress(0,m),
+                                    lambda text:write_json(root/'reply.json',{'text':text[:4000]}))
+                    from assistant_split import generate
+                    return generate(value['body'], folder, cancelled, progress, on_scene=preview)
+                with tempfile.TemporaryDirectory(prefix='assistant-', dir=root) as folder:
+                    scene = assistant_run(Path(folder))
+                if value['mode']=='assistant-split':
+                    from layer_review import unique_layer_names
+                    unique_layer_names(scene)
+            elif value['mode'] == 'local-layered':
                 from shijie.pipeline.local_model import process as local_process
                 if not local_root:
                     raise LocalModelError('本机模型连接未配置')
@@ -80,7 +112,7 @@ def main():
                 (root / 'result.psd').write_bytes(session['psd'])
             if session and session['audit']:
                 write_json(root / 'review.json', session['audit'])
-            scene['_sessionId'] = ident
+            if scene.get('format')=='shijie-scene': scene['_sessionId'] = ident
             if scene.get('delivery'):
                 scene['delivery']['sessionId'] = ident
             write_scene(root / 'result.json', scene)

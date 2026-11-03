@@ -93,3 +93,7 @@
 9. 隐藏旧版与当前修正版重叠：旧版不进当前实体候选；未选中节点和图片字节不变，修正成功保留旧版、可撤销；按2.36仅点击“保存工程”才持久保存。
 
 外部技能筛选：已阅读[Anthropic frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md)，其原创/重设计目标不适合替换原图；已阅读[Vercel web-design-guidelines](https://github.com/vercel-labs/agent-skills/blob/main/skills/web-design-guidelines/SKILL.md)及其[检查规则](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md)，可用于工作台交互、可访问性与性能检查，不能作为语义拆层器。未盲目安装或引入风格美化。
+
+
+## 2026-10-22 UI细粒度拆分补充
+用户要求尽可能细致地保留可编辑结构：逐组件核对容器底板、边框、填充、图片、文字、纯色图标、高光、阴影、遮罩、交互状态与同款复用。不强制每项存在，不为堆层数拆碎完整实体。折角纸面与半透明胶带独立；每状态条的轨道、填充、图标底壳与纯色符号独立。动物选择区域的大木板、按钮边框、内部底色、动物图片独立；同款边框验收后复用，选中/非选中底色保留。纯色须验证，渐变和木纹不能涂平冒充纯色矢量。知识存在不等于执行已实现，分类阶段先审阅，再执行一条分支。

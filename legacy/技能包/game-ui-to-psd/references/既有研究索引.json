@@ -1,0 +1,62 @@
+{
+  "updated": "2026-10-20",
+  "path_base": "本用户UI拆分工作区根目录；路径均相对此目录",
+  "resume_rule": "继续拾界或ComfyUI拆图前，先查本索引、既有研究与当前实现，再研究外部项目。区分已研究、已实现、已部署、已实际验收；不能因当前聊天缺少历史便将已存在的项目积累当作新发现。",
+  "local_evidence": [
+    {
+      "path": "开源工具/image-to-slice",
+      "status": "本地已有完整参考源码、文档与测试"
+    },
+    {
+      "path": "sites/ui-split-public/README.md",
+      "status": "技术来源明确记载参考50kg/image-to-slice的语义切分、原位资产、文本重建流程"
+    },
+    {
+      "path": "拾界插件/开发源码/图像重建/研究结论与实现路线.txt",
+      "status": "2026-10-09已有研究；统一场景、文字/矢量/图片分类、原生PSD导出与验收边界"
+    },
+    {
+      "path": "拾界插件/开发源码/当天变更记录.md",
+      "status": "历次实现、回归、失败与未完成项；含森之鹿灵既有测试记录"
+    },
+    {
+      "path": "拾界插件/开发源码/自动拆图",
+      "status": "现有拆图实现和回归；新ComfyUI节点应核对可复用能力"
+    },
+    {
+      "path": "技能包/game-ui-to-psd/references/工具位置.md",
+      "status": "原生PSD流水线、回读及可用依赖入口"
+    },
+    {
+      "path": "技能包/comfyui-shijie",
+      "status": "本轮ComfyUI适配源码；源码回归不代表服务器部署或视觉验收"
+    }
+  ],
+  "external_projects": [
+    {
+      "url": "https://github.com/QwenLM/Qwen-Image-Layered",
+      "status": "当前服务器图片分层已使用；官方明确提示词描述整图，不用于精确指定每层语义；此前按层强制语义的尝试失败，应纠正",
+      "license": "Apache-2.0"
+    },
+    {
+      "url": "https://github.com/jupiterstudio/game-assets-extractor",
+      "status": "用户指出此前研究过；2026-10-20重新核对README为Grounding DINO检测、SAM分割、边缘处理与原坐标layout；当前检索未定位直接本地研究文件，不据此断言从未研究",
+      "reuse_gate": "复制仓库实现前确认仓库许可证；底层模型权重许可分别核对"
+    },
+    {
+      "url": "https://github.com/50kg/image-to-slice",
+      "status": "本地已有源码和明确参考记录；MIT；其可配置模型API不等于默认全开源离线运行，ComfyUI仍遵守全开源服务器约定"
+    }
+  ],
+  "daily_log": "测试结果/2026-10-20_ComfyUI日报记录.json",
+  "qp_expert": {
+    "name": "QP拆图专家",
+    "meaning": "棋牌",
+    "version": "1.1.0",
+    "relative_to_this_index": "../../qp-image-split-expert/SKILL.md",
+    "scope": "自包含ComfyUI拆图专家规则，含当前案例真实边界；不是已验收执行器",
+    "platform_draft": "http://47.117.156.236:8000/tycomfyui/workspace/skill-workflows/?draft=b44b64c9-3822-4d7c-812a-bb91ae54eaa8",
+    "platform_skill_version": "1.0.1（旧上传卡片，运行时知识包另行部署）",
+    "runtime_knowledge": "../../qp-image-split-expert/knowledge/来源清单.json"
+  }
+}

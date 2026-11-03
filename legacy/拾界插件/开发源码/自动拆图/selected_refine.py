@@ -12,19 +12,17 @@ def validate_selection(scene,ids,region=None):
   validate_targets(scene,ids,region)
  return set(ids)
 
-def process(source,title,progress,cancelled,original_source=None,on_scene=lambda scene:None,resume_scene=None,selected_ids=None,region=None):
+def process(source,title,progress,cancelled,original_source=None,on_scene=lambda scene:None,resume_scene=None,selected_ids=None,region=None,dialogue=None):
  from session_outputs import run_temporary
  from codex_client import CLIENT
  def generate(home):
-  try:return _process(source,title,progress,cancelled,original_source or source,home,resume_scene,selected_ids,region)
+  try:return _process(source,title,progress,cancelled,original_source or source,home,resume_scene,selected_ids,region,dialogue)
   finally:
-   for _ in range(60):
-    if CLIENT.close():break
-    time.sleep(.05)
-   else:raise RuntimeError('选中项请求尚未结束，保留原工程')
+   # Another concurrent task may own the shared worker. Not idle is not failure.
+   CLIENT.close()
  return run_temporary(generate)
 
-def _process(source,title,progress,cancelled,original_source,home,resume_scene,selected_ids,region=None):
+def _process(source,title,progress,cancelled,original_source,home,resume_scene,selected_ids,region=None,dialogue=None):
  from engine import load_source
  from acceptance import review_asset
  from incremental_assets import extract_once,extract_checked,check_resume_native,effective_locked_ids
@@ -43,18 +41,32 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
  folder=Path(home)/'选中项修正';assets=folder/'素材';structure=folder/'结构'
  assets.mkdir(parents=True);structure.mkdir()
  work=structure/'工作原图.png';work.write_bytes(base64.b64decode(source.split(',',1)[1],validate=True))
+ from source_annotations import validate as validate_annotations,install
+ annotation_state=scene.get('_sourceAnnotations')
+ if isinstance(annotation_state,dict) and (annotation_state.get('sourceHash')!=hashlib.sha256(source.encode('utf8')).hexdigest() or annotation_state.get('width')!=scene['width'] or annotation_state.get('height')!=scene['height']):annotation_state=None
+ annotations=validate_annotations(annotation_state,source,scene['width'],scene['height'])
+ install(annotations,work,structure)
  original=structure/'原文件.png';original.write_bytes(raw)
  inherited_locked=effective_locked_ids(scene)
  if ids&inherited_locked:raise ValueError('选中图层继承锁定，请先解锁')
  selected=[n for n in scene['nodes'] if n['id'] in ids and not n.get('versionArchived')]
  if not selected:raise ValueError('选中图层已锁定，请先解锁')
+ user_request=''
+ if dialogue is not None:
+  from selected_dialogue import validate_dialogue,request_text,discuss
+  dialogue=validate_dialogue(dialogue);user_request=request_text(dialogue)
+  if dialogue['action']=='discuss':
+   response=discuss(work,scene,selected,dialogue,structure,cancelled,lambda m:progress(.2,m))
+   scene.pop('delivery',None);scene.pop('_sessionId',None)
+   scene.setdefault('recognition',{})['selectedDialogue']=response
+   return scene
  total=len(selected);notes=[];changed=[];checked=[]
  diagnostic=None;diagnostic_error=None;entity_changes=[];joint=len(selected)>1
  if joint:
   from selected_entities import diagnose
   progress(.05,'正在联合判断所选对象的完整实体…')
   try:
-   diagnostic=diagnose(work,scene,selected,structure,cancelled,lambda m:progress(.05,m),region)
+   diagnostic=diagnose(work,scene,selected,structure,cancelled,lambda m:progress(.05,m),region,**({'user_request':user_request} if user_request else {}))
    notes.extend(diagnostic['notes'])
   except InterruptedError:raise
   except Exception as error:
@@ -63,7 +75,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
   from region_refine import diagnose,contains
   progress(.05,'正在对照原图检查框选区域…')
   try:
-   diagnostic=diagnose(work,scene,selected,region,structure,cancelled,lambda m:progress(.05,m))
+   diagnostic=diagnose(work,scene,selected,region,structure,cancelled,lambda m:progress(.05,m),**({'user_request':user_request} if user_request else {}))
    notes.extend(diagnostic['notes'])
   except InterruptedError:raise
   except Exception as error:
@@ -77,10 +89,12 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
    if diagnostic_error:raise ValueError(diagnostic_error)
    # A combined composition can hide clipped limbs and dirty edges. Unscoped
    # repair still inspects each complete asset on its own contrasting sheets.
-   quality=next(c for c in diagnostic['assetChecks'] if c['id']==n['id']) if diagnostic is not None and region is not None else review_asset(work,n,structure,cancelled,on_status=lambda m:progress(.05+.75*index/total,m))
+   quality=next(c for c in diagnostic['assetChecks'] if c['id']==n['id']) if diagnostic is not None and region is not None else review_asset(work,n,structure,cancelled,on_status=lambda m:progress(.05+.75*index/total,m),**({'user_request':user_request} if user_request else {}))
   except InterruptedError:raise
   except Exception as error:
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='检查未完成，保留原素材：'+str(error)[:200]);notes.append(n['name']+'：'+n['reviewIssue']);continue
+  if n.get('provenance')=='source-crop-fallback' or n.get('generationRecord',{}).get('actualImageGeneration') is False:
+   quality={**quality,'status':'FAIL','issues':[*quality.get('issues',[]),'当前只是提取失败的原图裁片，须重新提取独立完整透明素材']}
   checked.append(n['id'])
   if region is None:
    from asset_completion import correct_reviewed_color
@@ -97,7 +111,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
     validate_placement(placement,scene,region)
     if n.get('assetKind')=='background':raise ValueError('完整背景不使用前景尺寸校对')
     if quality.get('status')=='NEEDS_REVIEW':raise ValueError('尺寸证据尚未确认')
-    if placement['contentCorrect']:
+    if placement['contentCorrect'] and n.get('provenance')!='source-crop-fallback' and n.get('generationRecord',{}).get('actualImageGeneration') is not False:
      candidate=correct_placement(n,placement,scene,region)
      candidate.update(assetReviewStatus='NOT_REVIEWED',review=True)
      scene['nodes'][scene['nodes'].index(n)]=candidate;changed.append(n['id']);continue
@@ -120,7 +134,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
    except InterruptedError:raise
    except Exception as error:
     n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='局部返修未完成，保留原素材：'+str(error)[:180]);notes.append(n['name']+'：'+n['reviewIssue']);continue
-  issues=quality.get('issues',[]) or ['选中素材存在需要修正的问题'];n['_repairNotes']=issues
+  issues=quality.get('issues',[]) or ['选中素材存在需要修正的问题'];n['_repairNotes']=issues+([user_request] if user_request else [])
   if region is not None:n['_repairNotes']=['仅修正当前已确认图层；ROI '+str(region)+'；保持完整实体，完整图层框不能跨出 ROI，不处理其他图层。',*issues]
   progress(.1+.75*index/total,'正在修正选中项：'+n['name'])
   if n.get('assetKind')=='background':
@@ -162,7 +176,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
    for index,node in enumerate(result['nodes']):
     if region is not None and not contains(region,node):
      result['nodes'][index]=native[index];notes.append(node['name']+'：修正结果越过区域，已保留原参数')
-  else:result=check_resume_native(work,subset,cancelled,lambda m:progress(.82,m))
+  else:result=check_resume_native(work,subset,cancelled,lambda m:progress(.82,m),**({'user_request':user_request} if user_request else {}))
   replacements={n['id']:n for n in result['nodes']}
   for index,n in enumerate(scene['nodes']):
    if n['id'] in replacements:

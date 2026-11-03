@@ -19,3 +19,5 @@ require('../legacy/拾界插件/开发源码/工作台增强/test-image-generate
 require('../legacy/拾界插件/开发源码/工作台增强/test-region-refine.cjs');
 require('../legacy/拾界插件/开发源码/图像重建/test-local-project-transport.cjs');
 require('../legacy/拾界插件/开发源码/图像重建/test-psd-groups.cjs');
+
+require('./test_upstream.cjs');

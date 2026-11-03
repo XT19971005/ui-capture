@@ -20,7 +20,12 @@ def job_root(job):
 
 def check_space(root, size=0):
     # ponytail: Per-user directory scan is O(number of files); replace with a ledger when measured necessary.
-    used = sum(p.stat().st_size for p in root.rglob('*') if p.is_file())
+    used = 0
+    for path in root.rglob('*'):
+        try:
+            if path.is_file(): used += path.stat().st_size
+        except FileNotFoundError:
+            pass  # Atomic job snapshots may be renamed during the scan.
     if used + size > settings.USER_QUOTA or shutil.disk_usage(root).free - size < settings.MIN_FREE:
         raise OSError('存储空间不足，原工程保留')
 

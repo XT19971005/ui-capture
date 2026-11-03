@@ -63,7 +63,7 @@ def validate_resume(value):
 
 
 def validate_job(data):
-    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds','region','replacement'}:raise ValueError('任务参数无效')
+    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds','region','replacement','dialogue','annotations'}:raise ValueError('任务参数无效')
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
     if mode not in ('codex','local-layered','refine-ui','refine-selected','repair-order','replace-image'):raise ValueError('处理方式无效')
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):raise ValueError('请选择有效图片')
@@ -77,6 +77,11 @@ def validate_job(data):
         try:validate_selection(resume,selected_ids,region)
         except (ValueError,TypeError) as exc:raise ValueError(str(exc))
     elif selected_ids is not None or region is not None:raise ValueError('当前处理方式不接受选中图层或检查区域')
+    dialogue=data.get('dialogue')
+    if dialogue is not None:
+        if mode!='refine-selected':raise ValueError('对话只支持选中图层检查')
+        from selected_dialogue import validate_dialogue
+        validate_dialogue(dialogue)
     replacement=data.get('replacement')
     if mode=='replace-image':
         from image_replace import validate_replacement
@@ -92,13 +97,16 @@ def validate_job(data):
         if not can_refine(resume):raise ValueError('当前工程没有可精修的完整、未锁定文字或矢量图层；请先完成拆图')
     from engine import load_source
     try:
-        load_source(source).close()
+        with load_source(source) as image:
+            from source_annotations import validate as validate_annotations
+            annotations=validate_annotations(data.get('annotations') or ((resume or {}).get('_sourceAnnotations') if mode=='codex' else None),source,image.width,image.height)
         load_source(original).close()
     except (OSError, ValueError) as exc:
         raise ValueError('图片内容无效或尺寸超过限制') from exc
-    return {"source": source, "title": title, "mode": mode, "original": original, "resume": resume, "selected_ids": selected_ids, "region": region, "replacement": replacement}
+    return {"source": source, "title": title, "mode": mode, "original": original, "resume": resume, "selected_ids": selected_ids, "region": region, "replacement": replacement, "dialogue": dialogue, "annotations": annotations}
 
 
 def requires_generation(value):
     # Selected-layer refinement can regenerate an image after review, so check before dispatch.
-    return value['mode'] in ('codex', 'replace-image', 'refine-selected')
+    if value['mode']=='assistant-plan' or (value.get('dialogue') or {}).get('action')=='discuss':return False
+    return value['mode'] in ('codex', 'replace-image', 'refine-selected', 'assistant-split')

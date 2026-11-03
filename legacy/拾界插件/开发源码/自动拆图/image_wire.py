@@ -69,7 +69,7 @@ def decode_job(value):
  if not isinstance(value,dict):raise ValueError('任务参数无效')
  if 'wireFormat' not in value:
   measure(value);return value
- if set(value)!={'wireFormat','wireVersion','images','job'} or value.get('wireFormat')!='shijie-image-table' or type(value.get('wireVersion')) is not int or value['wireVersion']!=1:raise ValueError('不支持的工程图片表格式或版本，请更新拾界后重试')
+ if set(value)!={'wireFormat','wireVersion','images','job'} or value.get('wireFormat')!='shijie-image-table' or type(value.get('wireVersion')) is not int or value['wireVersion']!=1:raise ValueError('不支持的工程图片表格式或版本，请更新AI拆图助手后重试')
  table=value['images'];job=value['job']
  if not isinstance(table,list) or len(table)>MAX_IMAGES or not isinstance(job,dict):raise ValueError('工程图片表结构无效')
  seen=set();total=0

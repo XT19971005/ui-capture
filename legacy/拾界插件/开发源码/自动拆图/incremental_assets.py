@@ -161,7 +161,7 @@ def remember_record(node,structure,background=False):
    if record.get('generatedAssetSHA256') not in (None,digest):return node
    if record.get('file') and hashlib.sha256(Path(record['file']).read_bytes()).hexdigest()!=digest:return node
    record.setdefault('generatedAssetSHA256',digest)
-  node['generationRecord']={k:record[k] for k in ('actualImageGeneration','provider','transparent','sourceOriginalSHA256','generatedAssetSHA256') if k in record}
+  node['generationRecord']={k:record[k] for k in ('actualImageGeneration','transparent','sourceOriginalSHA256','generatedAssetSHA256','provider','model','genId') if k in record}
  return node
 
 def restore_asset(cached,current,assets,structure,source_sha,background=False):
@@ -305,7 +305,7 @@ def check_resume_assets(source,scene,previous,assets,structure,source_sha,cancel
    repairs[key]=candidate
  return reusable,repairs
 
-def check_resume_native(source,scene,cancelled,on_status):
+def check_resume_native(source,scene,cancelled,on_status,user_request=""):
  """Manual selected-layer review helper; separate from missing-only Continue."""
  from refine_ui import PATCHES,apply_patches
  from codex_client import CLIENT
@@ -315,7 +315,7 @@ def check_resume_native(source,scene,cancelled,on_status):
  if cancelled():raise InterruptedError('已取消')
  if on_status:on_status('正在检查已有文字与简单面板…')
  try:
-  response=CLIENT.analyze('这是用户手动检查选中图层。依据原图检查所提供的原生文字和简单矢量参数，仅返回确有错误的修正；不要改图像、父组、顺序、ID、类型或蒙版。对照文案、字高字宽、方向、字号和面板位置；禁止横向拉伸、缩小正文、把普通字改成粗描边字、凭空新增投影/发光/叠加。未知字段填null，不确定则保留。所提供的是当前参数及原图，不是实际PSD回读，不宣称已经视觉验收通过。当前图层：'+json.dumps(editable,ensure_ascii=False),[source],PATCHES,cancelled,on_status=on_status)
+  response=CLIENT.analyze('这是用户手动检查选中图层。依据原图检查所提供的原生文字和简单矢量参数，仅返回确有错误的修正；不要改图像、父组、顺序、ID、类型或蒙版。对照文案、字高字宽、方向、字号和面板位置；禁止横向拉伸、缩小正文、把普通字改成粗描边字、凭空新增投影/发光/叠加。未知字段填null，不确定则保留。所提供的是当前参数及原图，不是实际PSD回读，不宣称已经视觉验收通过。当前图层：'+json.dumps(editable,ensure_ascii=False)+'\n用户本次要求：'+user_request,[source],PATCHES,cancelled,on_status=on_status)
   result,warnings=apply_patches(scene,response.get('patches'))
   result.setdefault('recognition',{}).setdefault('warnings',[]).extend(warnings+[n for n in response.get('notes',[]) if isinstance(n,str)])
   return result

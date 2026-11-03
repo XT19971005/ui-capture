@@ -1,5 +1,7 @@
 import json
 import mimetypes
+import logging
+import traceback
 import hashlib
 import shutil
 import re
@@ -71,13 +73,16 @@ def api(request, route):
                      'canManage': can_manage_user(request.user, u)} for u in User.objects.order_by('id')]})
         if route.startswith('engine/'):
             response = engine(request, route[7:])
-            if route.startswith(('engine/codex/', 'engine/company/', 'engine/ai/')):
+            if route.startswith(('engine/codex/', 'engine/company/', 'engine/ai/', 'engine/assistant/', 'engine/image-provider')):
                 response['Cache-Control'] = 'no-store'
             return response
         return error('接口不存在', 404)
     except ProjectConflict as exc:
         return error(str(exc), 409)
-    except (FileNotFoundError, User.DoesNotExist, Job.DoesNotExist):
+    except FileNotFoundError as exc:
+        logging.getLogger(__name__).warning('Missing storage record at %s', [(Path(f.filename).name, f.lineno, f.name) for f in traceback.extract_tb(exc.__traceback__)])
+        return error('记录不存在', 404)
+    except (User.DoesNotExist, Job.DoesNotExist):
         return error('记录不存在', 404)
     except (ValueError, TypeError, KeyError, RecursionError, UnicodeError) as exc:
         return error(str(exc)[:240] or '参数无效')
@@ -96,8 +101,22 @@ def engine(request, route):
         return JsonResponse({'service': 'shijie-engine', 'version': '1.0.0', 'ready': True, 'missing': [],
                              'codexAvailable': True, 'imageWireVersion': 1, 'regionRefineVersion': 1,
                              'imageReplaceSelectionVersion': 1, 'imageGenerateVersion': 1,
-                             'localProjectStoreVersion': 1,
+                             'localProjectStoreVersion': 1, 'sourceAnnotationsVersion': 1, 'assistantVersion': 1,
+                             'freeAssistantVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
                              'jobModes': ['codex', 'local-layered', 'refine-ui', 'refine-selected', 'repair-order', 'replace-image']})
+    if route in ('assistant/models', 'assistant/key', 'image-provider'):
+        from . import providers
+        if method == 'GET' and route == 'assistant/models':
+            return JsonResponse(providers.models(owner, request.GET.get('provider', 'auto')))
+        if method == 'GET' and route == 'image-provider':
+            return JsonResponse(providers.image_status(owner))
+        if method == 'POST' and route != 'assistant/models':
+            if not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost','127.0.0.1','::1'):
+                return error('请通过 HTTPS 打开拾界后再配置密钥')
+            if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
+            with transaction.atomic():
+                User.objects.select_for_update().get(pk=owner.pk)
+                return JsonResponse(providers.save(owner, body(request), 'taishi' if route=='assistant/key' else 'aimake'))
     if route == 'ai/status' and method == 'GET':
         from . import ai
         return JsonResponse(ai.connections(owner))
@@ -177,35 +196,60 @@ def engine(request, route):
                 return JsonResponse({'project': store.save(ident, value, expected), 'directory': directory})
     if route == 'projects' and method == 'GET':
         return JsonResponse({'items': []})
-    if route == 'jobs' and method == 'POST':
+    if route in ('jobs', 'assistant/jobs', 'assistant/split') and method == 'POST':
         value = body(request)
-        validated = validate_job(value)
-        from . import ai, company
+        if route == 'assistant/jobs':
+            from free_assistant import validate_request
+            validate_request(value)
+            validated = {'mode':'assistant-plan', 'title':'AI 助手分析', 'resume':None}
+        elif route == 'assistant/split':
+            from assistant_split import validate
+            validate(value)
+            validated = {'mode':'assistant-split', 'title':value['title'], 'resume':None}
+        else:
+            validated = validate_job(value)
+        from . import ai, company, providers
         from codex_client import LOGIN_REQUIRED_MESSAGE, IMAGE_GENERATION_REQUIRED_MESSAGE
         with transaction.atomic():
             User.objects.select_for_update().get(pk=owner.pk)
             provider = 'local' if validated['mode'] == 'local-layered' else ai.selected_provider(owner)
             needs_images = requires_generation(validated)
+            analysis = value.get('provider', 'auto') if route=='assistant/jobs' else provider
+            if analysis == 'auto': analysis = provider
+            image_provider = providers.image_status(owner)['provider'] if provider!='local' else 'codex'
+            needs_text = validated['mode'] not in ('replace-image','assistant-split','local-layered')
+            needs_codex = (needs_text and analysis=='codex') or (needs_images and image_provider=='codex' and provider=='codex')
             if provider == 'local':
                 from . import local_model
                 if not local_model.status()['ready']:
                     return JsonResponse({'error': '本机分层服务尚未就绪，请启动本机模型服务后重试；原图和编辑已保留', 'code': 'LOCAL_MODEL_UNAVAILABLE'}, status=503)
-            elif provider == 'company':
-                company.credentials(owner)  # Fail before queueing if the stored key cannot be decrypted.
-            else:
+            if (needs_text and analysis=='company') or (needs_images and image_provider=='codex' and provider=='company'):
+                if not company.credentials(owner):raise ValueError('请先配置并启用个人公司 Agent')
+            if analysis=='taishi':
+                state = providers.models(owner, 'taishi')
+                if not state['ready'] or value['model'] not in [m['id'] for m in state['models']]:raise ValueError('请选择当前太石账号可用的模型')
+            if needs_images and image_provider=='aimake': providers.secret(owner, 'aimake')
+            if needs_codex:
                 state = ai.status(owner)
                 if not state.get('ok'):
                     return JsonResponse({'error': '暂时无法检查 Codex 连接，任务未提交。请打开「AI 连接」检查后重试；原图和编辑已保留。', 'code': 'CODEX_UNAVAILABLE'}, status=503)
                 if not state.get('ready'):
                     return JsonResponse({'error': LOGIN_REQUIRED_MESSAGE, 'code': 'CODEX_LOGIN_REQUIRED'}, status=409)
-                if needs_images and not state.get('imageGeneration'):
+                if needs_images and image_provider=='codex' and provider=='codex' and not state.get('imageGeneration'):
                     return JsonResponse({'error': IMAGE_GENERATION_REQUIRED_MESSAGE, 'code': 'CODEX_IMAGE_GENERATION_UNAVAILABLE'}, status=422)
+                if route=='assistant/jobs' and analysis=='codex' and value['model'] and value['model'] not in [m['id'] for m in state.get('models', [])]:
+                    raise ValueError('当前 Codex 账号没有提供所选模型')
+            snapshot = {'provider': provider, 'analysisProvider':analysis, 'imageProvider':image_provider, 'needsCodex':needs_codex, 'codexModel':owner.codex_model}
+            project=value.get('projectId') or (value.get('resume') or {}).get('_projectId') or (value.get('workspace') or {}).get('projectId')
+            if project is not None:
+                if not isinstance(project,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',project):raise ValueError('任务工程标识无效')
+                snapshot['project']=project
             if Job.objects.filter(owner=owner, status__in=['queued', 'running']).count() >= settings.MAX_QUEUED_PER_USER:
                 return error('待处理任务已达到个人上限', 429)
             check_space(root, len(request.body))
             job = Job.objects.create(owner=owner, title=validated['title'], mode=validated['mode'])
             write_scene(job_root(job) / 'input.json', value)
-            write_json(job_root(job) / 'connection.json', {'provider': provider})
+            write_json(job_root(job) / 'connection.json', snapshot)
             if validated['resume']:
                 write_scene(job_root(job) / 'partial.json', validated['resume'])
                 Job.objects.filter(pk=job.pk).update(partial_revision=1)
@@ -227,7 +271,7 @@ def engine(request, route):
     if match:
         job = Job.objects.get(pk=UUID(match[1]), owner=owner)
         if method == 'GET':
-            return JsonResponse(job_data(job, include_result=True))
+            return JsonResponse(job_data(job, include_result=True, include_input='afterRevision' not in request.GET))
         if method == 'DELETE':
             Job.objects.filter(pk=job.pk, status__in=['queued', 'running']).update(cancel_requested=True)
             Job.objects.filter(pk=job.pk, status='queued').update(status='cancelled', message='已取消', finished_at=timezone.now())
@@ -250,17 +294,21 @@ def engine(request, route):
     return error('接口不存在或请求方法不支持', 404)
 
 
-def job_data(job, include_result=False):
+def job_data(job, include_result=False, include_input=True):
     value = {'id': str(job.pk), 'title': job.title, 'mode': job.mode, 'status': job.status,
              'progress': job.progress, 'message': job.message, 'partialRevision': job.partial_revision,
              'created': job.created_at.isoformat()}
     if include_result:
         folder = job_root(job)
+        try:
+            value['previewText'] = json.loads((folder / 'reply.json').read_text()).get('text','')[:4000]
+        except FileNotFoundError:
+            pass  # Docker's host mount can briefly hide a replaced streaming snapshot; poll again.
         if (folder / 'result.json').is_file() and job.status == 'completed':
             value['result'] = read_scene(folder / 'result.json')
         elif (folder / 'partial.json').is_file():
             value['partial'] = read_scene(folder / 'partial.json')
-        elif (folder / 'input.json').is_file():
+        elif (include_input or job.status in ('failed','cancelled')) and (folder / 'input.json').is_file():
             # A failure before planning still leaves the exact input available for a new explicit attempt.
             from engine import load_source
             original = read_scene(folder / 'input.json')

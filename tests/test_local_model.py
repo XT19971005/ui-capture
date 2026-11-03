@@ -40,7 +40,7 @@ class LocalModel(TransactionTestCase):
             response = self.submit()
         self.assertEqual(response.status_code, 202, response.content)
         job = Job.objects.get()
-        self.assertEqual(json.loads((job_root(job) / 'connection.json').read_text()), {'provider': 'local'})
+        self.assertEqual(json.loads((job_root(job) / 'connection.json').read_text()), {'provider':'local','analysisProvider':'local','imageProvider':'codex','needsCodex':False,'codexModel':self.user.codex_model})
 
     def test_stopped_native_worker_rejects_before_creating_job(self):
         self.ready(age=60)

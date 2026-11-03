@@ -280,7 +280,7 @@ class Connections(TestCase):
         self.assertEqual(response.status_code, 202, response.content)
         codex.assert_not_called()
         from shijie.pipeline.storage import job_root
-        self.assertEqual(json.loads((job_root(Job.objects.get()) / 'connection.json').read_text()), {'provider': 'company'})
+        self.assertEqual(json.loads((job_root(Job.objects.get()) / 'connection.json').read_text()), {'provider': 'company', 'analysisProvider':'company', 'imageProvider':'codex', 'needsCodex':False,'codexModel':self.user.codex_model})
 
     def test_company_only_analysis_can_queue_without_codex(self):
         from .test_service import png
@@ -293,7 +293,7 @@ class Connections(TestCase):
         self.assertEqual(response.status_code, 202, response.content)
         codex.assert_not_called()
         job = Job.objects.get()
-        self.assertEqual(json.loads((job_root(job) / 'connection.json').read_text()), {'provider': 'company'})
+        self.assertEqual(json.loads((job_root(job) / 'connection.json').read_text()), {'provider': 'company', 'analysisProvider':'company', 'imageProvider':'codex', 'needsCodex':False,'codexModel':self.user.codex_model})
 
     def test_company_settings_require_csrf(self):
         from django.test import Client

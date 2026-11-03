@@ -43,14 +43,16 @@ class Queue(TransactionTestCase):
     def test_timeout_is_not_reported_as_user_cancellation_and_keeps_partial(self):
         for user_cancelled in (False, True):
             with self.subTest(user_cancelled=user_cancelled):
-                job=Job.objects.create(owner=self.user,mode='codex',title='timeout',cancel_requested=user_cancelled)
+                job=Job.objects.create(owner=self.user,mode='codex',title='timeout')
+                claimed=claim()
+                if user_cancelled:Job.objects.filter(pk=job.pk).update(cancel_requested=True)
                 root=job_root(job);write_scene(root/'partial.json',{'nodes':[{'id':'kept'}]})
                 # The child reacts to the worker's cancel file with a normal cancellation receipt.
                 (root/'finished.json').write_text(json.dumps({'status':'cancelled','message':'已取消，中间图层已保留'}))
                 process=Mock();process.poll.side_effect=[None,0]
                 clock=Mock();clock.monotonic.side_effect=[0,46]
                 with patch('shijie.pipeline.worker.start',return_value=process),patch('shijie.pipeline.worker.stop'),patch('shijie.pipeline.worker.time',clock):
-                    run(claim())
+                    run(claimed)
                 job.refresh_from_db()
                 self.assertEqual(job.status,'cancelled' if user_cancelled else 'failed')
                 self.assertIn('已取消' if user_cancelled else '任务超时',job.message)

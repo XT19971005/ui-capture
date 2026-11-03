@@ -37,7 +37,7 @@ function setup({dirty = false, busy = false} = {}) {
   const doc = {};
   const studio = {adapter:{get:() => doc, flush:async() => events.push('flush')},
     isBusy:() => busy, flush:async() => {}, saveProject:async() => { events.push('save'); dirty = false; }};
-  const context = {location, URLSearchParams, document:{querySelector:node, getElementById:id => node('#'+id),
+  const context = {location, URLSearchParams, document:{addEventListener(){},querySelector:node, getElementById:id => node('#'+id),
     createElement:tag => { const el = new Element(); if (tag === 'nav') nodes.set('nav', el); return el; }, body:new Element()},
     studio, StudioBase:{library:{isDirty:() => dirty}}};
   context.window = context;

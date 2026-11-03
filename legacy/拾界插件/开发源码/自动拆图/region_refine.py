@@ -38,7 +38,7 @@ def validate_targets(scene,ids,region):
    current=owner.get(current)
 
 
-def diagnose(source,scene,selected,region,structure,cancelled,on_status):
+def diagnose(source,scene,selected,region,structure,cancelled,on_status,user_request=""):
  """The sheets are selected raster drafts, not a PSD or a full-scene audit."""
  from codex_client import CLIENT
  from refine_ui import PATCHES
@@ -69,7 +69,10 @@ def diagnose(source,scene,selected,region,structure,cancelled,on_status):
   manifest=[{k:v for k,v in n.items() if k not in ('src','generationRecord','completionBase')} for n in selected]
   prompt='用户明确框选区域检查。仅检查并提出所确认图层的必要修正，不检查整张工程，不新增图层，不修改名单外图层、父组、层级、ID、类型或背景。区域 ROI（原画布绝对坐标）：'+json.dumps(region,ensure_ascii=False)+'；原画布尺寸：'+json.dumps({'width':scene['width'],'height':scene['height']})+'。第一张是原图 ROI 裁图，裁图像素原点对应绝对坐标 '+json.dumps({'x':x,'y':y})+'。后两张（如有）是仅所选图片素材按原位置叠放在深浅底的当前完整底稿，未加入未选图层、原生文字矢量、蒙版或样式，不是完整当前画面或实际 PSD 回读。不要把这些刻意省略的内容判成素材缺陷；遮挡、样式或原生渲染证据不足时保留并在 notes 说明，不得盲目 PASS。原生文字/矢量依据原图裁图和当前参数检查。返回每个所选 image 唯一的 assetChecks，只有明确错误才 FAIL；对原生文字/矢量返回必要 patches，参数仍使用原画布绝对坐标，未知字段 null，不改变类型/ID/遮罩，不添加效果。修正后的完整图层框必须仍完全位于 ROI。不能把框外工程问题混入 notes，不要求全图复检。'+GRANULARITY_RULES+'\n已确认图层（唯一允许范围）：'+json.dumps(manifest,ensure_ascii=False)
   prompt+='\n'+PLACEMENT_PROMPT+'\n本次为区域检查，placement必须完整位于用户确认区域内。'
-  result=CLIENT.analyze(prompt,files,schema,cancelled,on_status=on_status)
+  prompt+="\n本次用户要求："+user_request if user_request else ""
+  from source_annotations import append_reference
+  prompt,references=append_reference(prompt,files,Path(structure))
+  result=CLIENT.analyze(prompt,references,schema,cancelled,on_status=on_status)
   if cancelled():raise InterruptedError('已取消')
   image_ids={n['id'] for n in images};native_ids={n['id'] for n in selected if n['type'] in ('text','rect','ellipse','path')}
   if not isinstance(result,dict) or set(result)!={'assetChecks','patches','notes'}:raise ValueError('区域诊断结构无效')

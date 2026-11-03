@@ -411,6 +411,8 @@ def build_scene(source,title,plan_override,progress,cancelled):
   x,y,right,bottom=int(xs.min()),int(ys.min()),int(xs.max())+1,int(ys.max())+1
   alpha=mask[y:bottom,x:right];crop=rgb[y:bottom,x:right]
   n={'id':uuid.uuid4().hex,'name':a['name'],'x':x,'y':y,'width':right-x,'height':bottom-y,'assetKind':a['kind'],'sourceAssetId':a['id'],'sourceEntityId':a.get('entityId') or a['id'],'sourceEntityParts':a.get('entityParts',[a['id']]),'review':True}
+  if a.get('reuseEntityId'):n['reuseEntityId']=a['reuseEntityId']
+  if a.get('extractionBrief'):n['extractionBrief']=a['extractionBrief']
   if 'flatColor' in a:
    n.update(type='path',d=a['outline'],fill='#'+''.join(f'{int(v):02x}' for v in a['flatColor']),provenance='observed-flat-ink')
   else:n.update(type='image',src=png(Image.fromarray(np.dstack([crop,alpha]))),provenance='pending-image-generation')

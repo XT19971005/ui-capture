@@ -13,8 +13,8 @@
   function leaves(roots){const result=new Set(),seen=new Set();function visit(id){if(seen.has(id))throw Error('图层分组存在循环');const n=entries.get(id);if(!n)throw Error('所选图层不存在');if(!Array.isArray(n.children)){result.add(id);return}seen.add(id);for(const child of n.children)visit(child);seen.delete(id)}for(const id of roots)visit(id);return result}
   return {entries,parents,flags,leaves};
  }
- function selection(){
-  const doc=window.studio.adapter.get(),roots=window.studio.roots();
+ function selection(assistantIds){
+  const doc=window.studio.adapter.get(),roots=assistantIds||window.studio.roots();
   if(!doc||!roots.length)return {ids:[],reason:'请先选择图层或分组'};
   if(!(doc.comparisonSource||doc.source))return {ids:[],reason:'当前工程没有工作原图，无法对照检查'};
   try{
@@ -33,7 +33,7 @@
   for(const id of ids){const n=nodes.get(id);if(!n)throw Error('区域内所选图层不存在');const state=meta.flags(id);if(n.versionArchived||state.locked||!state.visible)throw Error('区域检查仅允许可见、未锁定的当前图层');if(n.pendingGeneration||['pending-image-generation','source-crop-fallback'].includes(n.provenance)||n.type==='image'&&(n.generationRecord?.actualImageGeneration===false||!n.src))throw Error('请先完成区域内所选素材的拆分');if(n.assetKind==='background')throw Error('区域检查不自动重做整张背景，请选择具体前景图层');if(['x','y','width','height'].some(k=>typeof n[k]!=='number'||!Number.isFinite(n[k]))||n.width<=0||n.height<=0||n.x<region.x||n.y<region.y||n.x+n.width>region.x+region.width||n.y+n.height>region.y+region.height)throw Error('所选图层跨出检查区域，请扩大框选或取消该图层')}
   return {ids:ids.slice(),roots:ids.slice(),region:{...region},reason:'仅检查框选区域内已确认的 '+ids.length+' 个图层'};
  }
- function sync(){const chosen=selection();button.disabled=busy||!!active||!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function';button.title=chosen.reason;button.textContent=active?(active.region?'正在检查区域…':'正在检查所选…'):'检查并修正选中项';const record=window.studio.adapter.get()?.recognition?.selectedRefine;if(note)note.textContent=!active&&!chosen.ids.length&&window.studio.roots().length?chosen.reason:!active&&record&&equal(record.effectiveSelectedIds||record.selectedIds,chosen.ids)&&!completed(record)?(record.region?'框选区域':'所选项')+'仍需对照原图校对。':'';}
+ function sync(){const chosen=selection();button.disabled=busy||!!active||!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function';button.title=chosen.reason;button.textContent=active?(active.region?'正在检查区域…':'正在检查所选…'):'生成所选修正预览';const record=window.studio.adapter.get()?.recognition?.selectedRefine;if(note)note.textContent=!active&&!chosen.ids.length&&window.studio.roots().length?chosen.reason:!active&&record&&equal(record.effectiveSelectedIds||record.selectedIds,chosen.ids)&&!completed(record)?(record.region?'框选区域':'所选项')+'仍需对照原图校对。':'';}
  function feedback(kind,message){if(note)note.textContent=kind==='review'?(active?.region?'框选区域':'仅所选项')+'已处理，仍需对照原图校对。':'';splitFeedback('selected-'+kind,message);status(message);}
  function releaseOther(result,before){const id=result?._sessionId||result?.delivery?.sessionId,old=before?._sessionId||before?.delivery?.sessionId;if(id&&id!==old)ShijieSmartSplit.releaseSession(result)}
  function validateEntityChanges(before,result,ids){
@@ -82,7 +82,7 @@
   for(const key of new Set([...Object.keys(before),...Object.keys(result)]))if(!allowed.has(key)&&!equal(before[key],result[key]))throw Error('返回工程改变了'+key+'，已拒绝本次结果');
  }
  async function durable(){await window.studio.flush()}
- async function run(chosen=selection()){
+ async function run(chosen=selection(),options={}){
   if(busy||active)return false;if(!chosen.ids.length||typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function')return false;
   const label=chosen.region?'检查并修正框选区域':'检查并修正选中项',scope=chosen.region?'区域':'所选';
   const transaction={id:++task,before:clone(scene),roots:chosen.roots,ids:chosen.ids,region:chosen.region,past:undo.slice(),future:redo.slice(),returned:null};active=transaction;refineBefore=transaction.before;
@@ -92,7 +92,7 @@
    await durable();if(active!==transaction||task!==transaction.id)return;
    transaction.before=clone(scene);refineBefore=transaction.before;
    if(chosen.region)regionSelection(chosen.region,chosen.ids,transaction.before);
-   const result=transaction.returned=await ShijieSmartSplit.refineSelected(clone(transaction.before),chosen.ids,(value,message)=>{if(active===transaction&&task===transaction.id){$('progress').value=value;status(message)}},chosen.region);
+   const result=transaction.returned=await ShijieSmartSplit.refineSelected(clone(transaction.before),chosen.ids,(value,message)=>{if(active===transaction&&task===transaction.id){$('progress').value=value;status(message)}},chosen.region,options.dialogue);
    if(active!==transaction||task!==transaction.id){releaseOther(result,transaction.before);return}
    validateResult(transaction.before,result,chosen.ids);
    if(chosen.region)regionSelection(chosen.region,result.recognition?.selectedRefine?.effectiveSelectedIds||chosen.ids,result);
@@ -107,6 +107,12 @@
    const oldSession=transaction.before._sessionId||transaction.before.delivery?.sessionId,newSession=result._sessionId||result.delivery?.sessionId;
    if(!newSession||newSession===oldSession){delete next._sessionId;delete next.delivery}
    S.validate(next);
+   if(options.preview){
+    const before=clone(transaction.before),candidate=clone(next),roots=selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots;
+    releaseOther(result,before);delete candidate._sessionId;delete candidate.delivery;
+    stopSplitClock();feedback('preview',changedPixels?'所选修正候选已生成，尚未应用，请在右侧确认。':'本次检查没有可应用修改，原工程保持。');
+    return {before,candidate,roots,record:clone(selectedRecord),hasChanges:!!changedPixels};
+   }
    scene=clone(transaction.before);checkpoint(label);scene={...next,_studioStep:{label,time:Date.now()}};refresh();
    window.studio.select(selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots,true);await durable();if(active!==transaction||task!==transaction.id)return;
    ShijieSmartSplit.releaseSession(transaction.before);stopSplitClock();
@@ -133,9 +139,19 @@
   active=null;refineBefore=null;setBusy(false);window.studio.sync(false);sync();
   feedback('cancelled',scope+'修正已取消，完整工程保留。'+(saved?'':'恢复保存失败，请下载工程文件。'));
  }
- button.addEventListener('click',()=>{run().catch(e=>{status('所选修正未完成：'+e.message)})});
+ button.addEventListener('click',()=>{if(window.ShijieSelectedChat)return window.ShijieSelectedChat.preview();run().catch(e=>{status('所选修正未完成：'+e.message)})});
  $('cancel').addEventListener('click',event=>{if(!active||task!==active.id)return;event.preventDefault();event.stopImmediatePropagation();cancel().catch(e=>status('取消未完成：'+e.message))},true);
  const previous=updateButtons;updateButtons=function(...args){const result=previous.apply(this,args);sync();return result};
  async function runRegion(region,ids){if(busy||active)throw Error('请等待当前操作完成后再检查区域');const chosen=regionSelection(region,ids);if(typeof ShijieSmartSplit.refineSelected!=='function'||typeof window.ShijieRefinementVersions?.archiveChanges!=='function')throw Error('区域检查暂不可用，请重新连接');return run(chosen)}
- window.ShijieSelectedRefine={sync,isActive:()=>!!active,runRegion};sync();
+ async function discuss(messages){
+  const chosen=selection();if(!chosen.ids.length)throw Error(chosen.reason);if(busy||active)throw Error('请等待当前任务结束');
+  const owner=scene,id=++task;let result;setBusy(true);sync();
+  try{result=await ShijieSmartSplit.refineSelected(clone(owner),chosen.ids,(v,m)=>{if(task===id)status(m)},undefined,{action:'discuss',messages});if(task!==id||scene!==owner)throw Error('工程已切换，对话结果未应用');status('助手已回复，工程未修改');return clone(result.recognition?.selectedDialogue)}
+  finally{if(result)releaseOther(result,owner);if(task===id){setBusy(false);window.studio.sync(false);sync()}}
+ }
+ function applyPreview(pending){
+  if(busy||active)throw Error('请等待当前任务结束');if(!pending||!equal(scene,pending.before))throw Error('工程已改变，请重新生成预览');
+  S.validate(pending.candidate);checkpoint('应用对话修正');scene=clone(pending.candidate);refresh();window.studio.select(pending.roots,true);changed();status('已应用所选修正，可撤销；修改将自动保存，请等待顶部显示“已保存”');
+ }
+ window.ShijieSelectedRefine={sync,isActive:()=>!!active,runRegion,discuss,selection,requestPreview:(dialogue,ids)=>run(selection(ids),{preview:true,dialogue}),applyPreview};sync();
 })();

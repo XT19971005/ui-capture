@@ -156,7 +156,7 @@ def assemble(plan,build,repair,cancelled,progress,canvas_size=None,normalize_gro
    if canvas_size is not None:plan=complete_art_text_assets(plan,canvas_size)
    if normalize_groups and plan.get('groups'):
     from plan_groups import normalize
-    drawing_plan={**plan,'groups':[]}
+    drawing_plan={**plan,'groups':[],'_entityGroups':plan['groups']}
     plan,scene=normalize(plan,build(drawing_plan))
    else:scene=build(plan)
    from group_quality import validate_planned_groups

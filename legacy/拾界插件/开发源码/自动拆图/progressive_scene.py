@@ -8,8 +8,9 @@ def remember_pending(scene):
  return pending
 
 def completed_scene(scene):
+ from incremental_assets import pending_generation
  remember_pending(scene)
- nodes=[n for n in scene['nodes'] if n.get('versionArchived') or n.get('provenance')!='pending-image-generation']
+ nodes=[n for n in scene['nodes'] if not pending_generation(n)]
  if not scene['nodes']:return None
  ids={n['id'] for n in nodes}
  snapshot={k:copy.deepcopy(scene[k]) for k in ('format','version','title','width','height','source','comparisonSource','originalSource','provenance','background','_projectId') if k in scene}

@@ -2,11 +2,28 @@
 import json,math
 from design_properties import design_fields
 
-def complete_entities(assets):
+def complete_entities(assets,planned_groups=()):
     """Merge only explicitly identified parts into one complete entity.
 
     Names, overlap and hierarchy alone are not reliable person identities.
     """
+    # Identity is shared by repeated artwork; membership describes an instance.
+    # Only split explicitly separate direct groups with disjoint source regions.
+    assets=[dict(a) for a in assets]
+    owners={}
+    for group in planned_groups:
+        for ident in group.get('children',[]):owners.setdefault(ident,set()).add(group.get('id'))
+    for entity in {a.get('entityId') for a in assets if a.get('entityId')}:
+        parts=[a for a in assets if a.get('entityId')==entity]
+        scopes={a['id']:owners.get(a['id'],set()) for a in parts}
+        if len(parts)<2 or any(len(s)!=1 for s in scopes.values()):continue
+        if len({next(iter(s)) for s in scopes.values()})<2:continue
+        cross=[(a,b) for i,a in enumerate(parts) for b in parts[i+1:] if scopes[a['id']]!=scopes[b['id']]]
+        if any(min(a['box'][2],b['box'][2])>max(a['box'][0],b['box'][0]) and min(a['box'][3],b['box'][3])>max(a['box'][1],b['box'][1]) for a,b in cross):continue
+        for a in parts:
+            scope=next(iter(scopes[a['id']]))
+            a['reuseEntityId']=entity
+            a['entityId']=entity+'@'+str(scope)
     entities={a.get('entityId') for a in assets if a.get('entityId')}
     groups={entity:[a for a in assets if a.get('entityId')==entity] for entity in entities}
     result=[];done=set()
@@ -67,8 +84,9 @@ def parse_plan(value, width, height, input_size=(1000,1000)):
         assets.append({'id':ident,'name':str(a.get('name') or '素材')[:80],
                        'kind':('logo' if a.get('kind')=='text' else a.get('kind','decoration')),'box':[x0,y0,x1,y1],
                        'parent':str(a.get('parent') or '')[:60] or None,'entityId':str(a.get('entity_id') or a.get('entityId') or '')[:80],**({'derivedFromArtTextId':a['derivedFromArtTextId']} if a.get('derivedFromArtTextId') else {}),**design_fields(a),**layer_order(a)})
+        if isinstance(a.get('extractionBrief'),str):assets[-1]['extractionBrief']=a['extractionBrief'][:4000]
     if not assets and not obj.get("vectors") and not obj.get("text_corrections") and not obj.get("texts"): raise ValueError("视觉模型未找到可信素材，原图已保留")
     for a in assets:
         if a['parent'] not in used or a['parent']==a['id']: a['parent']=None
-    return {'assets':complete_entities(assets),'art_text_ids':[str(x) for x in obj.get('art_text_ids',[])][:100],
+    return {'assets':complete_entities(assets,obj.get('_entityGroups',obj.get('groups',[]))),'art_text_ids':[str(x) for x in obj.get('art_text_ids',[])][:100],
             'text_corrections':[{ 'id':str(x.get('id','')),'text':str(x.get('text',''))[:300]} for x in obj.get('text_corrections',[]) if isinstance(x,dict)][:100]}

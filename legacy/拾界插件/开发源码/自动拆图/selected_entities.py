@@ -19,7 +19,7 @@ def kernel(request):
  if run.returncode:raise ValueError('选集原生证据构建失败：'+run.stderr[-300:])
  return json.loads(run.stdout)
 
-def diagnose(source,scene,selected,structure,cancelled,on_status,region=None):
+def diagnose(source,scene,selected,structure,cancelled,on_status,region=None,user_request=""):
  from codex_client import CLIENT
  from refine_ui import PATCHES
  from region_refine import contains
@@ -48,7 +48,10 @@ def diagnose(source,scene,selected,structure,cancelled,on_status,region=None):
   prompt='用户明确要求联合检查这些所选对象。先依据原图和整个当前选集判断完整语义实体，再联合修正；禁止逐色块各自修、只给错误色块套组就宣称修好。第一张是原图裁图，后两张是仅所选图层连同祖组蒙版/样式的原生合成草图深浅底，并非独立PSD回读或整图验收。裁图原点='+json.dumps({'x':x,'y':y})+'。所有参数仍用画布绝对坐标。允许范围='+json.dumps(scope)+'。一体书法字标/角色/图标即使按色或局部拆成数层，也须作为一个完整实体判断；不同物体不因同框、重叠、同色或同名合并。同sourceVectorId/原规划实体仅是线索，必须对照原图证明。entities只列确信度>=0.9且有具体视觉证据的联合实体，独立/不确定者不列。single-path仅用于原图可用单一填色/原生渐变的同一完整轮廓，提供真实fill/gradient；d=null仅当现有各部分合起来的完整轮廓已正确、可原生布尔并集；轮廓错误须给联合完整替换d（相对实体联合框），不能拼凑残片。确实多色才vector-group，并用patches联合修复各原生色区；若contentCorrect=false而未给可实施的内容修正，必须保留待校对，不能靠group冒充修复。图片碎片用image-union只调用一次完整实体提取；范围外一律不处理。不得把普通文字栅格化或矢量改位图，不得新增未观察的效果。assetChecks对每个所选image各一条；patches仅列所选原生叶层，未知参数null。所有新结果仍需复核，不宣称视觉PASS。当前对象='+json.dumps(manifest,ensure_ascii=False)
   prompt+='\nassetChecks 图片检查唯一 ID 白名单='+json.dumps(sorted(image_ids),ensure_ascii=False)+'；每个图片 ID 恰好一条，其他 ID 禁止出现。原生文字/矢量 ID='+json.dumps(sorted(native_ids),ensure_ascii=False)+'，只允许用于 entities/patches，不得填入 assetChecks。'+('本次没有图片，assetChecks 必须为 []。' if not image_ids else '')
   prompt+='\n'+PLACEMENT_PROMPT+'\n最后一张完整原图仅用于定位所选物体，非区域检查时可修正超出当前错误选集框的尺寸；区域检查仍不得超出用户确认区域。'
-  result=CLIENT.analyze(prompt,[*files,source],schema,cancelled,on_status=on_status)
+  prompt+="\n本次用户要求："+user_request if user_request else ""
+  from source_annotations import append_reference
+  prompt,references=append_reference(prompt,[*files,source],Path(structure))
+  result=CLIENT.analyze(prompt,references,schema,cancelled,on_status=on_status)
   if cancelled():raise InterruptedError('已取消')
   if not isinstance(result,dict) or set(result)!={'entities','assetChecks','patches','notes'}:raise ValueError('联合诊断结构无效')
   if not isinstance(result['entities'],list) or len(result['entities'])>350:raise ValueError('联合实体清单无效')
