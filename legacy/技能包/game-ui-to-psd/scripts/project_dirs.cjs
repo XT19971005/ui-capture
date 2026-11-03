@@ -1,0 +1,4 @@
+const path=require('path');
+module.exports=project=>path.basename(path.resolve(project))==='1_过程'
+ ? {input:'../2_输出',assets:'01_素材',plan:'02_结构',output:'../2_输出',qa:'03_检查',compact:true}
+ : {input:'01_输入',assets:'02_素材',plan:'03_结构',output:'04_输出',qa:'05_检查',compact:false};

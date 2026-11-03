@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Small host controller; all application dependencies run inside Ubuntu Docker."""
+import argparse
+import datetime
+import json
+import os
+from pathlib import Path
+import secrets
+import signal
+import subprocess
+import sys
+import tomllib
+
+ROOT = Path(__file__).resolve().parent
+
+
+def model_control(action):
+    directory = ROOT / '.local/local-model'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    script = ROOT / 'tools/local_model.py'
+    if action == 'model-download':
+        subprocess.run(['uv', 'run', '--python', '3.12', str(script), 'download'], cwd=ROOT, check=True)
+        return
+    if action == 'model-status':
+        state = directory / 'status.json'
+        if not state.exists():
+            print('本机模型服务尚未启动')
+        else:
+            import time
+            value = json.loads(state.read_text())
+            alive = 0 <= time.time() - value['heartbeat'] < 20
+            print('本机服务已停止' if not alive else '模型文件尚未齐全' if not value['ready'] else '本机正在分层' if value['busy'] else '本机模型已就绪')
+        return
+    pid_file = directory / 'service.pid'
+    active = None
+    if pid_file.exists():
+        pid = int(pid_file.read_text())
+        result = subprocess.run(['ps', '-p', str(pid), '-o', 'command='], capture_output=True, text=True)
+        if str(script) in result.stdout and 'serve' in result.stdout:
+            active = pid
+    if action == 'model-stop':
+        if active:
+            os.killpg(active, signal.SIGTERM)
+        pid_file.unlink(missing_ok=True)
+        print('已请求停止本机模型服务')
+        return
+    if active:
+        print('本机模型服务已启动；使用 model-status 查看状态')
+        return
+    if sys.platform != 'darwin':
+        raise ValueError('当前本机推理适配 Apple Silicon macOS')
+    if not (directory / 'model-path.txt').is_file():
+        raise ValueError('请先运行 ./shijiectl model-download 下载模型')
+    with (directory / 'service.log').open('ab') as log:
+        process = subprocess.Popen(['uv', 'run', '--python', '3.12', str(script), 'serve'], cwd=ROOT,
+                                   stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    pid_file.write_text(str(process.pid))
+    print('本机模型服务已启动；使用 ./shijiectl model-status 查看状态')
+
+
+def configuration(folder, public_url, oidc_from=None, data_dir=None):
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = folder / 'config.toml'
+    if target.exists() or (folder / 'postgres-password').exists():
+        raise ValueError('配置已存在，拒绝覆盖；使用 config 编辑现有文件')
+    from config.transport import endpoint
+    url = endpoint(public_url, ('http', 'https'))
+    oidc = {}
+    if oidc_from:
+        original = tomllib.loads(Path(oidc_from).read_text())
+        oidc = {k: v for k, v in original.get('oidc', {}).items() if k in (
+            'mode', 'login_url', 'token_url', 'token_exchange_url', 'allow_public_http_token_exchange',
+            'discovery_url', 'require_verified_email', 'token_endpoint_auth_method')}
+    password = secrets.token_urlsafe(32)
+    template = (ROOT / 'deploy/config.example.toml').read_text()
+    template = template.replace('https://studio.example.com/shijie', public_url.rstrip('/')).replace('GENERATED_BY_SHIJIECTL', secrets.token_urlsafe(64)).replace('GENERATED_PASSWORD', password)
+    template = template.replace('REGISTER_SHIJIE_SEPARATELY', '')
+    data_dir = (data_dir or (folder / 'data' if folder == (ROOT / '.local').resolve() else Path('/home/shijie/data'))).resolve()
+    if data_dir.exists() and any(data_dir.iterdir()):
+        raise ValueError('初次配置必须使用空数据目录，拒绝接管已有资料')
+    template += '\n[deployment]\ndata_dir = ' + json.dumps(str(data_dir)) + '\n'
+    template = template.replace('allow_http = false', 'allow_http = ' + str(url.scheme == 'http').lower())
+    for key, value in oidc.items():
+        import re
+        template = re.sub(r'^' + re.escape(key) + r' = .*$', lambda _: key + ' = ' + json.dumps(value, ensure_ascii=False), template, flags=re.M)
+    # No qprole client secret, application key, session or historical data is copied.
+    for path, content in ((target, template), (folder / 'postgres-password', password + '\n')):
+        with path.open('x') as stream:
+            stream.write(content)
+        path.chmod(0o600)
+    data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if sys.platform.startswith('linux') and os.geteuid() == 0:
+        os.chown(target, 10001, 10001)
+        os.chown(data_dir, 10001, 10001)
+    print('配置已生成：' + str(target))
+    print('公司登录需为 shijie 登记独立 client_id；回调：' + public_url.rstrip('/') + '/auth/oidc/callback/')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['init', 'dev', 'deploy', 'test', 'config', 'status', 'logs', 'restart', 'stop', 'backup',
+                                         'model-download', 'model-start', 'model-stop', 'model-status'])
+    parser.add_argument('--config-dir', type=Path, default=ROOT / '.local')
+    parser.add_argument('--public-url', default='http://127.0.0.1:8093')
+    parser.add_argument('--oidc-from', type=Path)
+    parser.add_argument('--data-dir', type=Path, help='init 时指定宿主持久数据目录；默认本地 .local/data，远程 /home/shijie/data')
+    parser.add_argument('--backup-dir', type=Path)
+    parser.add_argument('--keep-stopped', action='store_true', help='备份成功后继续停写，供升级或恢复维护使用')
+    args = parser.parse_args()
+    if args.action.startswith('model-'):
+        model_control(args.action)
+        return
+    folder = args.config_dir.resolve()
+    if args.action == 'init':
+        configuration(folder, args.public_url, args.oidc_from, args.data_dir)
+        return
+    if not (folder / 'config.toml').is_file():
+        if args.action != 'dev':
+            raise ValueError('请先运行 init')
+        configuration(folder, args.public_url, args.oidc_from, args.data_dir)
+    if args.action == 'config':
+        subprocess.run(['vi', str(folder / 'config.toml')], check=True)
+        return
+    from config.transport import validate_transport
+    config = tomllib.loads((folder / 'config.toml').read_text())
+    validate_transport(config['site'], config.get('oidc', {}))
+    from urllib.parse import urlsplit, unquote
+    database = urlsplit(config['database']['url'])
+    password = (folder / 'postgres-password').read_text().strip()
+    if (database.hostname, database.path, database.username) != ('db', '/shijie', 'shijie') or unquote(database.password or '') != password:
+        raise ValueError('数据库须使用本项目的 db/shijie，且配置密码与 postgres-password 文件一致')
+    data_dir = Path(config.get('deployment', {}).get('data_dir', folder / 'data'))
+    if not data_dir.is_absolute() or not data_dir.is_dir():
+        raise ValueError('deployment.data_dir 必须是已创建的绝对目录')
+    env = os.environ.copy()
+    env.update(SHIJIE_CONFIG_FILE=str(folder / 'config.toml'), SHIJIE_DB_PASSWORD_FILE=str(folder / 'postgres-password'), SHIJIE_DATA_DIR=str(data_dir))
+    local = folder == (ROOT / '.local').resolve()
+    if local:
+        env.update(SHIJIE_UID=str(os.getuid()), SHIJIE_GID=str(os.getgid()))
+    command = ['docker', 'compose', '-f', str(ROOT / 'deploy/compose.yml')]
+    if local:
+        command += ['-f', str(ROOT / 'deploy/compose.dev.yml')]
+
+    def run(*parts, **kwargs):
+        return subprocess.run([*command, *parts], env=env, cwd=ROOT, check=True, **kwargs)
+
+    if args.action in ('dev', 'deploy'):
+        if args.action == 'deploy':
+            existing = run('ps', '--services', '--status', 'running', stdout=subprocess.PIPE, text=True).stdout.splitlines()
+            if 'web' in existing or 'worker' in existing:
+                if args.backup_dir is None:
+                    raise ValueError('已有部署升级须提供 --backup-dir；先完成备份才会修改服务')
+                subprocess.run([sys.executable, str(ROOT / 'shijiectl'), 'backup', '--config-dir', str(folder), '--backup-dir', str(args.backup_dir), '--keep-stopped'], check=True)
+        run('build')
+        run('up', '-d', 'db', '--wait')
+        # Stop writers before schema changes; take an explicit backup before an existing deployment upgrade.
+        run('stop', 'web', 'worker')
+        run('run', '--rm', 'web', 'python', 'manage.py', 'migrate', '--noinput')
+        run('run', '--rm', 'web', 'python', 'manage.py', 'preflight')
+        run('up', '-d', '--wait', 'web', 'worker')
+        print('服务已启动：' + config['site']['public_url'])
+    elif args.action == 'test':
+        run('run', '--rm', '-e', 'SHIJIE_PRODUCTION=0', 'web', 'python', 'manage.py', 'test', 'tests', '--noinput')
+        run('run', '--rm', 'web', 'node', '--test', 'tests/frontend.cjs')
+    elif args.action == 'backup':
+        if args.backup_dir is None:
+            raise ValueError('backup 必须指定 --backup-dir，建议使用异盘目录')
+        dest = args.backup_dir.resolve() / datetime.datetime.now(datetime.timezone.utc).strftime('shijie-%Y%m%dT%H%M%SZ')
+        if dest.is_relative_to(data_dir.resolve()):
+            raise ValueError('备份目录不能位于数据目录内')
+        dest.mkdir(parents=True, mode=0o700)
+        run('stop', 'web', 'worker')
+        # A failed backup deliberately leaves writers stopped and no COMPLETE marker.
+        with (dest / 'database.sql').open('xb') as stream:
+            run('exec', '-T', 'db', 'pg_dump', '-U', 'shijie', '--clean', '--if-exists', 'shijie', stdout=stream)
+        import tarfile
+        with tarfile.open(dest / 'data.tar.gz', 'w:gz') as tar:
+            tar.add(data_dir, arcname='data')
+            tar.add(folder / 'config.toml', arcname='config.toml')
+            tar.add(folder / 'postgres-password', arcname='postgres-password')
+        import hashlib
+        manifest = {name: hashlib.file_digest((dest / name).open('rb'), 'sha256').hexdigest() for name in ('database.sql', 'data.tar.gz')}
+        (dest / 'COMPLETE').write_text(json.dumps(manifest, indent=2) + '\n')
+        if not args.keep_stopped:
+            run('start', 'web', 'worker')
+        print('备份完成：' + str(dest))
+    else:
+        mapping = {'status': ['ps'], 'logs': ['logs', '--tail=100', 'web', 'worker'], 'restart': ['restart', 'web', 'worker'], 'stop': ['stop']}
+        run(*mapping[args.action])
+
+
+if __name__ == '__main__':
+    os.umask(0o077)
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        print('操作未完成：' + str(exc), file=sys.stderr)
+        sys.exit(1)

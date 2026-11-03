@@ -1,0 +1,3 @@
+OCR models: tesseract-ocr/tessdata_best (chi_sim), tesseract-ocr/tessdata_fast (eng). Apache-2.0.
+Sources: https://github.com/tesseract-ocr/tessdata_best and https://github.com/tesseract-ocr/tessdata_fast
+Runtime models are bundled locally. No input image is uploaded by this module.

@@ -1,0 +1,112 @@
+"""Isolated legacy algorithm runner; progress and recovery bytes survive process exit."""
+import fcntl
+import importlib
+import json
+import os
+import sys
+import traceback
+from contextlib import nullcontext
+from pathlib import Path
+from codex_client import CLIENT, CodexLoginRequired, CodexImageGenerationRequired, CodexImageGenerationFailed, CodexQuotaExceeded
+from company_agent import CompanyError
+from session_outputs import SESSIONS
+from shijie.pipeline.storage import read_scene, write_scene, write_json
+from shijie.pipeline.validation import validate_job, requires_generation
+from shijie.pipeline.local_model import LocalModelError
+
+
+def main():
+    os.umask(0o077)
+    root = Path(os.environ['SHIJIE_TASK_ROOT'])
+    ident, model = sys.argv[1:3]
+    revision = 1 if (root / 'partial.json').exists() else 0
+    completed_progress = 0
+    CLIENT.selected_model = model or None
+    stage = 'account_lock'
+
+    def cancelled():
+        return (root / 'cancel').exists()
+
+    def progress(amount, message):
+        nonlocal completed_progress
+        completed_progress = max(completed_progress, min(1, float(amount)))
+        write_json(root / 'progress.json', {'progress': completed_progress, 'message': str(message)[:500], 'revision': revision})
+
+    def preview(scene):
+        nonlocal revision
+        if not cancelled():
+            write_scene(root / 'partial.json', scene)
+            revision += 1
+            progress(0, '中间图层已保留')
+
+    try:
+        connection = json.loads(sys.stdin.read(16 * 1024)) or {}
+        local_root = connection.get('local_model_root')
+        CLIENT.company = None if local_root else connection or None
+        with (nullcontext() if CLIENT.company or local_root else (Path(os.environ['CODEX_HOME']) / 'account.lock').open('a')) as lock:
+            if lock is not None:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            stage = 'validate_input'
+            value = validate_job(read_scene(root / 'input.json'))
+            if cancelled():
+                raise InterruptedError()
+            stage = 'check_account'
+            if not local_root:
+                CLIENT.ensure_ready(require_images=requires_generation(value))
+            stage = 'process'
+            modes = {'codex': 'codex_pipeline', 'refine-ui': 'refine_ui', 'refine-selected': 'selected_refine',
+                     'repair-order': 'layer_order', 'replace-image': 'image_replace'}
+            process = importlib.import_module(modes[value['mode']]).process if value['mode'] != 'local-layered' else None
+            options = {}
+            if value['mode'] == 'refine-selected':
+                options['selected_ids'] = value['selected_ids']
+                if value['region'] is not None:
+                    options['region'] = value['region']
+            if value['mode'] == 'replace-image':
+                options['replacement'] = value['replacement']
+            if value['mode'] == 'local-layered':
+                from shijie.pipeline.local_model import process as local_process
+                if not local_root:
+                    raise LocalModelError('本机模型连接未配置')
+                scene = local_process(value, local_root, progress, cancelled)
+            else:
+                scene = process(value['source'], value['title'], progress, cancelled, original_source=value['original'],
+                                on_scene=preview, resume_scene=value['resume'], **options)
+            if cancelled():
+                raise InterruptedError()
+            stage = 'persist_result'
+            session = SESSIONS.get(scene.get('_sessionId'))
+            if session and session['psd'] is not None:
+                (root / 'result.psd').write_bytes(session['psd'])
+            if session and session['audit']:
+                write_json(root / 'review.json', session['audit'])
+            scene['_sessionId'] = ident
+            if scene.get('delivery'):
+                scene['delivery']['sessionId'] = ident
+            write_scene(root / 'result.json', scene)
+            incomplete = scene.get('_partial') or scene.get('recognition', {}).get('pendingGenerationIds')
+            write_json(root / 'finished.json', {'status': 'completed', 'message': '部分素材未完成，已保留现有图层，可继续拆分' if incomplete else '处理完成；可在任务记录中找回结果'})
+    except InterruptedError:
+        write_json(root / 'finished.json', {'status': 'cancelled', 'message': '已取消，中间图层已保留'})
+    except Exception as exc:
+        # Store code locations, never provider text, image payloads or credentials.
+        try:
+            write_json(root / 'failure.json', {'exception': type(exc).__name__, 'stage': stage,
+                       'frames': [{'file': Path(f.filename).name, 'line': f.lineno, 'function': f.name}
+                                  for f in traceback.extract_tb(exc.__traceback__)]})
+        except OSError:
+            pass
+        # Only known user-actionable errors cross the boundary; paths/provider messages stay private.
+        if isinstance(exc, BlockingIOError):
+            message = '个人 Codex 正在登录，请完成登录后重试'
+        elif isinstance(exc, (CodexLoginRequired, CodexImageGenerationRequired, CodexImageGenerationFailed, CodexQuotaExceeded, CompanyError, LocalModelError)):
+            message = str(exc)
+        else:
+            message = '任务处理发生异常，原图和已有图层已保留；请联系管理员检查任务记录'
+        write_json(root / 'finished.json', {'status': 'failed', 'message': message})
+    finally:
+        CLIENT.close()
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,11 @@
+{
+  "workspaceRoot": "@workspace/",
+  "node": "node",
+  "python": "python3",
+  "agPsd": "@workspace/../node_modules/ag-psd",
+  "canvas": "@workspace/../node_modules/@napi-rs/canvas",
+  "svgpath": "@workspace/../node_modules/svgpath",
+  "psdTools": "@bundle/依赖/Python",
+  "imagegenSkill": "@bundle/imagegen/SKILL.md",
+  "imagegenCLI": "@bundle/imagegen/scripts/image_gen.py"
+}

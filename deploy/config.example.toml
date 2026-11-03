@@ -1,0 +1,26 @@
+# Private configuration; generate a new secret and database password with shijiectl init.
+[site]
+public_url = "https://studio.example.com/shijie"
+allow_http = false
+secret_key = "GENERATED_BY_SHIJIECTL"
+[database]
+url = "postgresql://shijie:GENERATED_PASSWORD@db:5432/shijie"
+[oidc]
+mode = "broker"
+client_id = "REGISTER_SHIJIE_SEPARATELY"
+login_url = "https://company-broker.example.com/auth/forward/authorize"
+token_url = "https://company-broker.example.com/auth/forward/token"
+token_exchange_url = ""
+allow_public_http_token_exchange = false
+client_secret = ""
+discovery_url = ""
+token_endpoint_auth_method = "client_secret_post"
+require_verified_email = true
+bootstrap_admin_emails = []
+[storage]
+root = "/data"
+min_free_mib = 1024
+user_quota_gib = 20
+[worker]
+queued_per_user = 5
+timeout_seconds = 7200

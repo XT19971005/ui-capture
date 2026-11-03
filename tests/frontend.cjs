@@ -1,0 +1,21 @@
+globalThis.crypto ||= require('node:crypto').webcrypto;
+require('./test_transport.cjs');
+require('./test_codex_settings.cjs');
+require('./test_workspace_navigation.cjs');
+require('./test_unsaved_choice.cjs');
+require('./test_scene_fonts.cjs');
+require('./test_scene_typography.cjs');
+require('./test_text_candidates.cjs');
+require('./test_scene_exports.cjs');
+require('./test_web_svg.cjs');
+require('./test_web_editing.cjs');
+require('./test_image_editing.cjs');
+require('./test_review_state.cjs');
+require('./test_portable_exports.cjs');
+// Existing domain checks against the deployed editor bundles.
+require('../legacy/拾界插件/开发源码/工作台增强/test-image-split-state.cjs');
+require('../legacy/拾界插件/开发源码/工作台增强/test-image-replace.cjs');
+require('../legacy/拾界插件/开发源码/工作台增强/test-image-generate.cjs');
+require('../legacy/拾界插件/开发源码/工作台增强/test-region-refine.cjs');
+require('../legacy/拾界插件/开发源码/图像重建/test-local-project-transport.cjs');
+require('../legacy/拾界插件/开发源码/图像重建/test-psd-groups.cjs');

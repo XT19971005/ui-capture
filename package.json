@@ -1,0 +1,1 @@
+{"name":"shijie","private":true,"version":"0.1.0","dependencies":{"@openai/codex":"0.163.0","@napi-rs/canvas":"0.1.80","ag-psd":"30.1.0","svgpath":"2.6.0"}}

@@ -1,0 +1,12 @@
+.local/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+staticfiles/
+.DS_Store
+.env
+*.local.toml
+output/
+.playwright-cli/
+legacy/拾界插件/自检记录/

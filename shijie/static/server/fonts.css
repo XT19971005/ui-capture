@@ -1,0 +1,64 @@
+@font-face {
+  font-family: "Noto Sans CJK SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/NotoSansCJKsc-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans CJK SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/NotoSansCJKsc-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Liberation Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/LiberationSans-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Liberation Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/LiberationSans-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Liberation Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/LiberationSerif-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Liberation Serif";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/LiberationSerif-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Serif CJK SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("fonts/NotoSerifCJKsc-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Serif CJK SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/NotoSerifCJKsc-Bold.woff2") format("woff2");
+}
+

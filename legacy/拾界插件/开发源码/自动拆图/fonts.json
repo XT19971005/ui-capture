@@ -1,0 +1,10 @@
+[
+  ["Noto Sans CJK SC", 400, "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"],
+  ["Noto Sans CJK SC", 700, "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"],
+  ["Noto Serif CJK SC", 400, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"],
+  ["Noto Serif CJK SC", 700, "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"],
+  ["Liberation Sans", 400, "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
+  ["Liberation Sans", 700, "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"],
+  ["Liberation Serif", 400, "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"],
+  ["Liberation Serif", 700, "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"]
+]

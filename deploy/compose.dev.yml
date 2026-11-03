@@ -1,0 +1,22 @@
+# Use with compose.yml. Runs the same Ubuntu image with a live source mount.
+services:
+  web:
+    environment:
+      SHIJIE_LOCAL_MODEL_ROOT: /local-model
+    volumes:
+      - ../.local/local-model:/local-model:ro
+      - ../config:/app/config:ro
+      - ../shijie:/app/shijie:ro
+      - ../legacy:/app/legacy:ro
+      - ../tools:/app/tools:ro
+      - ../tests:/app/tests:ro
+    command: [gunicorn, config.wsgi:application, --bind=0.0.0.0:8093, --workers=1, --threads=2, --timeout=120, --reload, --access-logfile=-, '--access-logformat=%(h)s %(m)s %(U)s %(s)s %(L)s']
+  worker:
+    environment:
+      SHIJIE_LOCAL_MODEL_ROOT: /local-model
+    volumes:
+      - ../.local/local-model:/local-model
+      - ../config:/app/config:ro
+      - ../shijie:/app/shijie:ro
+      - ../legacy:/app/legacy:ro
+      - ../tools:/app/tools:ro
