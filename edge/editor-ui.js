@@ -7,6 +7,7 @@ window.ShijieEditorUI=(()=>{
   document.addEventListener('change',e=>dirty.delete(e.target),true);
   document.addEventListener('focusout',e=>dirty.delete(e.target),true);
   document.addEventListener('keydown',e=>{
+   if(e.target.closest('.web-live-preview'))return;
    if(document.querySelector('dialog[open]'))return;
    if(e.key==='Enter'&&!e.isComposing&&e.target.matches('input:not([type=checkbox]):not([type=color]):not([type=file])')&&dirty.has(e.target)&&!busy()){e.preventDefault();e.target.dispatchEvent(new Event('change',{bubbles:true}));return;}
    if(!(e.ctrlKey||e.metaKey)||e.altKey||e.isComposing)return;

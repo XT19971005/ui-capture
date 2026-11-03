@@ -179,3 +179,137 @@
 .unified-workbench:has(#image-file) #properties>.grid:has(#x),
 .unified-workbench:has(#image-file) #properties label:has(#locked),
 .unified-workbench:has(#image-file) #layer-style-mask{display:none!important}
+
+.web-workbench .studio-bar[hidden]{display:none!important}
+.web-workbench .url-capture :is(input,select,button){height:34px;min-height:34px;font-size:12px;border-radius:7px}
+.web-workbench .url-capture{gap:6px}.web-workbench .url-capture select{width:66px;padding-left:8px}
+.web-workbench .workspace-inspector-help{font-size:12px;line-height:1.8;color:var(--shell-muted);margin-top:16px}
+.web-workbench .export-form>button{width:100%;min-height:40px}
+.web-workbench.inspector-collapsed .editor-layout{grid-template-columns:var(--layer-panel-width,232px) minmax(0,1fr) 0!important}
+.web-workbench.inspector-collapsed .inspector{display:none!important}
+.web-workbench #inspector-toggle[aria-expanded=false]{color:#cbb5f5;border-color:#685780}
+.web-workbench .view-tools button{white-space:nowrap;flex-shrink:0}
+@media(max-width:780px){.web-workbench.inspector-collapsed .editor-layout{grid-template-columns:minmax(0,1fr)!important}.web-workbench .view-tools{flex-wrap:wrap;justify-content:flex-end}.web-workbench .toolbar{height:auto;flex-wrap:wrap}.web-workbench .url-capture input{width:0;min-width:60px}}
+
+.web-workbench #actual{display:inline-flex!important}
+
+.unified-workbench .image-intake[hidden]{display:none!important}
+.web-workbench:not(.workspace-has-document) #open-project{display:none!important}
+
+/* Shared geometry: changing modes does not move common controls. */
+.unified-workbench :is(.workspace,.editor-layout){grid-template-columns:var(--layer-panel-width,var(--workbench-left)) minmax(240px,1fr) var(--workbench-right)!important}
+.unified-workbench :is(#viewport,#preview):has(>#empty:not([hidden])){display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.unified-workbench #empty:not([hidden]){display:flex;flex-direction:column;align-items:center;justify-content:center;width:670px;max-width:100%;padding:45px 10px!important;margin:auto!important;box-sizing:border-box;text-align:center}
+.unified-workbench #empty .empty-art{display:flex;align-items:center;justify-content:center;flex:none;width:84px;height:84px;margin:0 0 24px!important;padding:0;border:1px solid #51465e;border-radius:24px;background:#272332;transform:rotate(-4deg);box-sizing:border-box}
+.unified-workbench #empty .empty-art svg{width:32px;height:32px;fill:none;stroke:#bda6ff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.unified-workbench #empty h1{font-size:24px!important;line-height:32px;font-weight:600;letter-spacing:0;margin:0 0 14px!important}
+.unified-workbench #empty button{height:36px;min-height:36px;min-width:110px;box-sizing:border-box;padding:8px 22px!important;margin:10px 0 16px!important;font-size:13px!important;line-height:18px;border-radius:8px}
+.unified-workbench #empty small{display:block;font-size:11px!important;line-height:20px;color:#8795aa;margin:0}
+.unified-workbench #no-selection{min-height:112px;margin:16px 0 0!important;padding:0!important;box-sizing:border-box}
+.unified-workbench #no-selection .workspace-inspector-help{font-size:12px;line-height:22px;margin:16px 0 0}
+.unified-workbench .toolbar .view-tools button{height:28px;min-height:28px;box-sizing:border-box;padding:5px 7px;border:1px solid transparent;border-radius:6px;background:transparent;line-height:16px}
+.unified-workbench .toolbar .view-tools button:hover:not(:disabled){background:#302b40;border-color:#51465e}
+.web-workbench:not(.workspace-has-document) #open-project{display:inline-flex!important;visibility:hidden;pointer-events:none}
+@media(max-width:780px){.unified-workbench :is(.workspace,.editor-layout){grid-template-columns:minmax(0,1fr)!important}}
+
+body.unified-workbench{font-size:13px}
+.unified-workbench #empty:not([hidden]){width:600px!important;max-width:100%!important}
+
+.web-live-preview{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;background:#151821;min-width:0}
+.web-live-bar{display:flex;align-items:center;gap:8px;height:44px;min-height:44px;padding:6px 12px;box-sizing:border-box;border-bottom:1px solid var(--shell-border);background:var(--shell-panel)}
+.web-live-bar button{font-size:11px;min-height:28px;padding:4px 9px;white-space:nowrap}
+.web-live-bar span{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;color:var(--shell-muted)}
+.web-live-surface{flex:1;min-height:0;overflow:auto;text-align:center;background:#242733;overscroll-behavior:contain}
+.web-live-surface img{display:block;width:100%;height:auto;margin:0 auto;cursor:default;user-select:none}
+.web-live-preview[aria-busy=true] .web-live-surface{cursor:progress;opacity:.85}
+.web-live-open #preview>:is(#empty,#world){visibility:hidden;pointer-events:none}
+.web-live-open .studio-selection,.web-live-open .studio-marquee{display:none!important}
+
+/* Projects remain prominent; model and account controls live in one panel. */
+.unified-workbench .header-actions{display:flex!important;align-items:center;justify-content:flex-end;gap:18px!important;width:auto!important;grid-area:actions!important}
+.unified-workbench .project-controls{display:flex;align-items:center;gap:8px}
+.unified-workbench .project-controls #save-state{min-width:66px;margin:0 4px;font-size:11px}
+.unified-workbench .project-controls :is(#open-project,#save-project){height:34px;min-width:80px}
+.unified-workbench #assistant-model-settings{height:34px;min-width:80px;border-left-color:#62556e}
+.web-workbench:not(.workspace-has-document) #open-project{visibility:visible!important;pointer-events:auto!important}
+.shared-ai-settings{width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box}
+.shared-ai-settings>form{display:flex;align-items:center;justify-content:space-between}
+.shared-ai-settings section{padding:14px 0;border-top:1px solid #393442;margin-top:14px}.shared-ai-settings h3{font-size:13px;margin:0 0 12px}
+.shared-ai-settings label{display:block;font-size:12px;margin:10px 0}.shared-ai-settings :is(select,input){display:block;width:100%;box-sizing:border-box;margin-top:6px;min-height:34px}
+.shared-ai-settings p,.shared-ai-settings footer span{font-size:12px;line-height:1.6;color:#a9a1b8}.shared-ai-settings [hidden]{display:none!important}.shared-ai-settings footer{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #393442;padding-top:14px}.shared-ai-settings footer button{white-space:nowrap}.ai-connection-actions{display:flex;align-items:center;gap:8px}
+.web-workbench .web-address-dock{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:21;width:min(760px,calc(100% - 28px));padding:6px;border:1px solid #3b3547;border-radius:10px;background:#1c202a}
+.web-workbench .web-address-dock .url-capture{display:flex;width:100%;max-width:none;margin:0}.web-workbench .web-address-dock input{flex:1;min-width:50px;width:0}.web-workbench .web-address-dock button{white-space:nowrap}
+.web-workbench .web-live-bar{height:100px;min-height:100px;padding-top:62px}.web-workbench #preview{position:relative}
+.web-workbench #empty #import-empty{display:none!important}.web-workbench #empty h1{margin-bottom:20px!important}
+
+.web-workbench .canvas-panel{position:relative}.web-workbench .canvas-panel>.web-address-dock{top:90px}.web-workbench:not(.workspace-has-document):not(.web-live-open) .canvas-panel>.web-address-dock{top:calc(50% + 80px)}
+.unified-workbench .project-controls #studio-recovery-state{order:2;min-width:66px;margin-left:4px}.unified-workbench .project-controls{width:auto!important}
+
+.unified-workbench .app-header .project-controls{display:flex!important;width:auto!important;gap:8px!important}.unified-workbench .app-header .project-controls>*{position:static!important;flex:none}.web-live-open #preview{overflow:hidden!important}
+
+body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:260px 208px 112px minmax(0,1fr) max-content!important;grid-template-areas:"brand modes assistant intake actions"!important;grid-template-rows:64px!important;height:64px!important;gap:16px!important;padding:0 20px!important}
+body.unified-workbench .app-header>.header-actions{grid-area:actions!important;align-self:center;flex-wrap:nowrap!important}
+body.unified-workbench .app-header .project-controls>:is(#open-project,#save-project){width:80px!important;min-width:80px!important;height:34px!important}
+body.unified-workbench .app-header .project-controls #studio-recovery-state{width:66px!important;margin:0!important}
+@media(max-width:1320px){body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px 190px 112px minmax(0,1fr) max-content!important;gap:12px!important;padding:0 12px!important}}
+@media(max-width:900px){body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px minmax(0,1fr) 112px!important;grid-template-areas:"brand modes assistant" "actions actions actions"!important;grid-template-rows:48px 42px!important;height:98px!important;gap:0 8px!important}.unified-workbench .header-actions{justify-self:end!important}.web-workbench .canvas-panel>.web-address-dock{width:calc(100% - 16px)}}
+
+.web-workbench .canvas-panel>.web-live-preview{inset:82px 0 28px}.web-workbench .web-live-preview img{max-width:none;object-fit:contain}
+
+/* Web capture stays in the top header, leaving the canvas unobstructed. */
+body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:260px 208px minmax(280px,1fr) max-content!important;grid-template-areas:"brand modes intake actions"!important}
+body.unified-workbench.web-workbench .app-header.single-module>.url-capture{display:flex;align-items:center;gap:6px;width:100%;max-width:760px;margin:0;justify-self:center}
+body.unified-workbench.web-workbench .app-header.single-module>.url-capture input{flex:1;width:0;min-width:80px;max-width:none}
+body.unified-workbench.web-workbench .app-header.single-module>.url-capture :is(button,select){flex:none;white-space:nowrap}
+.web-workbench .web-live-bar{height:44px;min-height:44px;padding:6px 12px}
+@media(max-width:1320px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px 190px minmax(240px,1fr) max-content!important}}
+@media(max-width:1100px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px minmax(150px,1fr) max-content!important;grid-template-areas:"brand modes actions" "intake intake intake"!important;grid-template-rows:46px 44px!important;height:98px!important;gap:0 8px!important}.web-workbench .editor-layout{height:calc(100dvh - 98px)!important}}
+
+body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:260px 208px minmax(330px,1fr) auto max-content!important;grid-template-areas:"brand modes intake extension actions"!important}
+body.unified-workbench.web-workbench .app-header>#install-browser-extension{grid-area:extension;min-height:34px;white-space:nowrap;font-size:12px;padding:6px 10px}
+.extension-install-panel ol{padding-left:20px;font-size:12px;line-height:1.9}.extension-install-panel p{font-size:12px;line-height:1.8;color:#a9b3c6}.extension-install-panel label{display:block;margin:12px 0;font-size:12px}.extension-install-panel :is(select,input){width:100%;box-sizing:border-box;margin-top:6px;min-height:34px}.extension-install-panel>form{display:flex;justify-content:space-between;align-items:center}.extension-install-panel [hidden]{display:none!important}.extension-install-panel [data-prepare]{width:100%;margin-top:8px;min-height:38px}.extension-install-panel details button{display:block;width:100%;margin-top:8px}.extension-install-panel [data-feedback]{color:#c7b4f1}
+@media(max-width:1500px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px 190px minmax(250px,1fr) auto max-content!important}}
+@media(max-width:1250px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px minmax(160px,1fr) auto max-content!important;grid-template-areas:"brand modes extension actions" "intake intake intake intake"!important;grid-template-rows:46px 44px!important;height:98px!important;gap:0 8px!important}.web-workbench .editor-layout{height:calc(100dvh - 98px)!important}}
+@media(max-width:780px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px minmax(0,1fr)!important;grid-template-areas:"brand modes" "extension actions" "intake intake"!important;grid-template-rows:40px 42px 44px!important;height:134px!important}.web-workbench .editor-layout{height:auto!important}.unified-workbench .header-actions{gap:6px!important}.unified-workbench .project-controls #studio-recovery-state{display:none!important}}
+
+/* Browser extension is the sole web capture entry. */
+body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:260px 208px minmax(0,1fr) auto max-content!important;grid-template-areas:"brand modes intake extension actions"!important;grid-template-rows:64px!important;height:64px!important;gap:16px!important}
+body.unified-workbench.web-workbench #url-capture-form[hidden]{display:none!important}
+@media(max-width:1500px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px 190px minmax(0,1fr) auto max-content!important}}
+@media(min-width:781px){body.unified-workbench.web-workbench .editor-layout{height:calc(100dvh - 64px)!important}}
+@media(max-width:780px){body.unified-workbench.web-workbench .app-header.single-module{grid-template-columns:160px minmax(0,1fr)!important;grid-template-areas:"brand modes" "extension actions"!important;grid-template-rows:40px 42px!important;height:90px!important;gap:0 8px!important}}
+
+/* Installation typography and controls share one size system. */
+.extension-install-panel{font-size:12px;line-height:20px}
+.extension-install-panel :is(p,label,small,.install-browser-note,.install-footnote){font-size:12px!important;line-height:20px}
+.extension-install-panel :is(button,input,select,textarea){font-size:12px!important;line-height:18px;font-family:inherit;box-sizing:border-box}
+.extension-install-panel>form strong{font-size:13px;font-weight:600}
+.extension-install-panel .install-intro{margin:4px 0 16px;color:#aab5c9}
+.extension-install-panel .install-browser-label{display:block;margin:0;color:#b3bfd1}
+.extension-install-panel .install-browser-label select{display:block;width:100%;height:36px;margin:6px 0 0;padding:7px 10px;border:1px solid #41495c;border-radius:8px;background:#171d28;color:#e0e7f1}
+.extension-install-panel .install-browser-note{color:#8e9cb2;margin:8px 0 0}
+.extension-install-panel .install-steps{display:grid;gap:18px;margin:20px 0}
+.extension-install-panel .install-steps section{display:flex;align-items:flex-start;gap:10px;margin:0;padding:0;border:0}
+.extension-install-panel .install-steps section>span{display:grid;place-items:center;flex:none;width:23px;height:23px;border:1px solid #50455f;border-radius:7px;background:#2b2639;color:#c5b0e9;font-size:12px}
+.extension-install-panel .install-steps section>div{min-width:0;flex:1}
+.extension-install-panel .install-steps strong{display:block;font-weight:600;font-size:12px;line-height:23px;color:#e1e6ef}
+.extension-install-panel .install-steps p{margin:4px 0 0;color:#94a1b6}
+.extension-install-panel [data-manager-address]{display:block;margin:10px 0 8px;width:100%;height:34px;color:#cdb6f2;background:#161c27;border:1px solid #414358;border-radius:7px;padding:7px 9px}
+.extension-install-panel :is([data-manager],[data-copy],[data-prepare]){display:block;width:100%;height:34px;min-height:34px;margin:0;padding:7px 9px!important;font-size:12px!important;font-weight:500;border:1px solid #41495c;border-radius:7px;background:#252b38;color:#e0e7f1}
+.extension-install-panel :is([data-manager],[data-copy],[data-prepare]):hover{background:#333044;border-color:#76618d}
+.extension-install-panel [data-prepare]{margin:8px 0 0!important}
+.extension-install-panel .install-directory{display:block;background:transparent;border:0;padding:0;margin:10px 0 0}
+.extension-install-panel .install-directory textarea{display:block;width:100%;margin-top:8px;resize:none;word-break:break-all;line-height:20px}
+.extension-install-panel [data-feedback]{margin:12px 0 0;padding:9px 10px;border-radius:7px;background:#26362f;color:#b5d5c4}
+.extension-install-panel [data-feedback].install-error{background:#3b2d30;color:#f1bbc0}
+.extension-install-panel .install-alternative{display:flex;gap:12px;border-top:1px solid #353b49;padding-top:12px}
+.extension-install-panel .install-alternative button{border:0;background:transparent;padding:0;min-height:28px;color:#bda8e4;text-align:left}
+.extension-install-panel .install-footnote{margin:10px 0 0;color:#7f8ba0}
+.extension-install-panel [hidden]{display:none!important}
+
+.unified-workbench #feedback-toggle{height:34px;min-width:68px;font-size:12px;white-space:nowrap}.unified-workbench #feedback-toggle.feedback-has-error{border-color:#a87c61;color:#e5bb9f}
+.feedback-panel{font-size:12px;line-height:20px}.feedback-panel>form{display:flex;align-items:center;justify-content:space-between}.feedback-panel>form strong{font-size:13px}.feedback-panel .feedback-intro,.feedback-panel .feedback-privacy{font-size:12px;color:#94a3b8;line-height:20px;margin:10px 0 14px}.feedback-panel>label{display:block;margin:12px 0}.feedback-panel :is(select,textarea){display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #3f4759;border-radius:7px;background:#161c27;color:#e2e8f0;padding:8px;font-family:inherit;font-size:12px;line-height:20px}.feedback-panel textarea{resize:vertical;min-height:72px}.feedback-panel section{padding:14px 0;margin:0;border-top:1px solid #353d4d}.feedback-panel section>strong{font-size:12px}.feedback-panel .feedback-section-heading{display:flex;align-items:center;justify-content:space-between}.feedback-panel button,.feedback-panel .button{font-size:12px!important;min-height:32px;padding:6px 9px}.feedback-panel .feedback-shot-actions{display:flex;gap:8px}.feedback-panel .feedback-shot-actions>*{flex:1;text-align:center;margin:0;cursor:pointer;box-sizing:border-box}.feedback-panel [data-shot]{display:block;width:100%;max-height:160px;object-fit:contain;margin:10px 0;border:1px solid #41475b;border-radius:7px;background:#151b25}.feedback-panel [data-shot-note]{color:#91a0b6;font-size:12px;line-height:20px}.feedback-panel [data-diagnostics]{font-family:Consolas,monospace;font-size:11px;max-height:180px}.feedback-panel .feedback-consent{display:flex;align-items:flex-start;gap:7px;color:#b1bfd2;font-size:12px;line-height:20px}.feedback-panel .feedback-consent input{flex:none;width:14px;height:14px;margin:3px 0 0}.feedback-panel [data-submit]{width:100%;height:36px}.feedback-panel [data-result]{font-size:12px;line-height:20px;color:#c4b1ec;overflow-wrap:anywhere}.feedback-panel .feedback-receipt{display:grid;gap:8px;padding:12px;background:#22342c;border:1px solid #4c7562;border-radius:8px;color:#c4e2d0}.feedback-panel .feedback-receipt code{font-size:12px;overflow-wrap:anywhere}.feedback-panel [hidden]{display:none!important}
+
+.feedback-panel [data-diagnostics]{font-size:12px;line-height:20px;font-family:inherit;white-space:pre-line;border:1px solid #3f4759;border-radius:7px;background:#171d28;padding:9px;max-height:140px;overflow:auto;color:#b3bfd1}.feedback-panel [data-submit]{position:sticky;bottom:0;z-index:2;box-shadow:0 -5px 10px #1c2029}.feedback-panel textarea[data-description]{min-height:80px;height:80px}
+
+.unified-workbench .view-tools #actual{display:inline-flex!important}

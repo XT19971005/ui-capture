@@ -1,0 +1,7 @@
+﻿/nologo
+/target:winexe
+/platform:anycpu
+/reference:System.Windows.Forms.dll
+/win32icon:"../../插件程序/edge/favicon.ico"
+/out:"../../打开AI拆图助手.exe"
+"启动入口.cs"

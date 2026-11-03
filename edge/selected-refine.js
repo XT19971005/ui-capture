@@ -120,10 +120,11 @@
   }catch(e){
    releaseOther(transaction.returned,transaction.before);
    if(active===transaction&&task===transaction.id){
-    scene=clone(transaction.before);undo=transaction.past;redo=transaction.future;selected=null;refresh();window.studio.select(transaction.roots,true);
+    if(!equal(scene,transaction.before))scene=clone(transaction.before);undo=transaction.past;redo=transaction.future;selected=null;refresh();window.studio.select(transaction.roots,true);
     let saved=true;try{await durable()}catch(_){saved=false}
     stopSplitClock();feedback(e.name==='AbortError'?'cancelled':'failure',(e.name==='AbortError'?scope+'修正已取消。':scope+'修正未完成：'+e.message+'。')+'完整工程已保留。'+(saved?'':'恢复保存失败，请下载工程文件。'));
    }
+   if(options.preview)throw e;
    return false;
   }finally{if(active===transaction&&task===transaction.id){active=null;refineBefore=null;stopSplitClock();setBusy(false);window.studio.sync(false);sync()}else if(active===transaction&&task!==transaction.id&&!transaction.cancelling){active=null;if(refineBefore===transaction.before)refineBefore=null;sync()}}
  }

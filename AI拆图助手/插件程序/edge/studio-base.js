@@ -52,7 +52,7 @@ window.StudioBase=(()=>{
     // Archive exact original bytes/metadata, then read them back before any deletion.
     for(const original of originals){const result=await ShijieSmartSplit.archiveBrowserProject(original,disk.directory);if(result.verified!==true||result.id!==original.id)throw Error('旧工程备份未确认，浏览器记录保留')}
     let removed=0;
-    for(const original of originals){await ShijieSession.removeManual(original.id,original.persistedVersion||original.revision||null);removed++}
+    for(const original of originals){await ShijieSession.removeManual(original.id,original.persistedVersion||original.revision||null);if(memory.get(original.id)?.source==='browser-legacy')memory.delete(original.id);if(persisted.get(original.id)?.source==='browser-legacy')persisted.delete(original.id);removed++}
     legacyLoaded=true;return {removed};
    });writeQueue=task;return task;
   },
@@ -73,7 +73,7 @@ window.StudioBase=(()=>{
   },
   remove(key){
    const entry=memory.get(key),requestedDirectory=activeDirectory,seq=++sequence;const task=writeQueue.catch(()=>{}).then(async()=>{
-    await restoreSaved();if(entry?.source==='local-disk'){try{if(requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请刷新后重试');await ShijieSmartSplit.deleteSavedProject(key,entry.persistedVersion,requestedDirectory);persisted.delete(key)}catch(e){throw localError(e)}}else if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
+    await restoreSaved();if(entry?.source==='local-disk'){try{if(requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请刷新后重试');const legacy=(await ShijieSession.legacySaved()).find(p=>p.id===key);if(legacy){const backup=await ShijieSmartSplit.archiveBrowserProject(legacy,requestedDirectory);if(backup.verified!==true||backup.id!==key)throw Error('旧记录未能备份核对，暂不删除');await ShijieSession.removeManual(key,legacy.persistedVersion||legacy.revision||null)}await ShijieSmartSplit.deleteSavedProject(key,entry.persistedVersion,requestedDirectory);persisted.delete(key)}catch(e){throw localError(e)}}else if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
     const current=memory.get(key);if(!current||!Number.isFinite(current.sequence)||current.sequence<=seq){hidden.add(key);memory.delete(key)}
    });writeQueue=task;return task;
   },

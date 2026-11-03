@@ -1,14 +1,14 @@
 ﻿[CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
-$root=[IO.Path]::GetFullPath($PSScriptRoot)
+$root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $icon=Join-Path $root '插件程序/edge/favicon.ico'
-$launcher=Join-Path $root '启动AI拆图助手.ps1'
+$launcher=Join-Path $PSScriptRoot '启动AI拆图助手.ps1'
 foreach($file in @($icon,$launcher)){
     if(-not (Test-Path -LiteralPath $file -PathType Leaf)){throw "缺少随包文件：$file"}
 }
 $shell=New-Object -ComObject WScript.Shell
-$shortcut=$shell.CreateShortcut((Join-Path $root 'AI拆图助手.lnk'))
+$shortcut=$shell.CreateShortcut((Join-Path $PSScriptRoot 'AI拆图助手.lnk'))
 $shortcut.TargetPath=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $shortcut.Arguments='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$launcher+'"'
 $shortcut.WorkingDirectory=$root

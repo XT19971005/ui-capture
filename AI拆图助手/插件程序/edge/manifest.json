@@ -35,5 +35,20 @@
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
+  ],
+  "background": {
+    "service_worker": "extension-manager-background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "extension-manager-bridge.js"
+      ],
+      "run_at": "document_start"
+    }
   ]
 }

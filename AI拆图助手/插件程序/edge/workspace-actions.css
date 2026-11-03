@@ -16,7 +16,7 @@
 /* Respond to the actual canvas width, including the open assistant sidebar. */
 .unified-workbench main{container-type:inline-size;container-name:canvas-column}
 .unified-workbench :is(.toolbar,.history-tools,.document-actions) button{white-space:nowrap;flex-shrink:0}
-@container canvas-column (max-width:560px){
+@container canvas-column (max-width:760px){
  .unified-workbench .document-bar{display:flex;flex-wrap:wrap;height:auto;max-height:none;min-height:42px}
  .unified-workbench .document-bar>div:first-child{display:none}
  .unified-workbench .document-actions{margin-left:0}
@@ -36,3 +36,11 @@
 .unified-workbench #layer-list .layer{min-height:44px}
 @media(min-width:781px){.unified-workbench .workspace,.unified-workbench .editor-layout{grid-template-columns:var(--layer-panel-width,var(--workbench-left,232px)) minmax(0,1fr) var(--workbench-right,280px)!important}}
 @media(max-width:780px){.studio-layer-resizer{display:none}}
+
+.unified-workbench.inspector-collapsed .workspace{grid-template-columns:var(--layer-panel-width,var(--workbench-left,232px)) minmax(0,1fr) 0!important}
+.unified-workbench.inspector-collapsed .properties{display:none!important}
+#inspector-toggle[aria-expanded=false]{color:#cbb5f5;border-color:#685780}
+.font-mapping{margin-block:14px;padding-block:10px;border-top:1px solid var(--shell-border)}
+.font-mapping label{display:block;margin:10px 0}.font-mapping select{display:block;width:100%;margin-top:6px}.font-mapping button{width:100%;margin-top:8px}
+.font-mapping p,.manual-review-state{font-size:11px;line-height:1.7;color:var(--shell-muted);overflow-wrap:anywhere}
+#original-annotations>header{position:sticky;top:0;z-index:3;background:var(--shell-panel)}

@@ -120,7 +120,7 @@ function textLayoutTools(){
     if(visible&&ownText&&font.custom&&!font.face)return browserRaster('custom-font-unavailable',{fontFamily:s.fontFamily,resolvedFamily:font.family});
     if(visible&&ownText&&font.custom&&(s.fontVariationSettings!=='normal'||s.fontFeatureSettings!=='normal'||!['normal','100%'].includes(s.fontStretch)))return browserRaster('custom-font-typography',{fontFamily:s.fontFamily,fontVariationSettings:s.fontVariationSettings,fontFeatureSettings:s.fontFeatureSettings,fontStretch:s.fontStretch});
     if(visible&&ownText&&font.face){const value=['INPUT','TEXTAREA','SELECT'].includes(el.tagName)?el.type==='password'?'••••••':el.tagName==='SELECT'?el.options[el.selectedIndex]?.text||'':el.value||el.placeholder||'':[...el.childNodes].filter(c=>c.nodeType===Node.TEXT_NODE).map(c=>c.textContent).join('');if(!fontCovers(font.face,Text.normalized(value,s)))return browserRaster('custom-font-glyph-fallback',{fontFamily:s.fontFamily,resolvedFamily:font.family,fontPostScriptName:font.face.postScriptName})}
-    if(s.backgroundImage.includes('url('))warnings.add('部分 CSS 背景图片需要进一步嵌入，暂不保证还原。');
+    if(visible&&s.backgroundImage.includes('url('))return browserRaster('css-background-image',{backgroundImage:s.backgroundImage});
     if(s.filter!=='none')warnings.add('复杂滤镜暂不保证还原。');
     if(visible&&el.tagName==='IFRAME'){let doc;try{doc=el.contentDocument;if(!doc?.body)throw Error('inaccessible')}catch{return browserRaster('cross-origin-frame')}
       node.clip=true;node.captureKind='same-origin-frame';node.sourceUrl=doc.location.href;const child=walk(doc.body,{dx:env.dx+r.left+el.clientLeft,dy:env.dy+r.top+el.clientTop,doc});if(child)node.children.push(child);return node;}

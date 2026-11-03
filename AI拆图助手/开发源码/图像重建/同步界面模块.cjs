@@ -18,6 +18,7 @@ const groups={
     "layer-style-panel.js",
     "layer-style-panel.css",
     "workspace-ui.js",
+    "feedback.js",
     "workspace-ui.css",
     "workspace-polish.js",
     "workspace-polish.css",
@@ -42,7 +43,16 @@ const groups={
     "canvas-compare.js"
   ],
   "网页抓取": [
-    "url-capture.js"
+    "url-capture.js",
+    "extension-install.js",
+    "extension-manager-background.js",
+    "extension-manager-bridge.js",
+    "assets.js",
+    "capture.js",
+    "export.js",
+    "popup.html",
+    "popup.css",
+    "popup.js"
   ]
 };
 function entries(root){return Object.entries(groups).flatMap(([dir,names])=>names.map(name=>({source:path.join(root,'开发源码',dir,name),target:path.join(root,'插件程序/edge',name)})))}

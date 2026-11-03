@@ -112,8 +112,32 @@ def register_web_capture(app,bridge=None):
         url=data.get('url')
         if not valid_url(url):return jsonify(error='请输入有效的 http 或 https 网址'),400
         try:
-            return jsonify(bridge.call('open',url=url))
+            viewport=data.get('viewport')
+            if viewport is not None and (not isinstance(viewport,dict) or set(viewport)!={'width','height'} or any(type(viewport[k]) is not int or not 320<=viewport[k]<=1920 for k in viewport)):return jsonify(error='预览尺寸无效'),400
+            extra={'embedded':True,**({'viewport':viewport} if viewport else {})} if data.get('embedded') is True else {}
+            return jsonify(bridge.call('open',url=url,**extra))
         except (OSError,RuntimeError,ValueError) as exc:return jsonify(error=str(exc)),502
+    @app.post('/web/preview')
+    @app.post('/web/interact')
+    def web_preview():
+        data=request.get_json(silent=True)
+        if not isinstance(data,dict) or not valid_key(data.get('target')):return jsonify(error='请先打开网页预览'),400
+        action='interact' if request.path.endswith('/interact') else 'preview'
+        args={'target':data['target']}
+        if action=='interact':
+            kind=data.get('kind')
+            if kind not in ('click','scroll','back','reload'):return jsonify(error='不支持的预览操作'),400
+            args['kind']=kind
+            if kind=='click':
+                if any(type(data.get(k)) not in (int,float) or not 0<=data[k]<1920 for k in ('x','y')):return jsonify(error='点击位置无效'),400
+                args.update(x=data['x'],y=data['y'])
+            if kind=='scroll':
+                delta=data.get('delta')
+                if type(delta) not in (int,float) or not -2400<=delta<=2400:return jsonify(error='滚动范围无效'),400
+                args['delta']=delta
+        try:return jsonify(bridge.call(action,**args))
+        except (OSError,RuntimeError,ValueError) as exc:return jsonify(error=str(exc)),502
+
     @app.post('/web/capture')
     def web_capture():
         data=request.get_json(silent=True)

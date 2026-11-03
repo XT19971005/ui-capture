@@ -27,3 +27,8 @@
  .app-header.single-module:has(>.url-capture) .header-actions :is(button,.button){padding:8px!important;font-size:12px}
  .app-header.single-module:has(>.url-capture) .workspace-switch a{padding:8px;font-size:12px}
 }
+
+.workspace-icon-button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.workspace-icon-button>svg{display:block;flex:none;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.workspace-icon-button>span{white-space:nowrap}
+.workspace-icon-button:disabled{opacity:.45}

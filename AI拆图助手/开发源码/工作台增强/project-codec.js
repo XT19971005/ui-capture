@@ -60,5 +60,9 @@
   if(!doc||typeof doc!=='object'||Array.isArray(doc))fail('本地工程缺少有效文档。');
   return doc;
  }
- window.ShijieProjectCodec={LIMITS,encode,decode,stringify,parse,readFile};
+ // History serializes only structure. Immutable image strings remain shared
+ // between snapshots; dropping an undo step releases its resource references.
+ function snapshot(doc){const packed=encode(doc);return {format:'shijie-history',json:JSON.stringify(packed.doc),images:packed.images}}
+ function restoreSnapshot(value){if(typeof value==='string')return JSON.parse(value);if(value?.format!=='shijie-history')fail('历史快照无效。');return decode({format:'shijie-project',version:1,doc:JSON.parse(value.json),images:value.images})}
+ window.ShijieProjectCodec={LIMITS,encode,decode,stringify,parse,readFile,snapshot,restoreSnapshot};
 })();

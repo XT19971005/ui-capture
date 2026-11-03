@@ -1,18 +1,17 @@
 ﻿[CmdletBinding()]
 param([switch]$CheckOnly,[switch]$NoBrowser)
 $ErrorActionPreference='Stop'
-$root=[IO.Path]::GetFullPath($PSScriptRoot)
+$root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $python=Join-Path $root '依赖/运行环境/python/python.exe'
 $pythonPth=Join-Path $root '依赖/运行环境/python/python310._pth'
 $pythonDll=Join-Path $root '依赖/运行环境/python/python310.dll'
 $node=Join-Path $root '依赖/运行环境/node/node.exe'
 $server=Join-Path $root '开发源码/自动拆图/server.py'
-$shortcutScript=Join-Path $root '创建AI拆图助手快捷方式.ps1'
 $icon=Join-Path $root '插件程序/edge/favicon.ico'
 $sharedNode=Join-Path (Split-Path -Parent $root) '技能包/依赖/Node/node_modules'
 $ag=Join-Path $sharedNode 'ag-psd'
 $canvas=Join-Path $sharedNode '@napi-rs/canvas'
-foreach($file in @($python,$pythonPth,$pythonDll,$node,$server,$shortcutScript,$icon)){
+foreach($file in @($python,$pythonPth,$pythonDll,$node,$server,$icon)){
     if(-not (Test-Path -LiteralPath $file -PathType Leaf)){throw "缺少随包文件：$file"}
 }
 foreach($directory in @($ag,$canvas)){
@@ -26,7 +25,6 @@ if($LASTEXITCODE -ne 0){throw '随包 Node 检查失败。'}
 & $node -e 'require(process.argv[1]);require(process.argv[2])' $ag $canvas
 if($LASTEXITCODE -ne 0){throw '随包 Node PSD 依赖检查失败。'}
 if($CheckOnly){Write-Host 'AI拆图助手便携环境检查通过。';return}
-& (Join-Path $root '创建AI拆图助手快捷方式.ps1')
 
 $manifest=Join-Path $root '开发源码/自动拆图/native-host.json'
 if(-not (Test-Path -LiteralPath $manifest)){

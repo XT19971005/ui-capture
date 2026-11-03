@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param([string]$Python,[ValidatePattern('^[a-p]{32}$')][string]$ExtensionId)
 $ErrorActionPreference='Stop'
-$root=[IO.Path]::GetFullPath($PSScriptRoot)
+$root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $engine=Join-Path $root '开发源码/自动拆图'
 if(-not $Python){
     $bundled=Join-Path $root '依赖/运行环境/python/python.exe'

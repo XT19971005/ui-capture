@@ -66,3 +66,31 @@ main>footer{justify-content:flex-start;gap:10px}#split-time-summary{margin-left:
 #free-assistant .assistant-current-target{display:block;margin:0 0 8px;font-size:12px;line-height:1.6;color:#d8c9f4;white-space:normal;overflow-wrap:anywhere}
 #free-assistant [data-preview]{display:none!important}
 .canvas-comparison-open #image-generate-panel :is(#image-generate-apply,[data-cancel]){display:none!important}
+
+/* The assistant entry belongs beside the mode switch, at every breakpoint. */
+.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:auto auto auto minmax(180px,1fr) auto!important;grid-template-areas:"brand modes assistant intake actions"!important}
+.unified-workbench .app-header>#assistant-toggle{grid-area:assistant;position:static!important;inset:auto!important;justify-self:start;white-space:nowrap;min-height:32px;padding:6px 10px;font-size:12px}
+.unified-workbench .app-header>#assistant-toggle[aria-expanded=true]{background:#44355c;border-color:#8b71bd}
+@media(min-width:961px) and (max-width:1760px){
+ .unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:180px 208px minmax(0,1fr)!important;grid-template-areas:"brand modes assistant" "intake actions actions"!important}
+}
+@media(max-width:960px){
+ .unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px minmax(0,1fr) auto!important;grid-template-areas:"brand modes assistant" "intake intake intake" "actions actions actions"!important}
+}
+/* Compact windows use one reserved sidebar, rather than two overlapping panes. */
+body.assistant-docked.free-assistant-open #free-assistant{top:var(--assistant-dock-top,var(--workbench-header,64px));width:var(--assistant-dock-width,var(--workbench-right,280px));box-shadow:none}
+body.assistant-docked.free-assistant-open .properties{visibility:hidden;pointer-events:none}
+body.assistant-docked #free-assistant .free-assistant-resizer{display:none}
+
+.assistant-pasted-image{display:flex;align-items:center;gap:8px;padding:8px;margin:6px 0;border:1px solid #51465e;border-radius:8px;flex-shrink:0}.assistant-pasted-image[hidden]{display:none!important}.assistant-pasted-image img{width:64px;height:64px;object-fit:contain;background:repeating-conic-gradient(#333 0 25%,#444 0 50%) 0/12px 12px}.assistant-pasted-image span{flex:1;font-size:11px;color:#b9b2ca}.assistant-pasted-image button{flex:none;font-size:11px}
+
+/* Keep the assistant entry prominent even while the panel is closed. */
+.unified-workbench .app-header>#assistant-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;min-width:112px;padding:8px 15px;font-size:14px;font-weight:700;letter-spacing:.2px;color:#fff;background:linear-gradient(135deg,#8b5ce2,#6644b0);border:1px solid #bd9aff;border-radius:9px;box-shadow:0 2px 10px #8b5ce238,inset 0 1px 0 #ffffff26;transition:background .15s,box-shadow .15s}
+.unified-workbench .app-header>#assistant-toggle:hover{background:linear-gradient(135deg,#9b6af0,#7954c5);box-shadow:0 3px 14px #9b6af055}
+.unified-workbench .app-header>#assistant-toggle[aria-expanded=true]{color:#fff;background:linear-gradient(135deg,#7950c6,#55358f);border-color:#d1b6ff;box-shadow:inset 0 0 0 1px #d1b6ff44}
+.unified-workbench .app-header>#assistant-toggle:focus-visible{outline:2px solid #e4d2ff;outline-offset:3px}
+@media(max-width:780px){.unified-workbench .app-header>#assistant-toggle{min-width:94px;min-height:36px;padding:7px 10px;font-size:13px}}
+
+#assistant-text-chip::after,#assistant-image-chip::after{content:"";display:inline-block;width:5px;height:5px;margin-left:8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg);vertical-align:middle;opacity:.8}
+
+#free-assistant h3:before{display:none}#free-assistant h3{display:flex;align-items:center;gap:9px}.assistant-heading-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:27px;height:27px;border-radius:50%;background:#494366;color:#f4edff}.assistant-heading-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}

@@ -1,12 +1,12 @@
 ﻿[CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
-$taskRoot=[IO.Path]::GetFullPath($PSScriptRoot)
+$taskRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $taskServer=Join-Path $taskRoot '开发源码/自动拆图/server.py'
 try {
     $taskConnection=Invoke-RestMethod 'http://127.0.0.1:19217/connection' -TimeoutSec 3
 } catch {
-    & (Join-Path $taskRoot '启动AI拆图助手.ps1') -NoBrowser
+    & (Join-Path $PSScriptRoot '启动AI拆图助手.ps1') -NoBrowser
     return
 }
 if($taskConnection.url -ne 'http://127.0.0.1:19217' -or -not $taskConnection.token){throw '本机引擎连接无效，未停止任何程序。'}
@@ -25,5 +25,5 @@ foreach($taskEngineProcess in $taskEngineProcesses){
 foreach($taskEngineProcess in $taskEngineProcesses){
     Wait-Process -Id $taskEngineProcess.ProcessId -Timeout 8 -ErrorAction SilentlyContinue
 }
-& (Join-Path $taskRoot '启动AI拆图助手.ps1') -NoBrowser
+& (Join-Path $PSScriptRoot '启动AI拆图助手.ps1') -NoBrowser
 Write-Host '引擎已更新。网页未刷新，当前未保存内容仍在原页面。保存工程后刷新可加载新版侧栏。'

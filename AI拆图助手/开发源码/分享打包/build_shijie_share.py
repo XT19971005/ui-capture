@@ -8,9 +8,11 @@ import zipfile
 from pathlib import Path
 
 
-ROOT_FILES = {
-    "启动AI拆图助手.ps1", "启动AI拆图助手.cmd", "创建AI拆图助手快捷方式.ps1", "连接智能拆图.ps1", "打开AI拆图助手.html", "目录说明.txt", "重启AI拆图助手引擎.cmd", "重启AI拆图助手引擎.ps1"
-}
+HANDOFF_NAME = '00_先看这里_服务器部署交接.txt'
+HANDOFF_SOURCE = 'AI拆图助手/开发源码/分享打包/服务器部署交接说明.txt'
+
+ROOT_FILES = {"打开AI拆图助手.exe"}
+
 PLUGIN_DIRS = {
     "开发源码", "插件程序", "依赖/运行环境/python", "依赖/运行环境/node", "依赖/图像重建", "依赖/构建工具/node_modules/playwright", "依赖/构建工具/node_modules/playwright-core"
 }
@@ -26,10 +28,14 @@ BANNED_NAMES = {
     "runtime.local.json", "auth.json", "service.json", "native-host.json", "native-host.cmd",
     "python-embed.zip", "grounding.py", "diagnose_palette.py", "diagnose_font.cjs", "构建psd.cjs", "image-recognition.js", "token.json", "credentials.json", "download_models.py", ".env", "启动.log",
 }
-BANNED_SUFFIXES = {".psd", ".psb", ".safetensors", ".pt", ".pth", ".ckpt", ".onnx", ".gguf", ".traineddata", ".pyc", ".pyo", ".log"}
+BANNED_SUFFIXES = {".psd", ".psb", ".safetensors", ".pt", ".pth", ".ckpt", ".onnx", ".gguf", ".traineddata", ".pyc", ".pyo", ".log", ".lnk"}
 
 
 def is_allowed(relative: Path) -> bool:
+    if relative.as_posix() == HANDOFF_NAME:
+        return True
+    if relative.as_posix() == HANDOFF_SOURCE:
+        return False
     parts = relative.as_posix().split("/")
     if len(parts) < 2 or any(part in ("", ".", "..") for part in parts):
         return False
@@ -47,7 +53,7 @@ def is_allowed(relative: Path) -> bool:
         return False
     if any(name == banned or name.startswith(banned + ".") for banned in BANNED_NAMES) or Path(name).suffix in BANNED_SUFFIXES:
         return False
-    if name.startswith(("test_", "test-", "测试", "验证")):
+    if name.endswith("实施计划.md") or name.startswith(("test_", "test-", "测试", "验证")):
         return False
     if lower[0] == "ai拆图助手":
         sub = "/".join(parts[1:])
@@ -67,6 +73,12 @@ def build_archive(root: Path, output: Path) -> int:
     written = 0
     temporary = output.with_suffix('.building.zip')
     with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
+        handoff = root / HANDOFF_SOURCE
+        if not handoff.is_file():
+            handoff = root / HANDOFF_NAME
+        if handoff.is_file():
+            archive.write(handoff, HANDOFF_NAME)
+            written += 1
         for top in ("AI拆图助手", "技能包"):
             base = root / top
             if not base.is_dir():

@@ -10,6 +10,8 @@ from local_project_store import LocalProjectStore,ProjectConflict
 PORT=19217
 TOKEN=secrets.token_urlsafe(32)
 app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=MAX_HTTP_BYTES
+from feedback_routes import register_feedback_routes
+register_feedback_routes(app,STATE/'用户反馈')
 PROJECT_LOCATION_CONFIG=STATE/'project-library.local.json'
 DEFAULT_PROJECT_DIRECTORY=ROOT.parent/'工程文件'
 PROJECT_LOCATION_ERROR=None
@@ -81,6 +83,32 @@ def local_connection():return jsonify(url='http://127.0.0.1:19217',token=TOKEN)
 def static_editor(name):
     if name.startswith(('api/','projects/','saved-projects/')):return jsonify(error='Not found'),404
     return send_from_directory(ROOT/'插件程序/edge',name)
+
+@app.get('/extension/install-info')
+def extension_install_info():
+    return jsonify(directory=str((ROOT/'插件程序/edge').resolve()),version=json.loads((ROOT/'插件程序/edge/manifest.json').read_text('utf8'))['version'])
+
+@app.get('/extension/download')
+def extension_download():
+    import zipfile
+    folder=(ROOT/'插件程序/edge').resolve();buffer=io.BytesIO()
+    with zipfile.ZipFile(buffer,'w',zipfile.ZIP_DEFLATED) as archive:
+        for file in sorted(folder.rglob('*')):
+            relative=file.relative_to(folder)
+            if file.is_file() and not file.is_symlink() and not any(part.startswith('.') or part.startswith('test-') for part in relative.parts) and (file.suffix.lower() in {'.js','.css','.html','.png','.svg','.ico'} or file==folder/'manifest.json'):
+                archive.write(file,'AI拆图助手插件/'+relative.as_posix())
+    buffer.seek(0)
+    return send_file(buffer,mimetype='application/zip',as_attachment=True,download_name='AI拆图助手_浏览器插件.zip')
+
+@app.post('/extension/setup')
+def extension_setup():
+    import subprocess
+    body=request.get_json(silent=True) or {};browser=body.get('browser')
+    if browser not in ('chrome','edge','brave','opera','vivaldi','chromium','qq','browser360'):return jsonify(error='请选择支持的浏览器安装指引'),400
+    if os.name!='nt' or request.remote_addr not in ('127.0.0.1','::1'):return jsonify(error='此功能仅供本机 Windows 使用，请下载插件包安装'),400
+    try:os.startfile(str(ROOT/'插件程序/edge'))
+    except OSError:return jsonify(error='无法打开插件目录，请复制路径或下载插件包'),500
+    return jsonify(ok=True,directoryOpened=True)
 
 @app.get('/saved-projects')
 def list_saved_projects():
