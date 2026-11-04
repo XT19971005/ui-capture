@@ -144,3 +144,10 @@ elif 'logs' in a:print('authorization: Bearer hidden-synthetic-token')
         calls=[json.loads(s) for s in self.calls.read_text().splitlines()]
         writes=[a for a in calls if 'restart' in a or 'up' in a]
         self.assertEqual(len(writes),2); self.assertTrue(all('worker' not in a for a in writes))
+
+    def test_start_worker_can_drain_jobs_queued_while_it_was_stopped(self):
+        self.env['JOB_COUNT']='2'
+        self.controller().perform('control_service',{'operation':'start','service':'worker'})
+        calls=[json.loads(s) for s in self.calls.read_text().splitlines()]
+        self.assertIn(['up','-d','--wait','worker'],[a[-4:] for a in calls])
+        self.assertFalse(any('stop' in a or 'restart' in a for a in calls))
