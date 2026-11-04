@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 from pathlib import Path
 import runpy
 import tempfile
@@ -9,6 +10,19 @@ from django.test import SimpleTestCase
 
 
 class Controller(SimpleTestCase):
+    def test_managed_checks_use_the_deployed_image(self):
+        controller = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'shijiectl'))
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+            folder = Path(tmp) / 'config'
+            controller['configuration'](folder, 'http://127.0.0.1:8093', data_dir=Path(tmp) / 'data')
+            (folder / 'operations.json').write_text('{}')
+            (folder / 'deployment.json').write_text(json.dumps({'image': 'shijie:' + 'a' * 40}))
+            with patch('sys.argv', ['shijiectl', 'test', '--config-dir', str(folder)]), patch('subprocess.run') as run:
+                controller['main']()
+            self.assertGreater(len(run.call_args_list), 2)
+            for call in run.call_args_list:
+                self.assertEqual(call.kwargs['env']['SHIJIE_IMAGE'], 'shijie:' + 'a' * 40)
+
     def test_runtime_checks_use_an_isolated_stack_and_remove_only_that_stack(self):
         controller = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'shijiectl'))
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):

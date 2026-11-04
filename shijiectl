@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Small host controller; all application dependencies run inside Ubuntu Docker."""
 import argparse
-import datetime
 import json
 import os
 from pathlib import Path
@@ -99,7 +98,13 @@ def configuration(folder, public_url, oidc_from=None, data_dir=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['init', 'dev', 'deploy', 'test', 'config', 'status', 'logs', 'restart', 'stop', 'backup',
-                                         'model-download', 'model-start', 'model-stop', 'model-status'])
+                                         'model-download', 'model-start', 'model-stop', 'model-status', 'start', 'mcp-install', 'mcp-token'])
+    parser.add_argument('actor', nargs='?')
+    parser.add_argument('--read-only', action='store_true')
+    parser.add_argument('--revoke', action='store_true')
+    parser.add_argument('--deployed-commit')
+    parser.add_argument('--deployed-image')
+    parser.add_argument('--commit')
     parser.add_argument('--config-dir', type=Path, default=ROOT / '.local')
     parser.add_argument('--public-url', default='http://127.0.0.1:8093')
     parser.add_argument('--oidc-from', type=Path)
@@ -107,6 +112,17 @@ def main():
     parser.add_argument('--backup-dir', type=Path)
     parser.add_argument('--keep-stopped', action='store_true', help='备份成功后继续停写，供升级或恢复维护使用')
     args = parser.parse_args()
+    if args.action == 'mcp-install':
+        from shijie_ops.install import install
+        install(ROOT, args.config_dir.resolve(), args.deployed_commit, args.deployed_image)
+        return
+    if args.action == 'mcp-token':
+        from shijie_ops.install import issue_token, AUTH
+        if os.geteuid() != 0: raise ValueError('签发 MCP 凭据需要 sudo。')
+        path = issue_token(AUTH, args.actor or '', 'read' if args.read_only else 'deploy', args.revoke)
+        print('凭据已撤销' if path is None else '凭据文件：' + str(path))
+        return
+    if args.actor is not None: raise ValueError('此命令不接受成员参数。')
     if args.action.startswith('model-'):
         model_control(args.action)
         return
@@ -118,6 +134,17 @@ def main():
         if args.action != 'dev':
             raise ValueError('请先运行 init')
         configuration(folder, args.public_url, args.oidc_from, args.data_dir)
+    if (folder / 'operations.json').is_file() and args.action in ('deploy', 'start', 'restart', 'stop', 'backup', 'status', 'logs'):
+        from shijie_ops.release import Controller
+        controller = Controller(folder)
+        if args.backup_dir: controller.options['backup_dir'] = str(args.backup_dir.resolve())
+        if args.action == 'deploy':
+            controller.perform('deploy', {'commit': args.commit or controller.git('rev-parse', 'HEAD').decode().strip()})
+        elif args.action in ('start', 'restart', 'stop'):
+            controller.perform('control_service', {'operation': args.action, 'service': 'all'})
+        elif args.action == 'backup': controller.perform('backup', {})
+        else: controller.run(controller.record('deployment'), *(['ps'] if args.action == 'status' else ['logs', '--tail=100', 'web', 'worker']))
+        return
     if args.action == 'config':
         subprocess.run(['vi', str(folder / 'config.toml')], check=True)
         return
@@ -136,6 +163,8 @@ def main():
     env.update(SHIJIE_CONFIG_FILE=str(folder / 'config.toml'), SHIJIE_DB_PASSWORD_FILE=str(folder / 'postgres-password'), SHIJIE_DATA_DIR=str(data_dir))
     env.setdefault('SHIJIE_IMAGE_REGISTRY', config.get('deployment', {}).get('image_registry', 'docker.io/library/'))
     env.setdefault('SHIJIE_PIP_INDEX_URL', config.get('deployment', {}).get('pip_index_url', 'https://pypi.org/simple'))
+    if args.action == 'test' and (folder / 'operations.json').is_file():
+        env['SHIJIE_IMAGE'] = json.loads((folder / 'deployment.json').read_text())['image']
     local = folder == (ROOT / '.local').resolve()
     if local:
         env.update(SHIJIE_UID=str(os.getuid()), SHIJIE_GID=str(os.getgid()))
@@ -146,62 +175,52 @@ def main():
     def run(*parts, **kwargs):
         return subprocess.run([*command, *parts], env=env, cwd=ROOT, check=True, **kwargs)
 
-    if args.action in ('dev', 'deploy'):
-        if args.action == 'deploy':
-            existing = run('ps', '--services', '--status', 'running', stdout=subprocess.PIPE, text=True).stdout.splitlines()
-            if 'web' in existing or 'worker' in existing:
-                if args.backup_dir is None:
-                    raise ValueError('已有部署升级须提供 --backup-dir；先完成备份才会修改服务')
-                subprocess.run([sys.executable, str(ROOT / 'shijiectl'), 'backup', '--config-dir', str(folder), '--backup-dir', str(args.backup_dir), '--keep-stopped'], check=True)
-        run('build')
-        run('up', '-d', 'db', '--wait')
-        # Stop writers before schema changes; take an explicit backup before an existing deployment upgrade.
-        run('stop', 'web', 'worker')
-        run('run', '--rm', 'web', 'python', 'manage.py', 'migrate', '--noinput')
-        run('run', '--rm', 'web', 'python', 'manage.py', 'preflight')
-        run('up', '-d', '--wait', 'web', 'worker')
-        print('服务已启动：' + config['site']['public_url'])
-    elif args.action == 'test':
-        import tempfile
-        with tempfile.TemporaryDirectory(prefix='shijie-test-') as temporary:
-            test_folder = Path(temporary)
-            configuration(test_folder, 'http://127.0.0.1:8093', data_dir=test_folder / 'data')
-            command += ['-p', 'shijie-test-' + secrets.token_hex(6)]
-            env.update(SHIJIE_CONFIG_FILE=str(test_folder / 'config.toml'),
-                       SHIJIE_DB_PASSWORD_FILE=str(test_folder / 'postgres-password'),
-                       SHIJIE_DATA_DIR=str(test_folder / 'data'))
-            try:
-                run('up', '-d', '--wait', 'db')
-                run('run', '--rm', '-e', 'SHIJIE_PRODUCTION=0', 'web', 'python', 'manage.py', 'test', 'tests', '--noinput')
-                run('run', '--rm', 'web', 'node', '--test', 'tests/frontend.cjs')
-            finally:
-                # This unique project owns only disposable test containers and volumes.
-                run('down', '--volumes')
-    elif args.action == 'backup':
-        if args.backup_dir is None:
-            raise ValueError('backup 必须指定 --backup-dir，建议使用异盘目录')
-        dest = args.backup_dir.resolve() / datetime.datetime.now(datetime.timezone.utc).strftime('shijie-%Y%m%dT%H%M%SZ')
-        if dest.is_relative_to(data_dir.resolve()):
-            raise ValueError('备份目录不能位于数据目录内')
-        dest.mkdir(parents=True, mode=0o700)
-        run('stop', 'web', 'worker')
-        # A failed backup deliberately leaves writers stopped and no COMPLETE marker.
-        with (dest / 'database.sql').open('xb') as stream:
-            run('exec', '-T', 'db', 'pg_dump', '-U', 'shijie', '--clean', '--if-exists', 'shijie', stdout=stream)
-        import tarfile
-        with tarfile.open(dest / 'data.tar.gz', 'w:gz') as tar:
-            tar.add(data_dir, arcname='data')
-            tar.add(folder / 'config.toml', arcname='config.toml')
-            tar.add(folder / 'postgres-password', arcname='postgres-password')
-        import hashlib
-        manifest = {name: hashlib.file_digest((dest / name).open('rb'), 'sha256').hexdigest() for name in ('database.sql', 'data.tar.gz')}
-        (dest / 'COMPLETE').write_text(json.dumps(manifest, indent=2) + '\n')
-        if not args.keep_stopped:
-            run('start', 'web', 'worker')
-        print('备份完成：' + str(dest))
-    else:
-        mapping = {'status': ['ps'], 'logs': ['logs', '--tail=100', 'web', 'worker'], 'restart': ['restart', 'web', 'worker'], 'stop': ['stop']}
-        run(*mapping[args.action])
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        if args.action in ('dev', 'deploy', 'start', 'restart', 'stop', 'backup'):
+            from shijie_ops.release import maintenance_lock
+            stack.enter_context(maintenance_lock(folder))
+            if (folder / 'pending.json').exists(): raise ValueError('有未完成发布，请使用 MCP 恢复。')
+        if args.action in ('dev', 'deploy'):
+            if args.action == 'deploy':
+                existing = run('ps', '--services', '--status', 'running', stdout=subprocess.PIPE, text=True).stdout.splitlines()
+                if 'web' in existing or 'worker' in existing:
+                    if args.backup_dir is None:
+                        raise ValueError('已有部署升级须提供 --backup-dir；先完成备份才会修改服务')
+                    from shijie_ops.release import backup, timestamp
+                    backup(run, folder, data_dir, args.backup_dir.resolve() / ('shijie-' + timestamp()), keep_stopped=True)
+            run('build')
+            run('up', '-d', 'db', '--wait')
+            # Stop writers before schema changes; take an explicit backup before an existing deployment upgrade.
+            run('stop', 'web', 'worker')
+            run('run', '--rm', 'web', 'python', 'manage.py', 'migrate', '--noinput')
+            run('run', '--rm', 'web', 'python', 'manage.py', 'preflight')
+            run('up', '-d', '--wait', 'web', 'worker')
+            print('服务已启动：' + config['site']['public_url'])
+        elif args.action == 'test':
+            import tempfile
+            with tempfile.TemporaryDirectory(prefix='shijie-test-') as temporary:
+                test_folder = Path(temporary)
+                configuration(test_folder, 'http://127.0.0.1:8093', data_dir=test_folder / 'data')
+                command += ['-p', 'shijie-test-' + secrets.token_hex(6)]
+                env.update(SHIJIE_CONFIG_FILE=str(test_folder / 'config.toml'),
+                           SHIJIE_DB_PASSWORD_FILE=str(test_folder / 'postgres-password'),
+                           SHIJIE_DATA_DIR=str(test_folder / 'data'))
+                try:
+                    run('up', '-d', '--wait', 'db')
+                    run('run', '--rm', '-e', 'SHIJIE_PRODUCTION=0', 'web', 'python', 'manage.py', 'test', 'tests', '--noinput')
+                    run('run', '--rm', 'web', 'node', '--test', 'tests/frontend.cjs')
+                finally:
+                    # This unique project owns only disposable test containers and volumes.
+                    run('down', '--volumes')
+        elif args.action == 'backup':
+            if args.backup_dir is None:
+                raise ValueError('backup 必须指定 --backup-dir，建议使用异盘目录')
+            from shijie_ops.release import backup, timestamp
+            backup(run, folder, data_dir, args.backup_dir.resolve() / ('shijie-' + timestamp()), keep_stopped=args.keep_stopped)
+        else:
+            mapping = {'start': ['up', '-d', '--wait', 'web', 'worker'], 'status': ['ps'], 'logs': ['logs', '--tail=100', 'web', 'worker'], 'restart': ['restart', 'web', 'worker'], 'stop': ['stop']}
+            run(*mapping[args.action])
 
 
 if __name__ == '__main__':
