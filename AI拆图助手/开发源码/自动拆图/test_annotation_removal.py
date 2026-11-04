@@ -56,4 +56,42 @@ class RemovalTests(unittest.TestCase):
   scene,request=self.fixture();request['annotations']['allowExpand']=True
   def generate(prompt,images,target,**kw):
    im=Image.new('RGBA',(150,150));im.paste((100,150,80,255),(25,10,125,140));im.paste((100,150,80,255),(1,1,5,5));im.save(target);return {'actualImageGeneration':True}
-  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate),self.assertRaisesRegex(ValueError,'配比补边'):image_replace._process(scene['source'],'测试',lambda *_:None,lambda:False,scene['source'],Path(folder),scene,request)
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=image_replace._process(scene['source'],'测试',lambda *_:None,lambda:False,scene['source'],Path(folder),scene,request)
+  self.assertEqual((result['nodes'][0]['x'],result['nodes'][0]['width']),(-35,150))
+
+ def test_background_removal_keeps_opaque_frame_inside_expanded_canvas(self):
+  scene,request=self.fixture();im=Image.new('RGBA',(80,100),(12,34,56,0));im.paste((80,120,160,255),(10,10,70,90));src=png(im)
+  scene.update(source=src,comparisonSource=src,originalSource=png(Image.new('RGB',(60,80),(80,120,160))));scene['nodes'][0]['src']=src
+  request['annotations']['sourceHash']=hashlib.sha256(src.encode()).hexdigest();request['annotations']['allowExpand']=True
+  def generate(prompt,images,target,**kw):
+   self.assertFalse(kw['transparent']);self.assertNotIn('禁止涂背景',prompt);self.assertIn('天空',prompt)
+   im=Image.new('RGB',(100,100),(80,120,160));im.save(target);return {'actualImageGeneration':True}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=image_replace._process(src,'测试',lambda *_:None,lambda:False,scene['originalSource'],Path(folder),scene,request)
+  self.assertEqual((result['nodes'][0]['x'],result['nodes'][0]['width']),(0,80))
+  actual=image_replace._image(result['nodes'][0]['src']);self.assertEqual(actual.getchannel('A').getbbox(),(10,10,70,90));self.assertEqual(actual.getpixel((0,0)),(12,34,56,0))
+
+ def test_full_background_can_touch_all_edges_with_default_expand(self):
+  scene,request=self.fixture();src=png(Image.new('RGB',(80,100),(80,120,160)))
+  scene.update(source=src,comparisonSource=src,originalSource=src);scene['nodes'][0]['src']=src
+  request['annotations']['sourceHash']=hashlib.sha256(src.encode()).hexdigest();request['annotations']['allowExpand']=True
+  def generate(prompt,images,target,**kw):
+   self.assertFalse(kw['transparent']);Image.new('RGB',(100,100),(80,120,160)).save(target);return {'actualImageGeneration':True}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=image_replace._process(src,'测试',lambda *_:None,lambda:False,scene['originalSource'],Path(folder),scene,request)
+  self.assertEqual(image_replace._image(result['nodes'][0]['src']).getchannel('A').getextrema(),(255,255))
+  self.assertEqual(result['nodes'][0]['width'],80)
+
+ def test_background_alpha_failure_is_not_flattened_to_fake_success(self):
+  scene,request=self.fixture();src=png(Image.new('RGB',(80,100),(80,120,160)))
+  scene.update(source=src,comparisonSource=src,originalSource=src);scene['nodes'][0]['src']=src
+  request['annotations']['sourceHash']=hashlib.sha256(src.encode()).hexdigest()
+  def generate(prompt,images,target,**kw):
+   im=Image.new('RGBA',(100,100),(80,120,160,255));im.putpixel((50,50),(0,0,0,0));im.save(target);return {'actualImageGeneration':True}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate),self.assertRaisesRegex(ValueError,'不透明背景'):image_replace._process(src,'测试',lambda *_:None,lambda:False,src,Path(folder),scene,request)
+
+ def test_expanded_edge_alpha_is_preserved_as_reviewable_candidate(self):
+  for edge_alpha in (1,255):
+   scene,request=self.fixture();request['annotations']['allowExpand']=True
+   def generate(prompt,images,target,**kw):
+    im=Image.new('RGBA',(150,150));im.paste((100,150,80,255),(25,10,125,140));im.putpixel((0,0),(20,30,40,edge_alpha));im.save(target);return {'actualImageGeneration':True}
+   with self.subTest(alpha=edge_alpha),tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=image_replace._process(scene['source'],'测试',lambda *_:None,lambda:False,scene['source'],Path(folder),scene,request)
+   n=result['nodes'][0];self.assertEqual(image_replace._image(n['src']).getpixel((0,0)),(20,30,40,edge_alpha));self.assertTrue(n['review']);self.assertTrue(n['imageReplacement']['boundaryRisk'])

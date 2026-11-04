@@ -5,6 +5,14 @@ from PIL import Image
 from expansion_geometry import margins
 from expanded_assets import extract
 class ExpandedTests(unittest.TestCase):
+ def test_faint_edge_glow_is_retained_without_false_incomplete_shape(self):
+  from expanded_assets import register_asset
+  with tempfile.TemporaryDirectory() as folder:
+   path=Path(folder)/'glow.png';im=Image.new('RGBA',(100,100));im.paste((200,220,255,255),(20,20,80,80));im.putpixel((0,50),(200,220,255,1));im.save(path)
+   result=register_asset(path,100,(0,0));self.assertFalse(result['boundaryReviewRequired'])
+   import base64,io
+   with Image.open(io.BytesIO(base64.b64decode(result['src'].split(',')[1]))) as saved:self.assertEqual(saved.getpixel((0,50)),(200,220,255,1))
+
  def test_large_original_keeps_its_pixels_and_uses_safe_margins(self):
   mx,my=margins(2048,2048);self.assertGreater(mx,0);self.assertLessEqual((2048+2*mx)*(2048+2*my),6000000)
  def test_asset_can_extend_beyond_old_box_without_being_fitted_back(self):

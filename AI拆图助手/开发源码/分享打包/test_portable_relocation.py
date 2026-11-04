@@ -19,7 +19,7 @@ spec.loader.exec_module(share)
 
 class RelocationTest(unittest.TestCase):
     def test_isolated_path_uses_only_relocated_runtime(self):
-        output = (ROOT / "测试结果").resolve(strict=True)
+        output = (ROOT / "AI拆图助手/依赖/运行临时").resolve(strict=True)
         temporary = Path(tempfile.mkdtemp(prefix="shijie-relocated-", dir=output)).resolve(strict=True)
         try:
             archive_path = temporary / "share.zip"
@@ -35,7 +35,7 @@ class RelocationTest(unittest.TestCase):
             env.pop("SHIJIE_PYTHON", None)
             env.pop("SHIJIE_CODEX_BIN", None)
             process = subprocess.run(
-                [str(system_root / "System32/WindowsPowerShell/v1.0/powershell.exe"), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(target / "AI拆图助手/启动AI拆图助手.ps1"), "-CheckOnly"],
+                [str(system_root / "System32/WindowsPowerShell/v1.0/powershell.exe"), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(target / "AI拆图助手/开发源码/启动维护/启动AI拆图助手.ps1"), "-CheckOnly"],
                 env=env, cwd=target, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", timeout=90,
             )

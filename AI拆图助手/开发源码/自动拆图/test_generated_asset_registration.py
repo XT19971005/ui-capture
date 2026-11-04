@@ -11,10 +11,10 @@ class RegistrationTests(unittest.TestCase):
     self.assertEqual(base64.b64decode(n['src'].split(',',1)[1]),raw)
     self.assertAlmostEqual(n['width']/n['height'],size[0]/size[1])
     self.assertEqual(n['positionReviewRequired'],size[0]!=size[1])
- def test_faint_glow_and_edge_pixels_are_retained_and_edge_is_flagged(self):
+ def test_faint_glow_and_edge_pixels_are_retained_without_false_clipped_shape(self):
   with tempfile.TemporaryDirectory() as folder:
    p=Path(folder)/'asset.png';im=Image.new('RGBA',(160,90));im.putpixel((0,30),(255,120,10,1));im.putpixel((80,40),(255,120,10,200));im.save(p)
-   n=register_asset(p,200,(0,0));self.assertTrue(n['boundaryReviewRequired'])
+   n=register_asset(p,200,(0,0));self.assertFalse(n['boundaryReviewRequired'])
    with Image.open(io.BytesIO(base64.b64decode(n['src'].split(',',1)[1]))) as actual:self.assertEqual(actual.getpixel((0,30))[3],1)
  def test_empty_or_fake_transparency_is_rejected(self):
   for color in [(0,0,0,0),(0,0,0,255)]:

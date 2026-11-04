@@ -132,7 +132,9 @@ class CodexClient:
         return {'url':r.get('authUrl'),'loginId':r.get('loginId')}
     def models(self):
         data=self.call('model/list',{}).get('data',[])
-        return [{'id':m.get('model') or m['id'],'name':m.get('displayName') or m['id'],'default':bool(m.get('isDefault'))} for m in data if 'image' in m.get('inputModalities',['text','image'])]
+        allowed=('gpt-6.1-sol','gpt-6.1-terra','gpt-6-astra','gpt-6-sol')
+        available={m.get('model') or m['id']:m for m in data if 'image' in m.get('inputModalities',['text','image'])}
+        return [{'id':ident,'name':available[ident].get('displayName') or ident,'default':bool(available[ident].get('isDefault'))} for ident in allowed if ident in available]
     def model(self):
         models=self.models()
         if not models:raise RuntimeError('当前 Codex 没有提供可分析图片的模型')

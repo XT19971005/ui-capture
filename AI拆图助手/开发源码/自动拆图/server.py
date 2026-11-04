@@ -496,7 +496,7 @@ def cancel(ident):
 from web_capture import register_web_capture
 register_web_capture(app)
 from assistant_routes import register as register_assistant
-register_assistant(app,jobs,lock,pool)
+register_assistant(app,jobs,lock,pool,lambda:SAVED_PROJECTS)
 
 if __name__=='__main__':
     logging.basicConfig(filename=STATE/'引擎错误.log',level=logging.ERROR,encoding='utf-8')

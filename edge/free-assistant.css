@@ -94,3 +94,5 @@ body.assistant-docked #free-assistant .free-assistant-resizer{display:none}
 #assistant-text-chip::after,#assistant-image-chip::after{content:"";display:inline-block;width:5px;height:5px;margin-left:8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg);vertical-align:middle;opacity:.8}
 
 #free-assistant h3:before{display:none}#free-assistant h3{display:flex;align-items:center;gap:9px}.assistant-heading-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:27px;height:27px;border-radius:50%;background:#494366;color:#f4edff}.assistant-heading-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.saved-candidates{padding:10px;border:1px solid #4e4265;border-radius:8px;margin:8px 0}.saved-candidates>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:5px 0}.saved-candidates span{flex:1;min-width:100px;font-size:12px}.saved-candidates button{font-size:12px;padding:5px 8px}

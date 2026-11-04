@@ -5,6 +5,16 @@ from PIL import Image
 from engine import png
 
 class FreeAssistantTests(unittest.TestCase):
+ def test_whole_image_split_rules_include_unmarked_entities_and_opaque_base(self):
+  import free_assistant as f
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.plan()) as analyze:
+   f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   prompt=analyze.call_args.args[0]
+   self.assertIn('未圈选的独立对象也要识别拆层',prompt)
+   self.assertIn('assetKind=background',prompt)
+   self.assertIn('每完成一层',prompt)
+   self.assertNotIn('只有用户点击保存工程才持久化',prompt)
+
  def test_partial_reply_is_decoded_without_exposing_structured_actions(self):
   from free_assistant import reply_prefix
   self.assertEqual(reply_prefix('{"reply":"正在提取\\n头部'), '正在提取\n头部')
@@ -19,7 +29,7 @@ class FreeAssistantTests(unittest.TestCase):
   body=self.body();before=copy.deepcopy(body)
   with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.plan()) as analyze:
    result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
-   self.assertIn('只有一个可见未锁定图层',analyze.call_args.args[0]);self.assertIn('绝不能声称开始生成',analyze.call_args.args[0]);self.assertIn('后续“给我先生成吧”',analyze.call_args.args[0]);self.assertIn('禁止自动提亮',analyze.call_args.args[0]);self.assertIn('必须写入执行instruction',analyze.call_args.args[0]);self.assertIn('角色',analyze.call_args.args[0]);self.assertIn('只拆出角色的头',analyze.call_args.args[0]);self.assertEqual(result['action'],'extract')
+   self.assertIn('后文说每个元宝都拆出来，layers仍必须包含盆体',analyze.call_args.args[0]);self.assertIn('只有一个可见图层',analyze.call_args.args[0]);self.assertIn('绝不能声称开始生成',analyze.call_args.args[0]);self.assertIn('后续“给我先生成吧”',analyze.call_args.args[0]);self.assertIn('禁止自动提亮',analyze.call_args.args[0]);self.assertIn('必须写入执行instruction',analyze.call_args.args[0]);self.assertIn('角色',analyze.call_args.args[0]);self.assertIn('只拆出角色的头',analyze.call_args.args[0]);self.assertEqual(result['action'],'extract')
   self.assertEqual(body,before)
  def test_rejects_code_unknown_target_or_unsupported_action(self):
   import free_assistant as f

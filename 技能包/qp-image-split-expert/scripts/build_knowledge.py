@@ -16,7 +16,7 @@ def build():
   relative=p.relative_to(workspace).as_posix()
   rows.append({'path':relative,'raw_sha256':hashlib.sha256(raw).hexdigest(),'content':content})
   if p.name=='SKILL.md':versions[p.parent.name]=re.search(r'version:\s*["\']?([^"\'\s]+)',content).group(1)
- bundle=make_bundle('1.1.0',rows,versions)
+ bundle=make_bundle(versions['qp-image-split-expert'],rows,versions)
  for directory in [skill/'knowledge',skills/'comfyui-shijie/expert_knowledge']:
   directory.mkdir(parents=True,exist_ok=True)
   target=directory/'knowledge.json';target.write_text(json.dumps(bundle,ensure_ascii=False,indent=2),encoding='utf-8');load_knowledge(target)

@@ -6,7 +6,7 @@ from runtime import TEMP
 from image_wire import decode_job
 from free_assistant import validate_request, plan
 
-def register(app,jobs,lock,pool):
+def register(app,jobs,lock,pool,project_store=None):
  @app.route('/image-provider',methods=['GET','POST'])
  def image_provider():
   from image_provider import status,save
@@ -39,6 +39,10 @@ def register(app,jobs,lock,pool):
    item.update(status='running',message='正在理解画面与要求…')
    def status(message):
     with lock:item['message']=str(message)[:300]
+   recovery=None
+   if split and project_store:
+    from generation_recovery import GenerationRecovery
+    recovery=GenerationRecovery(project_store(),body['title'])
    with tempfile.TemporaryDirectory(prefix='shijie-assistant-',dir=TEMP) as folder:
     if split:
      from assistant_split import generate
@@ -46,7 +50,15 @@ def register(app,jobs,lock,pool):
       with lock:item.update(progress=value,message=message)
      def checkpoint(scene):
       with lock:item.update(partial=scene,partialRevision=item.get('partialRevision',0)+1)
+      if recovery:
+       try:recovery.save(scene)
+       except Exception:raise ValueError('已完成图层的磁盘保存失败；任务已停止，已有结果仍可取回，请检查磁盘后保存')
+       scene['_generationRecoveryId']=recovery.ident
+       with lock:item['recoveryId']=recovery.ident
      result=generate(body,Path(folder),item['cancel'].is_set,progress,on_scene=checkpoint)
+     if recovery:
+      recovery.save(result)
+      result['_generationRecoveryId']=recovery.ident
     else:
      def reply(text):
       with lock:

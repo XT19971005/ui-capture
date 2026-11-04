@@ -160,7 +160,7 @@ def remember_record(node,structure,background=False):
    if record.get('generatedAssetSHA256') not in (None,digest):return node
    if record.get('file') and hashlib.sha256(Path(record['file']).read_bytes()).hexdigest()!=digest:return node
    record.setdefault('generatedAssetSHA256',digest)
-  node['generationRecord']={k:record[k] for k in ('actualImageGeneration','transparent','sourceOriginalSHA256','generatedAssetSHA256','provider','model','genId') if k in record}
+  node['generationRecord']={k:record[k] for k in ('actualImageGeneration','transparent','sourceOriginalSHA256','generatedAssetSHA256','provider','model','genId','postprocessing') if k in record}
  return node
 
 def restore_asset(cached,current,assets,structure,source_sha,background=False):
@@ -225,9 +225,9 @@ def extract_once(source,node,assets,structure,cancelled,original,on_status):
    box=(max(0,int(node['x'])),max(0,int(node['y'])),min(im.width,int(node['x']+node['width'])),min(im.height,int(node['y']+node['height'])))
    crop=im.crop(box).convert('RGBA')
   return {**node,'src':png(crop),'x':box[0],'y':box[1],'width':crop.width,'height':crop.height,'provenance':'source-crop-fallback','inferred':False,'assetReviewStatus':'NEEDS_REVIEW','review':True,'reviewIssue':'未能提取，保留原图区域：'+str(error)[:200]}
- candidate.update(assetReviewStatus='NOT_REVIEWED',review=True)
+ candidate.update(assetReviewStatus='NEEDS_REVIEW' if candidate.get('positionReviewRequired') else 'NOT_REVIEWED',review=True)
  candidate.pop('pendingGeneration',None)
- candidate.pop('reviewIssue',None)
+ if not candidate.get('positionReviewRequired'):candidate.pop('reviewIssue',None)
  if structure is not None:remember_record(candidate,structure)
  return candidate
 

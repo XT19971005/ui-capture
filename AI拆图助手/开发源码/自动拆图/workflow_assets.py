@@ -183,6 +183,9 @@ def complete_asset(source,node,assets,structure,cancelled,original_source=None,f
  complete['id']=node['id'];complete['assetKind']=node.get('assetKind','complete-asset');complete.update({k:node[k] for k in ('sourceAssetId','sourceEntityId','sourceEntityParts','sourceTextParts') if k in node});complete.update(design_fields(node))
  for key in ('extractionBrief','reuseEntityId'):
   if key in node:complete[key]=node[key]
+ from asset_registration import calibrate
+ if on_status:on_status('正在自动校对素材大小与位置…')
+ complete=calibrate(source,complete,dict(zip(('x','y','width','height'),target)))
  return complete
 
 def review_sheets(scene,qa):

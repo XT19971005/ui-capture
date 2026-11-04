@@ -5,6 +5,39 @@ from PIL import Image
 from engine import png
 
 class AssistantSplitTests(unittest.TestCase):
+ def test_mixed_split_background_uses_opaque_generation_not_asset_expansion(self):
+  import assistant_split as s
+  body=self.body();body['layers']=[{'name':'纯净场景底稿','instruction':'去掉所有独立前景，补齐纯净背景','assetKind':'background','box':{'x':0,'y':0,'width':100,'height':100}},body['layers'][0]]
+  calls=[]
+  def generate(prompt,images,target,**kw):
+   self.assertFalse(kw['transparent']);self.assertIn('勋章',prompt);self.assertNotIn('只补UI遮挡区域',prompt);calls.append('background');Image.new('RGB',(100,100),'blue').save(target);return {'actualImageGeneration':True}
+  def extract(source,node,*args):
+   calls.append('asset');return {**node,'src':body['image'],'provenance':'codex-image-generation','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate),patch('incremental_assets.extract_once',side_effect=extract):result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(calls,['background','asset']);self.assertEqual([n['assetKind'] for n in result['nodes']],['background','complete-asset']);self.assertEqual(result['source'],body['image'])
+
+ def test_outside_completion_box_is_normalized_to_visible_reference_not_rejected(self):
+  import hashlib,assistant_split as s
+  body=self.body();body['annotations']={'version':1,'width':100,'height':100,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'allowExpand':True,'items':[]}
+  body['layers'][0]['box']={'x':-70,'y':-10,'width':150,'height':160}
+  result=s.validate(body)
+  self.assertEqual(result['layers'][0]['box'],{'x':0,'y':0,'width':80,'height':100})
+  self.assertIn('旧框不是裁切边界',result['layers'][0]['instruction'])
+  self.assertEqual(body['layers'][0]['box']['x'],-70)
+
+ def test_outside_box_without_source_overlap_still_rejects(self):
+  import hashlib,assistant_split as s
+  body=self.body();body['annotations']={'version':1,'width':100,'height':100,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'allowExpand':True,'items':[]};body['layers'][0]['box']={'x':-500,'y':0,'width':100,'height':100}
+  with self.assertRaises(ValueError):s.validate(body)
+
+ def test_background_wrong_aspect_is_retained_for_review_without_stretch(self):
+  import assistant_split as s
+  from image_replace import _image
+  body=self.body();body['backgroundOnly']=True;body['layers']=[{'name':'背景','instruction':'完整背景','box':{'x':0,'y':0,'width':100,'height':100}}]
+  def generate(prompt,images,target,**kw):Image.new('RGB',(100,150),'blue').save(target);return {'actualImageGeneration':True}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):r=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  n=r['nodes'][0];self.assertTrue(r['_partial']);self.assertTrue(n['positionReviewRequired']);self.assertAlmostEqual(n['width']/n['height'],2/3)
+  with _image(n['src']) as im:self.assertEqual(im.size,(100,150))
  def test_marks_reach_extraction_as_separate_reference_without_changing_source(self):
   import hashlib,assistant_split as s
   body=self.body();body['annotations']={'version':1,'width':100,'height':100,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'items':[{'color':'#ffdf24','label':'后面勋章','strokes':[[[10,30],[50,5],[90,30],[50,95],[10,30]]]}]}
@@ -55,7 +88,7 @@ class AssistantSplitTests(unittest.TestCase):
   body=self.body();body.update(backgroundOnly=True,outpaint=True)
   body['layers']=[{'name':'荷塘扩建背景','instruction':'左右不动，上下扩建','box':{'x':0,'y':0,'width':100,'height':160}}]
   def generate(prompt,images,target,**kw):
-   self.assertIn('上下扩建',prompt);Image.new('RGB',(120,180),'blue').save(target);return {'actualImageGeneration':True}
+   self.assertIn('上下扩建',prompt);Image.new('RGB',(120,192),'blue').save(target);return {'actualImageGeneration':True}
   with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
   self.assertEqual((result['width'],result['height']),(100,160))
   from image_replace import _image

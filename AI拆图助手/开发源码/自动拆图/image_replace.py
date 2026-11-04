@@ -8,9 +8,16 @@ def _image(value):
  if not isinstance(value,str) or len(value)>36000000 or not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+',value):raise ValueError('替换图片必须是有效内嵌图片')
  try:
   with Image.open(io.BytesIO(base64.b64decode(value.split(',',1)[1],validate=True))) as image:
-   if image.width*image.height>6000000 or max(image.size)>6000:raise ValueError('替换图片尺寸超限')
+   if image.width*image.height>36000000 or max(image.size)>6000:raise ValueError('替换图片尺寸超限')
    return image.convert('RGBA')
  except (OSError,UnidentifiedImageError,Image.DecompressionBombError) as error:raise ValueError('替换图片数据无法读取') from error
+
+
+def _background_frame(image):
+ # A fully opaque rectangular frame can sit inside user-added transparent
+ # canvas. Its outside alpha is canvas margin, not object transparency.
+ alpha=image.getchannel('A');bbox=alpha.getbbox()
+ return bbox if bbox and alpha.crop(bbox).getextrema()==(255,255) else None
 
 
 def _region(value,size):
@@ -172,15 +179,17 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  # by centering it in a square, never stretching or cropping the selected area.
  # Whole layers already at 1:1, 3:2 or 2:3 need no padding.
  expand_left=expand_top=0
- expanding=spec.get('task')=='remove' and spec.get('annotations',{}).get('allowExpand') is True
+ background_frame=_background_frame(before) if spec.get('task')=='remove' and _image(original_source).getchannel('A').getextrema()==(255,255) else None
+ transparent_removal=spec.get('task')=='remove' and background_frame is None
+ expanding=transparent_removal and spec.get('task')=='remove' and spec.get('annotations',{}).get('allowExpand') is True
  if expanding:
   if spec['node'].get('rotation') or spec['node'].get('displayMask') or spec['node'].get('layerStyle'):raise ValueError('带旋转、蒙版或样式的图层需先生成独立底稿后向外补全')
   from expansion_geometry import margins
-  expand_left,expand_top=margins(before.width,before.height);ew=before.width+2*expand_left;eh=before.height+2*expand_top
-  if ew*eh>6000000 or max(ew,eh)>6000:raise ValueError('向外补全的目标尺寸超过当前画布上限，请明确较小扩展尺寸')
+  expand_left,expand_top=margins(before.width,before.height,max_pixels=36000000);ew=before.width+2*expand_left;eh=before.height+2*expand_top
+  if ew*eh>36000000 or max(ew,eh)>6000:raise ValueError('向外补全的目标尺寸超过当前画布上限，请明确较小扩展尺寸')
   expanded=Image.new('RGBA',(ew,eh));expanded.paste(before,(expand_left,expand_top));model_image=expanded
  context_size=model_image.size;pad_x=pad_y=0
- transparent=spec.get('task')=='remove' or model_image.getchannel('A').getextrema()[0]<255
+ transparent=transparent_removal or (spec.get('task')!='remove' and model_image.getchannel('A').getextrema()[0]<255)
  canonical_whole=region is None and (model_image.width==model_image.height or model_image.width*2==model_image.height*3 or model_image.width*3==model_image.height*2)
  if not canonical_whole:
   side=max(context_size);pad_x=(side-context_size[0])//2;pad_y=(side-context_size[1])//2
@@ -213,7 +222,8 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  if spec.get('task')=='remove':
   from reference_fidelity import COLOR_PRESERVATION
   from source_annotations import REMOVAL_RULES
-  prompt=COLOR_PRESERVATION+'第一张是干净目标原图，第二张是同画布的独立彩笔标注。'+REMOVAL_RULES+layout+'用户要求：'+spec['prompt']+'；保留补充：'+spec['annotations'].get('preserve','')
+  removal_rules=REMOVAL_RULES if transparent_removal else REMOVAL_RULES.replace('空白处透明，禁止涂背景、残留删除对象或标线；','删除处按原有天空、山云及周围背景自然补全，保留完整不透明背景及原有透明画布边距，背景可接触原图片边缘；禁止残留删除对象或标线；')
+  prompt=COLOR_PRESERVATION+'第一张是干净目标原图，第二张是同画布的独立彩笔标注。'+removal_rules+layout+'用户要求：'+spec['prompt']+'；保留补充：'+spec['annotations'].get('preserve','')
   if expanding:prompt+='允许完整形体向外补全，旧矩形不是边界。原图位于第一张参考x='+str(pad_x+expand_left)+',y='+str(pad_y+expand_top)+'，原尺寸'+str(before.width)+'×'+str(before.height)+'；保持原内容原位原比例，只补真正缺失/遮挡并按要求去件。新内容可延伸到周围透明新增区域，完整外缘不得贴边截断，禁止缩小主体塞回旧框。'
  elif fresh and spec.get('task')=='extract':
   from reference_fidelity import COLOR_PRESERVATION
@@ -241,7 +251,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  if not isinstance(record,dict) or record.get('actualImageGeneration') is not True:raise ValueError('替换未完成实际图像生成，原工程已保留')
  with Image.open(target) as generated:
   if generated.width*generated.height>36000000 or max(generated.size)>12000:raise ValueError('生成图片尺寸超限')
-  if spec.get('task')=='remove' and (generated.mode!='RGBA' or generated.getchannel('A').getextrema()[0]!=0 or not generated.getchannel('A').getbbox()):raise ValueError('删除候选必须有真实透明通道且保留有效对象，原图未修改')
+  if transparent_removal and (generated.mode!='RGBA' or generated.getchannel('A').getextrema()[0]!=0 or not generated.getchannel('A').getbbox()):raise ValueError('删除候选必须有真实透明通道且保留有效对象，原图未修改')
   candidate=generated.convert('RGBA')
  generated_size=candidate.size
  if candidate.size!=model_image.size:
@@ -262,20 +272,32 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  else:
   if expanding:
    outside=candidate.getchannel('A');outside.paste(0,content_box)
-   if outside.getbbox():raise ValueError('补全内容超出注册范围进入配比补边，未裁切或应用')
+   if outside.getbbox():
+    # Register the complete model canvas instead of deleting valid pixels.
+    expand_left+=pad_x;expand_top+=pad_y
+    content_box=(0,0,*candidate.size)
   candidate=candidate.crop(content_box)
- if spec.get('task')=='remove' and (candidate.getchannel('A').getextrema()[0]!=0 or not candidate.getchannel('A').getbbox()):raise ValueError('删除候选实际内容区未保留真实透明区域或有效对象，原图未修改')
+ if transparent_removal and (candidate.getchannel('A').getextrema()[0]!=0 or not candidate.getchannel('A').getbbox()):raise ValueError('删除候选实际内容区未保留真实透明区域或有效对象，原图未修改')
+ if background_frame is not None:
+  alpha=candidate.getchannel('A')
+  if alpha.crop(background_frame).getextrema()!=(255,255):raise ValueError('背景去件候选未保留完整不透明背景，原图未修改')
+  # Only the original photographic frame is editable. Copy all four
+  # generated channels there; preserve exterior RGBA bytes from the source.
+  preserved=before.copy();preserved.paste(candidate.crop(background_frame),background_frame[:2]);candidate=preserved
+ boundary_risk=False
  if expanding:
   bbox=candidate.getchannel('A').getbbox()
-  if bbox and (bbox[0]==0 or bbox[1]==0 or bbox[2]==candidate.width or bbox[3]==candidate.height):raise ValueError('补全主体仍触及扩展画布边缘，未裁切或应用；请扩大范围后再明确生成')
+  boundary_risk=bool(bbox and (bbox[0]==0 or bbox[1]==0 or bbox[2]==candidate.width or bbox[3]==candidate.height))
  encoded=png(candidate);digest=hashlib.sha256(base64.b64decode(encoded.split(',',1)[1])).hexdigest()
  scene=copy.deepcopy(resume_scene);node=next(n for n in scene['nodes'] if n['id']==spec['node']['id'])
  node.update(src=encoded,provenance='aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation',review=True,assetReviewStatus='NOT_REVIEWED',pendingGeneration=False)
  node.pop('reviewIssue',None)
+ if boundary_risk:node['reviewIssue']='候选外缘触及扩展画布边缘，可能存在截断；已保留完整结果，请预览核对后决定应用或返修'
  node['generationRecord']={'actualImageGeneration':True,'transparent':candidate.getchannel('A').getextrema()[0]<255,'sourceOriginalSHA256':original_sha,'generatedAssetSHA256':digest}
  node['generationRecord'].update({k:record[k] for k in ('provider','model','genId') if k in record})
  node['generationRecord']['replacementGeometry']={'contextBox':[left,top,right,bottom],'modelCanvasSize':list(model_image.size),'modelContentBox':list(content_box),'requestedSize':list(requested_size),'generatedSize':list(generated_size)}
  node['imageReplacement']={'version':1,'region':copy.deepcopy(region),'selection':copy.deepcopy(selection),'inputAssetSHA256':hashlib.sha256(base64.b64decode(spec['node']['src'].split(',',1)[1])).hexdigest(),'importedSource':spec['importedSource']}
+ if boundary_risk:node['imageReplacement']['boundaryRisk']=True
  if expanding:
   n=spec['node'];sx=n['width']/before.width;sy=n['height']/before.height
   node.update(x=n['x']-expand_left*sx,y=n['y']-expand_top*sy,width=candidate.width*sx,height=candidate.height*sy)

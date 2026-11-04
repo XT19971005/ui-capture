@@ -37,6 +37,7 @@ const groups={
     "workspace-actions.js",
     "workspace-actions.css",
     "free-assistant.js",
+    "candidate-store.js",
     "free-assistant.css",
     "original-annotations.js",
     "original-annotations.css",

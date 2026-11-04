@@ -2,7 +2,7 @@
 (()=>{
  const button=document.getElementById('refine-selected');if(!button||window.studio?.adapter.kind!=='image')return;
  const clone=value=>structuredClone(value),stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,stable(value[k])])):value;
- const equal=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));let active=null;
+ const equal=(a,b)=>JSON.stringify(stable(a),(k,v)=>['_assistantChat','_assistantCandidates'].includes(k)?undefined:v)===JSON.stringify(stable(b),(k,v)=>['_assistantChat','_assistantCandidates'].includes(k)?undefined:v);let active=null;
  const note=document.getElementById('selected-refine-note');
  const pendingRepair=record=>Array.isArray(record?.repairedAssetsNotRechecked)?record.repairedAssetsNotRechecked.length>0:!!record?.repairedAssetsNotRechecked;
  const completed=record=>['COMPLETED','PASS'].includes(record?.status)&&!pendingRepair(record);
@@ -152,7 +152,7 @@
  }
  function applyPreview(pending){
   if(busy||active)throw Error('请等待当前任务结束');if(!pending||!equal(scene,pending.before))throw Error('工程已改变，请重新生成预览');
-  S.validate(pending.candidate);checkpoint('应用对话修正');scene=clone(pending.candidate);refresh();window.studio.select(pending.roots,true);changed();status('已应用所选修正，可撤销；请手动保存工程');
+  S.validate(pending.candidate);checkpoint('应用对话修正');const meta={};for(const key of ['_assistantChat','_assistantCandidates'])if(Object.hasOwn(scene,key))meta[key]=clone(scene[key]);scene={...clone(pending.candidate),...meta};refresh();window.studio.select(pending.roots,true);changed();status('已应用所选修正，可撤销；请手动保存工程');
  }
  window.ShijieSelectedRefine={sync,isActive:()=>!!active,runRegion,discuss,selection,requestPreview:(dialogue,ids)=>run(selection(ids),{preview:true,dialogue}),applyPreview};sync();
 })();
