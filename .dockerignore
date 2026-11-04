@@ -7,4 +7,9 @@ output
 .playwright-cli
 legacy/拾界插件/自检记录
 .env
+**/.env
+**/.env.*
+**/runtime.local.json
+**/.DS_Store
 *.local.toml
+**/*.local.toml

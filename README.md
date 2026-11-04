@@ -9,7 +9,7 @@
 宿主需要 Docker（含 Compose v2）和 Python 3.11+；应用及原生图像依赖全部在容器内安装。
 
 ```sh
-cd /Users/wangyonghui/Desktop/YHAgents/shijie
+cd /实际父目录/shijie
 ./shijiectl dev
 ./shijiectl status
 ```

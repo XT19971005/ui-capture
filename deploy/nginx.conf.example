@@ -1,6 +1,15 @@
-# Include inside the existing HTTPS server block; keep the prefix unchanged.
-location = /shijie { return 302 /shijie/; }
+# Put this directive in http {}, before the existing HTTPS server block.
+# Omit query strings, Referer, cookies and authorization headers.
+log_format shijie_safe '$remote_addr [$time_local] $request_method $uri '
+                       '$status $body_bytes_sent $request_time';
+
+# Put the following locations inside that HTTPS server; keep the prefix unchanged.
+location = /shijie {
+    access_log /var/log/nginx/shijie-access.log shijie_safe;
+    return 302 /shijie/;
+}
 location /shijie/ {
+    access_log /var/log/nginx/shijie-access.log shijie_safe;
     proxy_pass http://127.0.0.1:8093;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -8,4 +17,10 @@ location /shijie/ {
     client_max_body_size 276m;
     proxy_read_timeout 120s;
     proxy_request_buffering off;
+    # nginx error logs can include the original callback query on upstream errors.
+    # Keep route/status/timing in the safe access log; suppress auth error details.
+    location ^~ /shijie/auth/ {
+        proxy_pass http://127.0.0.1:8093;
+        error_log /dev/null;
+    }
 }

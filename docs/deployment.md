@@ -4,13 +4,17 @@
 
 应用使用 `deploy/Dockerfile` 的 Ubuntu 24.04 镜像；PostgreSQL 独立容器；Nginx 留在宿主。没有在容器内运行 SSH 或 systemd，日常管理通过 `shijiectl` 和 Compose 完成。Docker 安装及 Compose 插件按 [Docker 官方 Ubuntu 安装说明](https://docs.docker.com/engine/install/ubuntu/)操作。
 
+2026-11-04 已确认线上宿主目标为 **Ubuntu 24.04 LTS**，不是12.04。当前没有进行远程主机检查或部署。[本次敏感信息检查](security-20261104.md)覆盖源码、可达提交历史、实际构建上下文及认证日志示例。
+
 代码目录放在 qprole 旁边；私有配置建议 `/etc/shijie`，数据建议与 qprole 一样放 `/home` 数据盘下的 `/home/shijie/data`。PostgreSQL 卷 `shijie_postgres` 位于 Docker 数据目录；部署前确认该目录的容量及备份策略。只对本机发布 `127.0.0.1:8093`，数据库端口不发布。
 
-当前 Compose 上限为 Web 4 GiB、Worker 8 GiB、数据库 2 GiB，不是实测容量承诺。Worker 每次处理一个任务，每人最多 5 个待处理/执行中任务，默认任务上限 2 小时。没有承诺 100 人负载或并行 AI 推理能力；上线规模扩大前应测量真实图片、图层数和磁盘峰值。
+当前 Compose 上限为 Web 4 GiB、Worker 8 GiB、数据库 2 GiB，不是实测容量承诺。Worker 最多并行两个任务，同 Codex 账号、同工程和本机 GPU 互斥；每人最多 5 个待处理/执行中任务，默认任务上限 2 小时。没有承诺 100 人负载；上线规模扩大前应测量真实图片、图层数和磁盘峰值。
 
 ## 首次准备
 
 以下为目标机操作说明，本轮没有执行远程操作。将不含 `.local`、`.venv`、`node_modules`、`output` 的源码同步到 qprole 的同级 `shijie` 目录。不要复制本地会话和个人 Codex 登录。
+
+优先使用审核后提交的 `git archive` 源码包，避免直接打包整个开发目录。`.env`、`.env.*`、`*.local.toml` 和便携工具 `runtime.local.json` 已被 Git/Docker 排除；私有配置在服务器独立生成。公司接口域名保留在业务代码中，源码包仍按公司内部资料管理。
 
 ```sh
 cd /实际父目录/shijie
@@ -31,7 +35,9 @@ https://实际公司域名/shijie/auth/oidc/callback/
 
 不要更换生成的 `[site].secret_key` 或数据库密码；`database.url` 与 `postgres-password` 必须匹配。`[storage].root` 是容器内 `/data`；`[deployment].data_dir` 才是宿主路径，部署后不要直接改目录来“迁移”资料。
 
-将 `deploy/nginx.conf.example` 的 location 配置合并到现有 HTTPS server，检查域名、证书和 `/shijie` 前缀。代理保留路径，设置正确 Host 和 X-Forwarded-Proto。确认配置后执行 `nginx -t`，再 reload；不要覆盖同机 qprole 的 location。
+将 `deploy/nginx.conf.example` 的 `log_format shijie_safe` 放到 Nginx `http {}` 内、HTTPS `server {}` 之前，再把其中的 location 配置合并到现有 HTTPS server。不要把整个示例直接 include 到 server 内，因为 `log_format` 只能放在 http 层。检查域名、证书和 `/shijie` 前缀；代理保留路径，设置正确 Host 和 X-Forwarded-Proto。确认配置后执行 `nginx -t`，再 reload；不要覆盖同机 qprole 的 location。
+
+拾界访问日志仅包含客户端地址、时间、方法、无查询参数的路径、状态、字节和耗时，不记录 OIDC `code`/`state`、Referer、Cookie 或认证头。认证子路径禁用可能携带原始请求的 Nginx 错误详情，仍保留安全访问日志中的状态与耗时；排障结合应用日志。上游负载均衡/CDN 的日志也须核查，应用配置无法替它们脱敏。可用已有 `nginx:1.28-alpine` 镜像执行 `python3 tools/check_nginx_logs.py`，实际验证成功回调、上游失败和入口跳转时的日志；脚本使用无外网临时容器和假参数，不调用公司登录。
 
 ```sh
 sudo ./shijiectl deploy --config-dir /etc/shijie

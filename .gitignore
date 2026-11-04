@@ -6,6 +6,8 @@ node_modules/
 staticfiles/
 .DS_Store
 .env
+.env.*
+runtime.local.json
 *.local.toml
 output/
 .playwright-cli/
