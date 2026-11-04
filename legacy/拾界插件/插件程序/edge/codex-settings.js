@@ -9,9 +9,9 @@
   panel.className = 'codex-dialog';
   panel.setAttribute('aria-labelledby', 'codex-title');
   panel.innerHTML = `
-    <div class="codex-heading"><div><span class="codex-eyebrow">拾界 · AI 设置</span><h2 id="codex-title">AI 连接</h2></div><button id="codex-close" aria-label="关闭 AI 设置">×</button></div>
+    <div class="codex-heading"><div><span class="codex-eyebrow">AI拆图助手 · AI 设置</span><h2 id="codex-title">AI 连接</h2></div><button id="codex-close" aria-label="关闭 AI 设置">×</button></div>
     <p class="codex-intro">自动模式优先 Codex，其次公司 Agent。本机分层可单独选择，无需云端登录。</p>
-    <div class="ai-routing" role="status" aria-live="polite"><strong id="ai-active">正在读取连接</strong><p id="ai-capabilities">连接仅属于当前拾界账号，不会写入工程。</p></div>
+    <div class="ai-routing" role="status" aria-live="polite"><strong id="ai-active">正在读取连接</strong><p id="ai-capabilities">连接仅属于当前AI拆图助手账号，不会写入工程。</p></div>
     <div class="codex-methods ai-providers" role="group" aria-label="选择 AI 服务配置">
       <button id="ai-provider-company" aria-pressed="true"><strong>公司 Agent</strong><span>公司 API Key · 无需 ChatGPT 登录</span></button>
       <button id="ai-provider-codex" aria-pressed="false"><strong>Codex / OpenAI</strong><span>API Key 或账号登录 · 优先使用</span></button>
@@ -19,9 +19,9 @@
     </div>
     <section id="ai-local-panel" aria-label="本机分层模型" hidden>
       <h3>Qwen-Image-Layered</h3>
-      <p>图片由运行拾界服务的 Mac 处理，无需公司 Agent Key 或 Codex 登录。首次加载需要一些时间，一次只处理一张图片。</p>
+      <p>图片由运行AI拆图助手服务的 Mac 处理，无需公司 Agent Key 或 Codex 登录。首次加载需要一些时间，一次只处理一张图片。</p>
       <p>试用设置：640 分辨率档位、3 个图层（含背景）、20 步。文字仍为图片，边缘、细节和遮挡补全需要校对。原图会保留在工程中。</p>
-      <div class="codex-status" role="status" aria-live="polite"><strong id="local-status-title">尚未检查</strong><p id="local-status">请先在运行拾界的 Mac 上启动本机模型服务。</p></div>
+      <div class="codex-status" role="status" aria-live="polite"><strong id="local-status-title">尚未检查</strong><p id="local-status">请先在运行AI拆图助手的 Mac 上启动本机模型服务。</p></div>
       <div class="codex-inline-actions"><button id="local-check">检查本机服务</button><button id="local-use" class="primary" disabled>选择本机分层</button></div>
       <p>选择后回到页面，点击“开始拆分”。生图、精修等其他功能仍使用已配置的云端服务。</p>
       <details><summary>服务未启动时如何处理？</summary><p>在 Mac 的 shijie 项目目录运行 <code>./shijiectl model-start</code>；首次使用先运行 <code>./shijiectl model-download</code> 下载模型。</p></details>
@@ -45,13 +45,13 @@
     <section id="codex-api-panel" aria-label="OpenAI API Key">
       <label for="codex-api-key">OpenAI 平台 API Key</label><input id="codex-api-key" type="password" autocomplete="off" spellcheck="false" maxlength="8192" placeholder="粘贴 OpenAI 平台的 API Key" aria-describedby="codex-api-help">
       <p id="codex-api-help">API Key 独立计费，不使用 ChatGPT / Codex 套餐额度。已有套餐请选择“设备码登录”。连接时仅验证模型列表访问权限；实际模型权限、API 额度和透明素材结果在任务中检查。</p>
-      <p>Key 仅保存在当前拾界账号的服务器私有凭据目录，不写入工程、日志或浏览器存储。连接成功后会优先使用 Codex；公司 Agent 配置仍保留。</p>
+      <p>Key 仅保存在当前AI拆图助手账号的服务器私有凭据目录，不写入工程、日志或浏览器存储。连接成功后会优先使用 Codex；公司 Agent 配置仍保留。</p>
       <div class="codex-inline-actions"><button id="codex-api-connect" class="primary">验证 API Key 并连接</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">打开 OpenAI API Keys ↗</a></div>
     </section>
     <section id="codex-token-panel" aria-label="团队访问令牌" hidden>
       <ol class="codex-steps">
         <li><div><strong>在团队工作区创建令牌</strong><p>选择你所属的工作区，创建具有 Codex 权限的访问令牌。</p><a href="https://chatgpt.com/admin/access-tokens" target="_blank" rel="noopener noreferrer">打开 ChatGPT 访问令牌管理 ↗</a></div></li>
-        <li><div><label for="codex-token">ChatGPT 工作区的 Codex 访问令牌</label><input id="codex-token" type="password" autocomplete="off" spellcheck="false" maxlength="8192" placeholder="粘贴 ChatGPT 工作区签发的访问令牌" aria-describedby="codex-token-help"><p id="codex-token-help">此入口仅接收 ChatGPT 工作区签发的 Codex 访问令牌。平台密钥请切换到“OpenAI API Key”；公司 Key 请填写在“公司 Agent”。令牌按拾界账号独立保存，提交后输入框清空，不写入工程。</p><button id="codex-token-connect" class="primary">验证并连接</button></div></li>
+        <li><div><label for="codex-token">ChatGPT 工作区的 Codex 访问令牌</label><input id="codex-token" type="password" autocomplete="off" spellcheck="false" maxlength="8192" placeholder="粘贴 ChatGPT 工作区签发的访问令牌" aria-describedby="codex-token-help"><p id="codex-token-help">此入口仅接收 ChatGPT 工作区签发的 Codex 访问令牌。平台密钥请切换到“OpenAI API Key”；公司 Key 请填写在“公司 Agent”。令牌按AI拆图助手账号独立保存，提交后输入框清空，不写入工程。</p><button id="codex-token-connect" class="primary">验证并连接</button></div></li>
       </ol>
       <details class="codex-help"><summary>团队账号没有“访问令牌”入口？</summary><p>请工作区管理员开放“允许使用 Codex 访问令牌”和“允许本地使用 Codex”。如果这两项不可用，可切换到设备码登录，但设备码权限也由工作区管理员控制。</p><a href="https://learn.chatgpt.com/docs/enterprise/access-tokens" target="_blank" rel="noopener noreferrer">查看官方权限说明 ↗</a></details>
     </section>
@@ -64,7 +64,7 @@
     </section>
     <div class="codex-status" role="status" aria-live="polite"><strong id="codex-status-title">尚未连接</strong><p id="codex-connection">选择上方一种方式开始。</p></div>
     <div id="codex-connected" hidden><label for="codex-model">分析模型</label><select id="codex-model" disabled></select></div>
-    <div class="codex-footer"><button id="codex-check">检查连接</button><button id="codex-logout" hidden>断开此账号</button><span>连接仅属于当前拾界账号</span></div></section>`;
+    <div class="codex-footer"><button id="codex-check">检查连接</button><button id="codex-logout" hidden>断开此账号</button><span>连接仅属于当前AI拆图助手账号</span></div></section>`;
   document.body.append(panel);
   const $ = id => panel.querySelector('#' + id);
   let pending = null, timer = null, polling = false, busy = false, checking = false;
@@ -191,7 +191,7 @@
   for (const id of ['company-key','company-model','company-enabled']) $(id).oninput = () => { companyDirty = true; $('company-test').disabled = true; companyNote('修改尚未保存', '保存后可测试新的配置。'); };
   $('company-save').onclick = () => action(async () => {
     provider('company');
-    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开拾界后再提交 Key');
+    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交 Key');
     const api_key = $('company-key').value.trim(), model = $('company-model').value.trim(), enabled = $('company-enabled').checked;
     if (!model) throw Error('请填写公司接口可用的模型 ID');
     $('company-key').value = '';
@@ -222,7 +222,7 @@
   };
   $('codex-token-connect').onclick = () => action(async () => {
     provider('codex');
-    if (location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开拾界后再提交访问令牌');
+    if (location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交访问令牌');
     const token = $('codex-token').value.trim();
     if (!token) { $('codex-token').focus(); throw Error('请先粘贴 Codex 访问令牌'); }
     $('codex-token').value = '';
@@ -231,7 +231,7 @@
   });
   $('codex-api-connect').onclick = () => action(async () => {
     provider('codex'); method('api');
-    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开拾界后再提交 API Key');
+    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交 API Key');
     const api_key = $('codex-api-key').value.trim();
     if (!api_key) { $('codex-api-key').focus(); throw Error('请先填写 OpenAI 平台 API Key'); }
     $('codex-api-key').value = '';

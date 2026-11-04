@@ -11,6 +11,8 @@ const groups={
   ],
   "工作台增强": [
     "project-codec.js",
+    "candidate-store.js",
+    "feedback.js",
     "app-session.js",
     "store.js",
     "studio-base.js",

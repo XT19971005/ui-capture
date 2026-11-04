@@ -34,14 +34,14 @@ test('re-splitting archives only the chosen layer and preserves position, parent
 function autosave(){const source=fs.readFileSync(path.join(edge,'studio.js'),'utf8'),timers=new Map(),writes=[];let ident=0,doc={_projectId:'p',revision:0},saved=0,fail=false,blocked=false;
  const c={a:{get:()=>doc,status(){}},B:{id:()=> 'id',library:{isDirty:d=>d.revision!==saved,directory:()=>'/user/projects',put:async(d,o,opts)=>{writes.push({doc:d,opts});if(fail)throw Error('磁盘已满');saved=d.revision;return {}}}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(e){c.error=e.message},autoDirectories:new Map(),autoSaving:false,restoringProject:false,busy:()=>blocked,setTimeout:fn=>{timers.set(++ident,fn);return ident},clearTimeout:id=>timers.delete(id),saveTimer:null};
  vm.runInNewContext(source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function sync('))+';this.save=save;',c);
+ vm.runInNewContext(source.slice(source.indexOf(' async function saveCheckpoint('),source.indexOf(' async function saveCheckpoint(')+source.slice(source.indexOf(' async function saveCheckpoint(')).indexOf('\n }')+3)+';this.saveCheckpoint=saveCheckpoint;',c);
  return {c,writes,edit:()=>doc.revision++,switch:()=>doc={_projectId:'other',revision:2},fail:()=>fail=true,block:()=>blocked=true,async tick(){const queued=[...timers.values()];timers.clear();for(const fn of queued)await fn()},get pending(){return timers.size}};
 }
-test('autosave debounces edits, does not save reads and does not write a previous project after switching',async()=>{
- const h=autosave();h.c.save();assert.equal(h.pending,0);h.edit();h.c.save();h.edit();h.c.save();assert.equal(h.pending,1);await h.tick();assert.equal(h.writes.length,1);assert.equal(h.writes[0].opts.automatic,true);
- h.edit();h.c.save();h.switch();await h.tick();assert.equal(h.writes.length,1);
+test('edits only mark dirty and a named checkpoint writes the current project',async()=>{
+ const h=autosave();h.c.save();h.edit();h.c.save();h.edit();h.c.save();assert.equal(h.pending,0);assert.equal(h.writes.length,0);await h.c.saveCheckpoint('生成完成');assert.equal(h.writes.length,1);assert.equal(h.writes[0].opts.checkpoint,true);h.edit();h.c.save();h.switch();await h.tick();assert.equal(h.writes.length,1);
 });
-test('autosave failure preserves dirty work and reports failure without an endless write retry',async()=>{
- const h=autosave();h.edit();h.fail();h.c.save();await h.tick();assert.equal(h.c.error,'磁盘已满');assert.equal(h.pending,0);assert.equal(h.writes.length,1);
+test('checkpoint errors preserve dirty work and do not schedule write retries',async()=>{
+ const h=autosave();h.edit();h.fail();h.c.save();await assert.rejects(h.c.saveCheckpoint('关闭工程'),/磁盘已满/);assert.equal(h.c.error,'磁盘已满');assert.equal(h.pending,0);assert.equal(h.writes.length,1);
 });
 
 function expansionHarness(){

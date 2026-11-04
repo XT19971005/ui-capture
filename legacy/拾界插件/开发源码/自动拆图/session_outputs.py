@@ -40,9 +40,10 @@ def run_temporary(generate):
 
 def _seal(scene,home):
  from layer_review import require_unique_names
- require_unique_names(scene)
  delivery=scene.get('delivery',{})
+ # Editing previews identify layers by ID; duplicate display names are valid.
  if not delivery:return scene,None,'图片拆分.psd',None
+ require_unique_names(scene)
  project=Path(delivery['project']).resolve();target=Path(delivery['psd']).resolve()
  if not project.is_relative_to(home.resolve()) or target.parent!=(project/'2_输出').resolve():raise ValueError('临时输出路径无效')
  qa=project/'1_过程/03_检查';audit=json.loads((qa/'检查结果.json').read_text('utf8'));raw=target.read_bytes()

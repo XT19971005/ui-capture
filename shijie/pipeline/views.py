@@ -95,6 +95,12 @@ def engine(request, route):
     owner = request.user
     root = user_root(owner.pk)
     directory = '/users/' + str(owner.pk) + '/projects'
+    if route == 'feedback' and method == 'POST':
+        if len(request.body) > 8 * 1024**2:
+            return error('反馈内容超过8 MB，请缩小截图', 413)
+        from .feedback import submit
+        value, status = submit(owner, body(request))
+        return JsonResponse(value, status=status)
     if route == 'connection' and method == 'GET':
         return JsonResponse({'url': settings.PREFIX + '/api/engine', 'user': owner.pk})
     if route in ('health', 'ping') and method == 'GET':
@@ -112,7 +118,7 @@ def engine(request, route):
             return JsonResponse(providers.image_status(owner))
         if method == 'POST' and route != 'assistant/models':
             if not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost','127.0.0.1','::1'):
-                return error('请通过 HTTPS 打开拾界后再配置密钥')
+                return error('请通过 HTTPS 打开AI拆图助手后再配置密钥')
             if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=owner.pk)
@@ -129,7 +135,7 @@ def engine(request, route):
             return JsonResponse(company.status(owner))
         if route in ('company/connection', 'company/test') and method == 'POST':
             if not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost', '127.0.0.1', '::1'):
-                return error('请通过 HTTPS 打开拾界后再配置公司 Agent', 400)
+                return error('请通过 HTTPS 打开AI拆图助手后再配置公司 Agent', 400)
             if len(request.body) > 20 * 1024:
                 raise ValueError('连接请求超过大小限制')
             value = body(request)
@@ -147,7 +153,7 @@ def engine(request, route):
             return JsonResponse({'ok': True, 'pending': ai.pending_login(owner)})
         if route in ('codex/login', 'codex/login/cancel', 'codex/logout', 'codex/access-token', 'codex/api-key') and method == 'POST':
             if route in ('codex/access-token', 'codex/api-key') and not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost', '127.0.0.1', '::1'):
-                return error('请通过 HTTPS 打开拾界后再提交访问令牌或 API Key', 400)
+                return error('请通过 HTTPS 打开AI拆图助手后再提交访问令牌或 API Key', 400)
             if len(request.body) > 20 * 1024:
                 raise ValueError('账号请求超过大小限制')
             value = body(request)

@@ -2,7 +2,7 @@
 (()=>{
  const button=document.getElementById('refine-selected');if(!button||window.studio?.adapter.kind!=='image')return;
  const clone=value=>structuredClone(value),stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,stable(value[k])])):value;
- const equal=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));let active=null;
+ const equal=(a,b)=>JSON.stringify(stable(a),(k,v)=>['_assistantChat','_assistantCandidates'].includes(k)?undefined:v)===JSON.stringify(stable(b),(k,v)=>['_assistantChat','_assistantCandidates'].includes(k)?undefined:v);let active=null;
  const note=document.getElementById('selected-refine-note');
  const pendingRepair=record=>Array.isArray(record?.repairedAssetsNotRechecked)?record.repairedAssetsNotRechecked.length>0:!!record?.repairedAssetsNotRechecked;
  const completed=record=>['COMPLETED','PASS'].includes(record?.status)&&!pendingRepair(record);
@@ -120,10 +120,11 @@
   }catch(e){
    releaseOther(transaction.returned,transaction.before);
    if(active===transaction&&task===transaction.id){
-    scene=clone(transaction.before);undo=transaction.past;redo=transaction.future;selected=null;refresh();window.studio.select(transaction.roots,true);
+    if(!equal(scene,transaction.before))scene=clone(transaction.before);undo=transaction.past;redo=transaction.future;selected=null;refresh();window.studio.select(transaction.roots,true);
     let saved=true;try{await durable()}catch(_){saved=false}
     stopSplitClock();feedback(e.name==='AbortError'?'cancelled':'failure',(e.name==='AbortError'?scope+'修正已取消。':scope+'修正未完成：'+e.message+'。')+'完整工程已保留。'+(saved?'':'恢复保存失败，请下载工程文件。'));
    }
+   if(options.preview)throw e;
    return false;
   }finally{if(active===transaction&&task===transaction.id){active=null;refineBefore=null;stopSplitClock();setBusy(false);window.studio.sync(false);sync()}else if(active===transaction&&task!==transaction.id&&!transaction.cancelling){active=null;if(refineBefore===transaction.before)refineBefore=null;sync()}}
  }
@@ -151,7 +152,7 @@
  }
  function applyPreview(pending){
   if(busy||active)throw Error('请等待当前任务结束');if(!pending||!equal(scene,pending.before))throw Error('工程已改变，请重新生成预览');
-  S.validate(pending.candidate);checkpoint('应用对话修正');scene=clone(pending.candidate);refresh();window.studio.select(pending.roots,true);changed();status('已应用所选修正，可撤销；修改将自动保存，请等待顶部显示“已保存”');
+  S.validate(pending.candidate);checkpoint('应用对话修正');const meta={};for(const key of ['_assistantChat','_assistantCandidates'])if(Object.hasOwn(scene,key))meta[key]=clone(scene[key]);scene={...clone(pending.candidate),...meta};refresh();window.studio.select(pending.roots,true);changed();status('已应用所选修正，可撤销；请手动保存工程');
  }
  window.ShijieSelectedRefine={sync,isActive:()=>!!active,runRegion,discuss,selection,requestPreview:(dialogue,ids)=>run(selection(ids),{preview:true,dialogue}),applyPreview};sync();
 })();

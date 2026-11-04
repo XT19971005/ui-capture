@@ -62,8 +62,8 @@ window.StudioBase=(()=>{
   hasSaved(key){return persisted.has(key)||memory.get(key)?.source==='delivery'||memory.get(key)?.source==='local-disk'},
   isDirty(doc){const saved=persisted.get(doc?._projectId);return !!doc&&(!saved||!sameDoc(doc,saved.doc))},
   put(doc,kind,options={}){
-   // Only explicit saves and the debounced autosave coordinator may write.
-   if(options.manual!==true&&options.automatic!==true)return Promise.resolve(undefined);
+   // Only explicit saves and named checkpoints may write.
+   if(options.manual!==true&&options.checkpoint!==true)return Promise.resolve(undefined);
    if(!doc._projectId)doc._projectId=id();const requestedDirectory=activeDirectory,snapshot=clone(doc),key=doc._projectId,entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,saveMode:'saved',savedAt:Date.now()};
    const task=writeQueue.catch(()=>{}).then(async()=>{
     if(window.ProjectThumbnail?.render){try{entry.thumbnail=await ProjectThumbnail.render({kind,doc:snapshot});entry.thumbnailRevision=entry.revision}catch(error){entry.coverWarning='封面未生成：'+String(error.message||error).slice(0,160)}}

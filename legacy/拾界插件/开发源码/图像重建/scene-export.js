@@ -180,7 +180,28 @@ export async function loadImage(src){
  if(expected&&!((actual.width===expected.width&&actual.height===expected.height)||(actual.width===expected.height&&actual.height===expected.width)))throw Error('实际解码尺寸与图片头部不一致');return im;
 }
 function releaseDecodedImage(im){if(typeof im.close==='function')im.close();else if(!globalThis.ShijieNodeCanvas&&typeof Image!=='undefined'&&im instanceof Image)im.src=''}
-export async function psd(s){assertExportCapacity(s);s=structuredClone(s);const decodedImages=new Map();let cachedPixels=0;
+// Remove only fully transparent raster padding in the disposable PSD scene.
+// Source assets, editable geometry, masks and styled bounds remain untouched.
+export async function compactPsdImages(scene){
+ validate(scene);decodeUsage(allNodes(scene,true));const s=structuredClone(scene);
+ for(const n of allNodes(s,true)){
+  if(n.type!=='image'||n.layerStyle||n.displayMask||n.rotation)continue;
+  const image=await loadImage(n.src),w=image.width,h=image.height;
+  const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  try{
+   const c=canvas.getContext('2d');c.drawImage(image,0,0);const pixels=c.getImageData(0,0,w,h).data;
+   let left=w,top=h,right=-1,bottom=-1;
+   for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(pixels[(y*w+x)*4+3]!==0){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y)}
+   if(right<0){left=top=0;right=bottom=0}
+   if(left===0&&top===0&&right===w-1&&bottom===h-1)continue;
+   const cropped=document.createElement('canvas');cropped.width=right-left+1;cropped.height=bottom-top+1;
+   cropped.getContext('2d').putImageData(c.getImageData(left,top,cropped.width,cropped.height),0,0);
+   const sx=n.width/w,sy=n.height/h;n.x+=left*sx;n.y+=top*sy;n.width=cropped.width*sx;n.height=cropped.height*sy;n.src=cropped.toDataURL('image/png');cropped.width=cropped.height=1;
+  }finally{releaseDecodedImage(image);canvas.width=canvas.height=1}
+ }
+ return s;
+}
+export async function psd(s){s=await compactPsdImages(s);assertExportCapacity(s);const decodedImages=new Map();let cachedPixels=0;
  async function exportImage(src){
   if(decodedImages.has(src)){const image=decodedImages.get(src);decodedImages.delete(src);decodedImages.set(src,image);return image}
   const info=imageMetadata(src);while(decodedImages.size&&cachedPixels+info.pixels>SCENE_CAPACITY_LIMITS.decodeCachePixels){const [key,image]=decodedImages.entries().next().value;cachedPixels-=image.width*image.height;decodedImages.delete(key);releaseDecodedImage(image)}

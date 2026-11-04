@@ -56,8 +56,8 @@ function setup({dirty = false, busy = false} = {}) {
   const location = {pathname:'/image-editor.html', search:'', set href(url) { navigations.push(url); }};
   const doc = {};
   const studio = {adapter:{get:() => doc, flush:async() => events.push('flush')},
-    isBusy:() => busy, flush:async() => {}, saveProject:async() => { events.push('save'); dirty = false; }};
-  const context = {location, URLSearchParams, document:{addEventListener(){},querySelector:node, getElementById:id => node('#'+id),
+    isBusy:() => busy, flush:async() => { events.push('checkpoint'); dirty=false; }, saveProject:async() => { events.push('save'); dirty = false; }};
+  const context = {location, URLSearchParams, document:{readyState:'loading',addEventListener(){},querySelectorAll:()=>[],querySelector:node, getElementById:id => node('#'+id),
     createElement:tag => { const el = new Element(); if (tag === 'nav') nodes.set('nav', el); return el; }, body:new Element()},
     studio, StudioBase:{library:{isDirty:() => dirty}}};
   context.window = context;
@@ -66,55 +66,15 @@ function setup({dirty = false, busy = false} = {}) {
   return {node, dialogs, navigations, events, studio, click};
 }
 
-test('unsaved mode switch presents a choice; cancel preserves work and allows retry', async () => {
-  const h = setup({dirty:true});
-  const pending = h.click(); await tick();
-  assert.equal(h.dialogs.length, 1, 'show an in-page choice before attempting to leave');
-  assert.deepEqual(h.navigations, []);
-  assert.deepEqual(h.events, ['flush']);
-  h.node('#workspace-switch-stay').onclick(); await pending;
-  assert.equal(h.node('nav').getAttribute('aria-busy'), null);
-  const retry = h.click(); await tick();
-  assert.equal(h.dialogs.length, 2);
-  h.dialogs.at(-1).close(); await retry;
-  assert.deepEqual(h.navigations, []);
+test('mode switch persists a checkpoint before leaving without writing during edits',async()=>{
+ const h=setup({dirty:true});await h.click();assert.deepEqual(h.events,['flush','checkpoint']);assert.deepEqual(h.navigations,['http://localhost/export.html']);assert.equal(h.dialogs.length,0);
 });
-
-test('saved navigation unlocks even when the browser cancels the leave request', async () => {
-  const h = setup(); await h.click();
-  assert.deepEqual(h.navigations, ['http://localhost/export.html']);
-  assert.equal(h.node('nav').getAttribute('aria-busy'), null);
+test('failed checkpoint keeps the current page and unlocks navigation for retry',async()=>{
+ const h=setup({dirty:true});h.studio.flush=async()=>{throw Error('保存冲突')};await h.click();assert.deepEqual(h.navigations,[]);assert.match(h.node('#status').textContent,/保存冲突/);assert.equal(h.node('nav').getAttribute('aria-busy'),null);
 });
-
-test('save and switch waits for successful persistence before leaving', async () => {
-  const h = setup({dirty:true}), pending = h.click(); await tick();
-  assert.equal(h.dialogs.length, 1);
-  await h.node('#workspace-switch-save').onclick(); await pending;
-  assert.deepEqual(h.events, ['flush', 'save']);
-  assert.deepEqual(h.navigations, ['http://localhost/export.html']);
+test('repeated mode clicks do not race checkpoint writes',async()=>{
+ const h=setup({dirty:true});let release;h.studio.flush=()=>new Promise(r=>release=r);const pending=h.click();await tick();await h.click();assert.deepEqual(h.navigations,[]);release();await pending;assert.match(h.node('#status').textContent,/未保存修改/);
 });
-
-test('save failure stays on the project with an error and retry', async () => {
-  const h = setup({dirty:true});
-  h.studio.saveProject = async() => { throw Error('保存冲突'); };
-  const pending = h.click(); await tick();
-  assert.equal(h.dialogs.length, 1);
-  await h.node('#workspace-switch-save').onclick();
-  assert.deepEqual(h.navigations, []);
-  assert.match(h.node('#workspace-switch-note').textContent, /保存冲突/);
-  assert.equal(h.node('#workspace-switch-save').disabled, false);
-  assert.equal(h.dialogs[0].open, true);
-  h.node('#workspace-switch-stay').onclick(); await pending;
-  assert.equal(h.node('nav').getAttribute('aria-busy'), null);
-});
-
-test('repeated clicks create only one prompt and never race saves', async () => {
-  const h = setup({dirty:true}), pending = h.click();
-  await h.click(); await tick();
-  assert.equal(h.dialogs.length, 1);
-  h.dialogs[0].close(); await pending;
-});
-
 test('busy work blocks navigation and modified clicks retain normal link behavior', async () => {
   const h = setup({busy:true}); await h.click();
   assert.match(h.node('#status').textContent, /当前操作尚未完成/);

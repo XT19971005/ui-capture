@@ -215,3 +215,32 @@ class NewCapabilities(TestCase):
             self.assertTrue(register_asset(path,64,(0,0))['boundaryReviewRequired'])
             square=Image.new('RGBA',(16,16));ImageDraw.Draw(square).rectangle((4,4,12,12),fill=(90,60,30,255));square.save(path)
             self.assertTrue(register_asset(path,32,(0,0))['positionReviewRequired'])
+
+    def test_chat_attachment_is_separate_from_project_and_cannot_target_edits(self):
+        from free_assistant import validate_request, validate_plan
+        value={'image':png(),'scene':{'width':4,'height':3,'nodes':[]},'selectedIds':[], 'messages':[{'role':'user','content':'讨论粘贴参考'}], 'provider':'company','model':'','attachment':{'src':png()},'workspace':{'projectId':'my-project','title':'测试','hiddenLayers':[],'recentOutcomes':[],'earlierUserRequests':[]}}
+        self.assertEqual(validate_request(value)['attachment']['src'],png())
+        plan={'reply':'先讨论','action':'discuss','instruction':'','targetIds':[],'reference':'attachment','name':'参考','layers':[]}
+        self.assertEqual(validate_plan(plan,value)['action'],'discuss')
+        for action in ('correct','split','remove','background','outpaint'):
+            with self.assertRaises(ValueError):validate_plan({**plan,'action':action,'instruction':'修改'},value)
+
+    def test_feedback_endpoint_is_private_idempotent_and_rejects_invalid_or_unsaved_requests(self):
+        import json,uuid
+        from pathlib import Path
+        key=str(uuid.uuid4())
+        value={'submissionKey':key,'category':'功能异常','description':'问题描述 token=secret-token-value','diagnostics':{'viewport':{},'errors':[],'actions':[]},'screenshot':png()}
+        # Atomic POSIX fsync is covered by deployment tests; here isolate request/ownership behavior.
+        def save(path,record):
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text(json.dumps(record),encoding='utf8')
+        with patch('shijie.pipeline.storage.write_json',side_effect=save):
+            first=self.send('feedback',value);self.assertEqual(first.status_code,201,first.content)
+            again=self.send('feedback',value);self.assertEqual(again.status_code,200);self.assertEqual(first.json()['id'],again.json()['id'])
+            other=self.send('feedback',value,client=self.other);self.assertEqual(other.status_code,201);self.assertNotEqual(first.json()['id'],other.json()['id'])
+        records=list(Path(self.folder.name).glob('users/*/feedback/*.json'));self.assertEqual(len(records),2)
+        self.assertNotIn('secret-token-value',records[0].read_text('utf8'))
+        self.assertEqual(self.send('feedback',{**value,'submissionKey':'../../escape'}).status_code,400)
+        self.assertEqual(self.send('feedback',{**value,'screenshot':'data:image/png;base64,broken'}).status_code,400)
+        with patch('shijie.pipeline.storage.write_json',side_effect=OSError('disk full')):
+            failure=self.send('feedback',{**value,'submissionKey':str(uuid.uuid4())});self.assertEqual(failure.status_code,507);self.assertNotIn('received',failure.json())

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>拾界 · 公司登录</title>
+  <title>AI拆图助手 · 公司登录</title>
   <link rel="icon" href="data:,">
   <script src="{{ prefix }}/static/server/home-atmosphere.js?v=20261020" defer></script>
   <style>
@@ -78,7 +78,7 @@
   <main>
     <section class="intro" aria-labelledby="page-title">
       <p class="intro-label">从图片到图层 · 拆分与重建</p>
-      <h1 id="page-title">拾<span>界</span></h1>
+      <h1 id="page-title" style="font-size:clamp(36px,5vw,68px);letter-spacing:-.03em">AI<span>拆图助手</span></h1>
       <p class="tagline">让画面，重新可编辑。</p>
       <p class="intro-copy">在同一个工作台，完成每一步制作。</p>
       <ol class="workflow" aria-label="图片拆分流程">
@@ -98,7 +98,7 @@
         <form class="signout" action="{{ prefix }}/logout/" method="post">{% csrf_token %}<button class="secondary" type="submit">退出登录</button></form>
         <p class="card-footer">请联系管理员开通使用权限。授权后即可继续进入原页面。</p>
       {% else %}
-        <h2 id="login-title">进入拾界工作台</h2>
+        <h2 id="login-title">进入AI拆图助手工作台</h2>
         {% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
         <a class="primary" href="{{ prefix }}/auth/oidc/start/?next={{ next|urlencode }}">使用公司账号登录<span aria-hidden="true">→</span></a>
       {% endif %}
