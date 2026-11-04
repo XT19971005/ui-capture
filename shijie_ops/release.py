@@ -200,7 +200,8 @@ class Controller:
             waiting = self.run(active, 'exec', '-T', 'db', 'psql', '-X', '-U', 'shijie', '-d', 'shijie', '-Atc',
                                "SELECT count(*) FROM pipeline_job WHERE status IN ('queued','running')",
                                stdout=subprocess.PIPE, text=True).stdout.strip()
-            if waiting != '0':
+            # Starting a stopped worker must remain possible so it can drain queued jobs.
+            if waiting != '0' and not (action == 'control_service' and params.get('operation') == 'start'):
                 raise ValueError('仍有拆图任务排队或运行；请先等待完成或在拾界中取消，未停止应用。')
             if action in ('control_service', 'backup'):
                 if pending: raise ValueError('有未完成发布，请先诊断并恢复。')
