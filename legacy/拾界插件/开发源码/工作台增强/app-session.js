@@ -1,5 +1,11 @@
 /* Only explicit manual project saves persist; working edits stay in RAM. */
 window.ShijieSession=(()=>{
+ // ponytail: HTTP omits randomUUID; this UUID v4 fallback still requires native getRandomValues.
+ if(typeof crypto.randomUUID!=='function')crypto.randomUUID=()=>{
+  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+ };
  const session={library:new Map(),drafts:{web:null,image:null,region:null},workspaceColor:'#12151c',writerId:crypto.randomUUID()};
  session.cleanup=(async()=>{if(globalThis.caches)for(const name of await caches.keys())if(name.startsWith('shijie-temporary-'))await caches.delete(name)})().catch(()=>{});
  function pack(entry){

@@ -7,6 +7,26 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../legacy/拾界插件/插件程序/edge/workspace-ui.js'), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('HTTP sessions initialize without native randomUUID and provide UUID v4 to editor tools', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../legacy/拾界插件/插件程序/edge/app-session.js'), 'utf8');
+  let calls = 0;
+  const crypto = {getRandomValues(bytes) { calls++; return bytes.fill(255); }};
+  const context = {window: {}, crypto};
+  vm.runInNewContext(code, context);
+  assert.equal(context.window.ShijieSession.writerId, 'ffffffff-ffff-4fff-bfff-ffffffffffff');
+  assert.equal(crypto.randomUUID(), 'ffffffff-ffff-4fff-bfff-ffffffffffff');
+  assert.equal(calls, 2);
+});
+
+test('secure-context sessions preserve the native UUID implementation', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../legacy/拾界插件/插件程序/edge/app-session.js'), 'utf8');
+  const native = () => 'native-uuid';
+  const context = {window: {}, crypto: {randomUUID: native, getRandomValues() { throw Error('unexpected fallback'); }}};
+  vm.runInNewContext(code, context);
+  assert.equal(context.crypto.randomUUID, native);
+  assert.equal(context.window.ShijieSession.writerId, 'native-uuid');
+});
+
 test('both editor pages load project transport before starting project restoration', () => {
   for (const [page, adapter] of [['export.html', 'web-studio.js'], ['image-editor.html', 'image-studio.js']]) {
     const html = fs.readFileSync(path.join(__dirname, '../legacy/拾界插件/插件程序/edge', page), 'utf8');

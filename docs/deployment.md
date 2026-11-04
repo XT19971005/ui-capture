@@ -58,7 +58,7 @@ sudo ./shijiectl status --config-dir /etc/shijie
 
 部署会构建锁定依赖的镜像、等待数据库、停写、迁移、检查运行依赖/私有盘及正式登录配置，最后启动 Web/Worker。正式地址的 OIDC 占位符、缺少首次管理员、配置权限错误或磁盘不足会阻止完成部署。失败时查看日志并处理后重新执行；不要重新生成配置。
 
-Python/npm 依赖由 `uv.lock`、带哈希的 `deploy/requirements.lock` 和 `package-lock.json` 固定。基础镜像固定多架构摘要；APT 安全包来自 Ubuntu 仓库，因此不承诺逐字节相同的镜像。当前实机验证为 Linux/arm64，远程 amd64 需在目标架构重新构建并运行同一套检查。
+Python/npm 依赖由 `uv.lock`、带哈希的 `deploy/requirements.lock` 和 `package-lock.json` 固定。基础镜像固定多架构摘要；APT 安全包来自 Ubuntu 仓库，因此不承诺逐字节相同的镜像。Linux/arm64 开发环境和 Ubuntu 24.04.5 的 amd64 目标机均已实际构建、运行隔离测试；协议测试不替代真实浏览器与 AI 验收。
 
 目标机构建完成后可执行 `sudo ./shijiectl test --config-dir /etc/shijie`。命令使用随机命名的 `shijie-test-*` Compose 项目、新数据库密码、新站点密钥及临时数据目录，不挂载生产数据或生产配置，也不发布测试端口。测试使用已构建应用镜像；成功或失败后均清理该临时项目的容器和卷。保留日志以区分协议测试、真实公司登录和真实 AI 验收。
 
@@ -72,6 +72,8 @@ Python/npm 依赖由 `uv.lock`、带哈希的 `deploy/requirements.lock` 和 `pa
 6. 执行一次完整备份与隔离恢复；检查磁盘高水位和任务超时策略后再开放入口。
 
 预检和协议测试不等于真实公司授权或真实 AI 推理成功。不会借用开发者账号，也不以裁剪代替 AI 补全来冒充验收。
+
+若明确选择公网 HTTP 入口，编辑器使用 `crypto.getRandomValues()` 补齐缺失的 UUID v4 生成能力，HTTPS/localhost 保留浏览器原生实现。HTTP 下公司 Key、OpenAI API Key 和团队令牌的网页提交仍被拦截；可使用 Codex 设备码入口，密钥提交需配置 HTTPS。线上每人需要独立连接 AI，本地个人登录不会随源码部署。
 
 ## 升级、停机和备份
 
