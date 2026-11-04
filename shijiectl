@@ -134,6 +134,8 @@ def main():
         raise ValueError('deployment.data_dir 必须是已创建的绝对目录')
     env = os.environ.copy()
     env.update(SHIJIE_CONFIG_FILE=str(folder / 'config.toml'), SHIJIE_DB_PASSWORD_FILE=str(folder / 'postgres-password'), SHIJIE_DATA_DIR=str(data_dir))
+    env.setdefault('SHIJIE_IMAGE_REGISTRY', config.get('deployment', {}).get('image_registry', 'docker.io/library/'))
+    env.setdefault('SHIJIE_PIP_INDEX_URL', config.get('deployment', {}).get('pip_index_url', 'https://pypi.org/simple'))
     local = folder == (ROOT / '.local').resolve()
     if local:
         env.update(SHIJIE_UID=str(os.getuid()), SHIJIE_GID=str(os.getgid()))
@@ -160,8 +162,21 @@ def main():
         run('up', '-d', '--wait', 'web', 'worker')
         print('服务已启动：' + config['site']['public_url'])
     elif args.action == 'test':
-        run('run', '--rm', '-e', 'SHIJIE_PRODUCTION=0', 'web', 'python', 'manage.py', 'test', 'tests', '--noinput')
-        run('run', '--rm', 'web', 'node', '--test', 'tests/frontend.cjs')
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='shijie-test-') as temporary:
+            test_folder = Path(temporary)
+            configuration(test_folder, 'http://127.0.0.1:8093', data_dir=test_folder / 'data')
+            command += ['-p', 'shijie-test-' + secrets.token_hex(6)]
+            env.update(SHIJIE_CONFIG_FILE=str(test_folder / 'config.toml'),
+                       SHIJIE_DB_PASSWORD_FILE=str(test_folder / 'postgres-password'),
+                       SHIJIE_DATA_DIR=str(test_folder / 'data'))
+            try:
+                run('up', '-d', '--wait', 'db')
+                run('run', '--rm', '-e', 'SHIJIE_PRODUCTION=0', 'web', 'python', 'manage.py', 'test', 'tests', '--noinput')
+                run('run', '--rm', 'web', 'node', '--test', 'tests/frontend.cjs')
+            finally:
+                # This unique project owns only disposable test containers and volumes.
+                run('down', '--volumes')
     elif args.action == 'backup':
         if args.backup_dir is None:
             raise ValueError('backup 必须指定 --backup-dir，建议使用异盘目录')

@@ -1,7 +1,12 @@
 name: shijie
 x-app: &app
   image: ${SHIJIE_IMAGE:-shijie:local}
-  build: {context: .., dockerfile: deploy/Dockerfile}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      IMAGE_REGISTRY: ${SHIJIE_IMAGE_REGISTRY:-docker.io/library/}
+      PIP_INDEX_URL: ${SHIJIE_PIP_INDEX_URL:-https://pypi.org/simple}
   restart: unless-stopped
   init: false
   read_only: true
@@ -19,7 +24,7 @@ x-app: &app
     options: {max-size: "20m", max-file: "3"}
 services:
   db:
-    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    image: ${SHIJIE_IMAGE_REGISTRY:-docker.io/library/}postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     restart: unless-stopped
     environment:
       POSTGRES_DB: shijie

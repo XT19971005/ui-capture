@@ -1,9 +1,11 @@
-FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
+ARG IMAGE_REGISTRY=docker.io/library/
+FROM ${IMAGE_REGISTRY}ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv nodejs npm ca-certificates libglib2.0-0t64 libgl1 fonts-noto-cjk fonts-liberation tini && python3 -m venv /opt/venv && rm -rf /var/lib/apt/lists/*
 ENV PATH=/opt/venv/bin:/app/node_modules/.bin:$PATH
 WORKDIR /app
 COPY deploy/requirements.lock /app/deploy/requirements.lock
+ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN pip install --require-hashes -r deploy/requirements.lock
 COPY package.json package-lock.json /app/
 RUN npm ci --omit=dev && npm cache clean --force

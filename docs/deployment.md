@@ -4,7 +4,7 @@
 
 应用使用 `deploy/Dockerfile` 的 Ubuntu 24.04 镜像；PostgreSQL 独立容器；Nginx 留在宿主。没有在容器内运行 SSH 或 systemd，日常管理通过 `shijiectl` 和 Compose 完成。Docker 安装及 Compose 插件按 [Docker 官方 Ubuntu 安装说明](https://docs.docker.com/engine/install/ubuntu/)操作。
 
-2026-11-04 已确认线上宿主目标为 **Ubuntu 24.04 LTS**，不是12.04。当前没有进行远程主机检查或部署。[本次敏感信息检查](security-20261104.md)覆盖源码、可达提交历史、实际构建上下文及认证日志示例。
+2026-11-04 已确认线上宿主为 **Ubuntu 24.04.5 LTS / x86_64**，不是12.04。[本次敏感信息检查](security-20261104.md)覆盖源码、可达提交历史、实际构建上下文及认证日志示例。
 
 代码目录放在 qprole 旁边；私有配置建议 `/etc/shijie`，数据建议与 qprole 一样放 `/home` 数据盘下的 `/home/shijie/data`。PostgreSQL 卷 `shijie_postgres` 位于 Docker 数据目录；部署前确认该目录的容量及备份策略。只对本机发布 `127.0.0.1:8093`，数据库端口不发布。
 
@@ -12,7 +12,7 @@
 
 ## 首次准备
 
-以下为目标机操作说明，本轮没有执行远程操作。将不含 `.local`、`.venv`、`node_modules`、`output` 的源码同步到 qprole 的同级 `shijie` 目录。不要复制本地会话和个人 Codex 登录。
+以下为目标机操作说明。将不含 `.local`、`.venv`、`node_modules`、`output` 的源码同步到 qprole 的同级 `shijie` 目录。不要复制本地会话和个人 Codex 登录。
 
 优先使用审核后提交的 `git archive` 源码包，避免直接打包整个开发目录。`.env`、`.env.*`、`*.local.toml` 和便携工具 `runtime.local.json` 已被 Git/Docker 排除；私有配置在服务器独立生成。公司接口域名保留在业务代码中，源码包仍按公司内部资料管理。
 
@@ -35,7 +35,19 @@ https://实际公司域名/shijie/auth/oidc/callback/
 
 不要更换生成的 `[site].secret_key` 或数据库密码；`database.url` 与 `postgres-password` 必须匹配。`[storage].root` 是容器内 `/data`；`[deployment].data_dir` 才是宿主路径，部署后不要直接改目录来“迁移”资料。
 
+目标服务器不能直连 Docker Hub，且 PyPI 下载很慢时，可以在私有配置已有的 `[deployment]` 节中加入下列无凭据镜像地址。`shijiectl` 会将它们传给本项目 Compose，不修改 Docker 守护进程或其他项目。Ubuntu/PostgreSQL 的摘要、Python 依赖版本及哈希仍固定；不关闭 TLS 验证。
+
+```toml
+# 加到已有 [deployment] 节，保留原 data_dir。
+image_registry = "harbor.ops.tuyoops.com/docker.io/library/"
+pip_index_url = "https://mirrors.aliyun.com/pypi/simple/"
+```
+
+默认仍使用 Docker Hub 和 PyPI。也可临时设置 `SHIJIE_IMAGE_REGISTRY`、`SHIJIE_PIP_INDEX_URL`，优先于配置文件。镜像仓库前缀需带末尾 `/`；构建参数和镜像 URL 不得携带账号密码或 Token。
+
 将 `deploy/nginx.conf.example` 的 `log_format shijie_safe` 放到 Nginx `http {}` 内、HTTPS `server {}` 之前，再把其中的 location 配置合并到现有 HTTPS server。不要把整个示例直接 include 到 server 内，因为 `log_format` 只能放在 http 层。检查域名、证书和 `/shijie` 前缀；代理保留路径，设置正确 Host 和 X-Forwarded-Proto。确认配置后执行 `nginx -t`，再 reload；不要覆盖同机 qprole 的 location。
+
+公网入口带端口或经过多级代理时，使用 `$http_host` 保留原 Host 端口，`/shijie` 到 `/shijie/` 使用相对跳转，避免向浏览器暴露内部代理端口。`tools/check_nginx_logs.py` 同时检查这两项行为。
 
 拾界访问日志仅包含客户端地址、时间、方法、无查询参数的路径、状态、字节和耗时，不记录 OIDC `code`/`state`、Referer、Cookie 或认证头。认证子路径禁用可能携带原始请求的 Nginx 错误详情，仍保留安全访问日志中的状态与耗时；排障结合应用日志。上游负载均衡/CDN 的日志也须核查，应用配置无法替它们脱敏。可用已有 `nginx:1.28-alpine` 镜像执行 `python3 tools/check_nginx_logs.py`，实际验证成功回调、上游失败和入口跳转时的日志；脚本使用无外网临时容器和假参数，不调用公司登录。
 
@@ -47,6 +59,8 @@ sudo ./shijiectl status --config-dir /etc/shijie
 部署会构建锁定依赖的镜像、等待数据库、停写、迁移、检查运行依赖/私有盘及正式登录配置，最后启动 Web/Worker。正式地址的 OIDC 占位符、缺少首次管理员、配置权限错误或磁盘不足会阻止完成部署。失败时查看日志并处理后重新执行；不要重新生成配置。
 
 Python/npm 依赖由 `uv.lock`、带哈希的 `deploy/requirements.lock` 和 `package-lock.json` 固定。基础镜像固定多架构摘要；APT 安全包来自 Ubuntu 仓库，因此不承诺逐字节相同的镜像。当前实机验证为 Linux/arm64，远程 amd64 需在目标架构重新构建并运行同一套检查。
+
+目标机构建完成后可执行 `sudo ./shijiectl test --config-dir /etc/shijie`。命令使用随机命名的 `shijie-test-*` Compose 项目、新数据库密码、新站点密钥及临时数据目录，不挂载生产数据或生产配置，也不发布测试端口。测试使用已构建应用镜像；成功或失败后均清理该临时项目的容器和卷。保留日志以区分协议测试、真实公司登录和真实 AI 验收。
 
 ## 上线验收
 

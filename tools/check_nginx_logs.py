@@ -31,6 +31,7 @@ http {
         access_log off;
         location / {
             if ($arg_case = unavailable) { return 444; }
+            add_header X-Shijie-Test-Host $http_host always;
             return 204;
         }
     }
@@ -58,9 +59,14 @@ http {
                 url = ('http://127.0.0.1:8080' + path +
                        f'?code={sentinels[0]}&state={sentinels[1]}&case={case}')
                 response = docker('exec', container, 'wget', '-S', '-O', '/dev/null',
+                                  '--header=Host: public.example.test:8000',
                                   '--header=Referer: https://login.example.test/?code=' + sentinels[2],
                                   url, check=False)
                 assert f'HTTP/1.1 {status}' in response.stderr, 'unexpected proxy status'
+                if status == '204':
+                    assert 'X-Shijie-Test-Host: public.example.test:8000' in response.stderr, 'public Host port lost'
+                if status == '302':
+                    assert 'Location: /shijie/\n' in response.stderr, 'redirect exposes internal proxy origin'
             docker('stop', '-t', '3', container)
         finally:
             docker('rm', '-f', container, check=False)
