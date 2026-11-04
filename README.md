@@ -92,6 +92,7 @@ shijie/
 ├── shijie/static/server/  同源接入和服务页面脚本
 ├── legacy/                原编辑器、拆图内核和 PSD 工具
 ├── deploy/                Ubuntu 镜像、Compose、配置及 Nginx 示例
+├── shijie_ops/            独立服务控制 MCP、私有执行器和发布保护
 ├── tools/                 隔离执行入口及健康检查
 ├── tests/                 服务边界与现有编辑语义检查
 ├── docs/                  迁移分析、部署和验收记录
@@ -107,6 +108,6 @@ shijie/
 ./shijiectl stop
 ```
 
-[迁移分析与约束](docs/specs/migration.md) · [Ubuntu 部署与恢复](docs/deployment.md) · [验收记录及待验项](docs/verification.md)
+[迁移分析与约束](docs/specs/migration.md) · [Ubuntu 部署与恢复](docs/deployment.md) · [服务控制 MCP](docs/operations-mcp.md) · [验收记录及待验项](docs/verification.md)
 
 本地服务已完成公司 SSO、Codex 真实分析/生图、编辑及导出验收。新通道真实账号和复杂图保真仍有待验项，详见最新美术版合并报告；远程 Ubuntu 部署说明保留在 `docs/deployment.md`。
