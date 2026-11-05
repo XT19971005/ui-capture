@@ -28,7 +28,7 @@ test('letter spacing survives scene metrics, browser SVG and native PSD', async(
   assert.equal(psd.children[0].text.styleRuns[0].style.tracking,750);
   assert.equal(psd.children[0].text.styleRuns[1].style.tracking,1375);
   const plainPsd=ag.readPsd(Buffer.from(await native.psd(scene(base))));
-  assert(psd.children[0].canvas.width>plainPsd.children[0].canvas.width+180,'PSD bitmap cache must include spaced glyphs');
+  function inkWidth(canvas){const d=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;let l=canvas.width,r=-1;for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++)if(d[(y*canvas.width+x)*4+3]){l=Math.min(l,x);r=Math.max(r,x)}return r-l+1} assert(inkWidth(psd.children[0].canvas)>inkWidth(plainPsd.children[0].canvas)+180,'PSD visible glyphs must preserve letter spacing independently of transparent cache padding');
   for(const renderer of [native,browser]){
     const noto=ag.readPsd(Buffer.from(await renderer.psd(scene({...base,fontFamily:'Noto Sans CJK SC'}))));
     assert.equal(noto.children[0].text.style.font.name,'NotoSansCJKsc-Bold','Photoshop must resolve the real installed PostScript font');
