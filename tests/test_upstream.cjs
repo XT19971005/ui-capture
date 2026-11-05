@@ -18,9 +18,10 @@ test('assistant discussion never executes and stale or cancelled generation plan
  const c=helpers(),a=c.ShijieFreeAssistant;let doc={_projectId:'p',width:100,height:80,source:'image',nodes:[]},ids=[],execute=0,resolve;
  const env={get:()=>doc,ids:()=>ids,request:()=>new Promise(r=>resolve=r),execute:async()=>execute++};const flow=a.createFlow(env);
  let promise=flow.send('先讨论','auto','');resolve({reply:'可以先拆人物',action:'discuss'});await promise;assert.equal(execute,0);
- promise=flow.send('确认生成','auto','');doc.title='changed';resolve({reply:'候选',action:'split'});await assert.rejects(promise,/已改变/);assert.equal(execute,0);
- promise=flow.send('生成','auto','');flow.invalidate();resolve({reply:'候选',action:'split'});await assert.rejects(promise,/已改变/);assert.equal(execute,0);
- promise=flow.send('生成','auto','');resolve({reply:'候选',action:'split'});await promise;assert.equal(execute,1);
+ promise=flow.send('确认生成','auto','');doc.title='changed';resolve({reply:'候选',action:'split'});await promise;assert.equal(execute,1);
+ promise=flow.send('生成','auto','');doc.source='new-image';resolve({reply:'候选',action:'split'});await assert.rejects(promise,/已改变/);assert.equal(execute,1);
+ promise=flow.send('生成','auto','');flow.invalidate();resolve({reply:'候选',action:'split'});await assert.rejects(promise,/已改变/);assert.equal(execute,1);
+ promise=flow.send('生成','auto','');resolve({reply:'候选',action:'split'});await promise;assert.equal(execute,2);
 });
 test('re-splitting archives only the chosen layer and preserves position, parent and whole-project baseline',()=>{
  const {ShijieFreeAssistant:a}=helpers();const node={id:'person',name:'角色',type:'image',x:40,y:20,width:100,height:80};
@@ -116,9 +117,11 @@ test('expanded split preview puts the original at the same origin and scale as t
  const doc={format:'shijie-scene',version:2,width:20,height:20,source:source.toDataURL('image/png'),nodes:[{id:'original',type:'rect',fill:'#336699',x:0,y:0,width:20,height:20,src:source.toDataURL('image/png')}],groups:[],edges:[]},candidate=structuredClone(doc);
  candidate.nodes[0].type='image';candidate.nodes[0].x=-10;candidate.nodes[0].y=-6;
  const S=require('../legacy/拾界插件/开发源码/自动拆图/scene-native.cjs'),script=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8');
- const start=script.indexOf('if(result._partial)candidate._partial=true;'),end=script.indexOf("if(!isCurrent())throw Error('工程或选区已改变');",start);
- const context={result:{},candidate,doc,scope:{annotations:{allowExpand:true}},ShijieImageReplacement:api,sceneImage:d=>'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(S.svg(d))};
- const before=await vm.runInNewContext('(async()=>{'+script.slice(start,end)+';return comparisonBefore})()',context);
+ const scope={window:{},structuredClone};vm.runInNewContext(script,scope);
+ // The live per-layer path now stores the padded reference on the scene itself.
+ // Verify the same origin/scale contract that the earlier preview-only path had.
+ await scope.window.ShijieFreeAssistant.growGeneratedScene(candidate,['original'],scene=>api.growToFit(scene));
+ const before=candidate.comparisonSource;
  const im=await canvas.loadImage(before);assert.deepEqual([im.width,im.height],[30,26]);
  const out=canvas.createCanvas(30,26),cx=out.getContext('2d');cx.drawImage(im,0,0);assert.deepEqual([...cx.getImageData(10,6,1,1).data],[51,102,153,255]);assert.equal(cx.getImageData(0,0,1,1).data[3],0);assert.deepEqual([candidate.nodes[0].x,candidate.nodes[0].y],[0,0]);assert.equal(doc.width,20);
 });

@@ -83,28 +83,29 @@ function decodeUsage(nodes){
  if(decodedPixels>SCENE_CAPACITY_LIMITS.decodedPixels)capacityError('SCENE_DECODE_PIXELS','导出唯一图片解码像素',decodedPixels,SCENE_CAPACITY_LIMITS.decodedPixels,'MP','decode');return {decodedPixels,maxDecodedPixels,uniqueDecodedImages:images.size};
 }
 export function assertExportCapacity(s){
- validate(s);const usage=sceneUsage(s),nodes=allNodes(s,true),decoded=decodeUsage(nodes);let layerRasterPixels=0,maskPixels=0,maxDepth=0;
+ validate(s);const usage=sceneUsage(s),nodes=allNodes(s,true),decoded=decodeUsage(nodes);let layerRasterPixels=0,maxLayerRasterPixels=0,maskPixels=0,maxDepth=0;
  for(const n of nodes){const box=n.type==='text'?textInkBounds(n):n,pad=Math.ceil(n.strokeWidth||0)+2,w=Math.ceil(box.width)+pad*2,h=Math.ceil(box.height)+pad*2;
   if(w>12000||h>12000)capacityError('PSD_LAYER_RASTER_EDGE','图层「'+(n.name||n.id)+'」实际显示缓存边长',Math.max(w,h),12000,'像素','export');
-  if(w*h>SCENE_CAPACITY_LIMITS.layerRasterPixels)capacityError('PSD_LAYER_RASTER_PIXELS','图层「'+(n.name||n.id)+'」实际显示缓存',w*h,SCENE_CAPACITY_LIMITS.layerRasterPixels,'MP','export');layerRasterPixels+=w*h;if(n.displayMask?.enabled!==false&&n.displayMask)maskPixels+=s.width*s.height;
+  if(w*h>SCENE_CAPACITY_LIMITS.layerRasterPixels)capacityError('PSD_LAYER_RASTER_PIXELS','图层「'+(n.name||n.id)+'」实际显示缓存',w*h,SCENE_CAPACITY_LIMITS.layerRasterPixels,'MP','export');layerRasterPixels+=w*h;maxLayerRasterPixels=Math.max(maxLayerRasterPixels,w*h);if(n.displayMask?.enabled!==false&&n.displayMask)maskPixels+=s.width*s.height;
  }
  const owner=new Map();for(const g of s.groups||[]){for(const id of g.children)owner.set(id,g.id);if(g.displayMask&&g.displayMask.enabled!==false)maskPixels+=s.width*s.height}
  for(const n of nodes){let id=n.id,depth=0;while(owner.has(id)){depth++;id=owner.get(id)}maxDepth=Math.max(maxDepth,depth)}
- // Layer caches, channel writing and masks are retained; composites need a
+ // Pixel buffers and encoded channels are retained; canvases are released
+ // before PSD writing, with one-layer conversion headroom. Composites need a
  // small number of full-canvas scratch buffers at each active group depth.
  const decodeWorkingPixels=Math.min(decoded.decodedPixels,Math.max(SCENE_CAPACITY_LIMITS.decodeCachePixels,decoded.maxDecodedPixels));
- const estimatedWorkingBytes=4*(layerRasterPixels*3+maskPixels*2+s.width*s.height*(6+2*maxDepth)+decodeWorkingPixels)+usage.uniqueImageBytes*2;
+ const estimatedWorkingBytes=4*(layerRasterPixels*2+maxLayerRasterPixels+maskPixels*2+s.width*s.height*(6+2*maxDepth)+decodeWorkingPixels)+usage.uniqueImageBytes*2;
  if(estimatedWorkingBytes>SCENE_CAPACITY_LIMITS.psdWorkingBytes)capacityError('PSD_WORKING_BYTES','PSD导出预计工作内存',estimatedWorkingBytes,SCENE_CAPACITY_LIMITS.psdWorkingBytes,'MiB','export');
  return {...usage,...decoded,layerRasterPixels,maskPixels,estimatedWorkingBytes};
 }
 export function validate(s){
  if(!s||s.format!=='shijie-scene'||s.version!==2||!Array.isArray(s.nodes)||s.nodes.length>700)throw Error('请选择AI拆图助手图片工程（v2），最多 700 层');
- if(![s.width,s.height].every(v=>Number.isInteger(v)&&v>0&&v<=6000)||s.width*s.height>6000000)throw Error('画布尺寸超限');
+ if(![s.width,s.height].every(v=>Number.isInteger(v)&&v>0&&v<=6000)||s.width*s.height>36000000)throw Error('画布尺寸超限');
  if(s.background!=null&&!/^#[0-9a-f]{6}$/i.test(s.background))throw Error('画布背景色无效');
  const ids=new Set();
  for(const n of s.nodes){if(typeof n.id!=='string'||ids.has(n.id)||!['text','rect','ellipse','path','image'].includes(n.type))throw Error('图层 ID 或类型无效');ids.add(n.id);if(n.opacity!==undefined&&(!Number.isFinite(n.opacity)||n.opacity<0||n.opacity>1))throw Error('图层透明度无效');if(n.fontWeight!==undefined&&(!Number.isFinite(n.fontWeight)||n.fontWeight<100||n.fontWeight>900))throw Error('字重无效');if(n.radius!==undefined&&(!Number.isFinite(n.radius)||n.radius<0||n.radius>6000))throw Error('圆角无效');
  for(const k of ['x','y','width','height'])if(!Number.isFinite(n[k])||Math.abs(n[k])>12000)throw Error('图层坐标无效');
- if(n.width<=0||n.height<=0||n.width*n.height>6000000)throw Error('图层尺寸无效');
+ if(n.width<=0||n.height<=0||n.width*n.height>36000000)throw Error('图层尺寸无效');
  if(n.type!=='image'&&!/^#[\da-f]{6}$/i.test(n.fill))throw Error('图层颜色无效');
  normalizeGradient(n.gradient);normalizeStyle(n.layerStyle);normalizeMask(n.displayMask);
  if(n.strokeWidth!==undefined&&(!Number.isFinite(n.strokeWidth)||n.strokeWidth<0||n.strokeWidth>30))throw Error('文字描边宽度无效');if(n.stroke!==undefined&&!/^#[\da-f]{6}$/i.test(n.stroke))throw Error('文字描边颜色无效');
@@ -183,7 +184,9 @@ function releaseDecodedImage(im){if(typeof im.close==='function')im.close();else
 // Remove only fully transparent raster padding in the disposable PSD scene.
 // Source assets, editable geometry, masks and styled bounds remain untouched.
 export async function compactPsdImages(scene){
- validate(scene);decodeUsage(allNodes(scene,true));const s=structuredClone(scene);
+ validate(scene);decodeUsage(allNodes(scene,true));const s=structuredClone(Object.fromEntries(['format','version','width','height','title','nodes','groups','edges','background'].filter(key=>scene[key]!==undefined).map(key=>[key,scene[key]])));
+ // Undo baselines, conversations, candidates and reference images are not PSD
+ // render inputs. Keep them in the project; do not clone them into export memory.
  for(const n of allNodes(s,true)){
   if(n.type!=='image'||n.layerStyle||n.displayMask||n.rotation)continue;
   const image=await loadImage(n.src),w=image.width,h=image.height;
@@ -223,8 +226,8 @@ export async function psd(s){s=await compactPsdImages(s);assertExportCapacity(s)
   fx.gradientOverlay=[...(fx.gradientOverlay||[]),...intrinsic];layer.effects=fx;
  }if(n.type==='text')fitGradientEffects(layer,n);if(n.displayMask)layer.mask=nativeMask(n.displayMask,s.width,s.height,factory,Path2D);layer._target=n;layers.push(layer);}
  const children=grouped(s,exportNodes,layers,(g,children)=>({id:10000+(s.groups||[]).indexOf(g),name:g.name||'分组',children,opened:true,hidden:layerHidden(g),...(g.locked?{protected:{transparency:true,composite:true,position:true}}:{}),opacity:g.opacity??1,blendMode:normalizeStyle(g.layerStyle)?.blendMode||'normal',...(g.layerStyle?{effects:nativeEffects(g.layerStyle)}:{}),...(g.displayMask?{mask:nativeMask(g.displayMask,s.width,s.height,factory,Path2D)}:{}),_target:g}));
- function paint(layer,target){if(layer.hidden)return;let base,left=layer.left||0,top=layer.top||0;if(layer.children){base=factory(s.width,s.height);layer.children.forEach(l=>paint(l,base.getContext('2d')));left=top=0;}else base=layer.canvas;let style=layer._target.layerStyle;if(layer._target.strokeWidth&&layer._target.stroke&&!style?.stroke)style={...(style||{enabled:true}),stroke:{color:layer._target.stroke,size:layer._target.strokeWidth,opacity:1,position:'outside'}};if(layer._target.type==='text'&&layer._target.gradient){style=style?.enabled===false?{enabled:true,gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1}}:{...(style||{enabled:true}),gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1},...(style?.gradientOverlay?{gradientOverlay:style.gradientOverlay}:{})};}const effectBounds=layer._target.width?{x:layer._target.x-left,y:layer._target.y-top,width:layer._target.width,height:layer._target.height}:alphaBounds(base);if(normalizeMask(layer._target.displayMask)?.enabled){const masked=factory(base.width,base.height),mc=masked.getContext('2d');mc.drawImage(base,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(displayMaskCanvas(layer._target.displayMask,s.width,s.height,factory,Path2D),-left,-top);base=masked;}const rendered=styleCanvas(base,style,factory,effectBounds),scratch=factory(s.width,s.height),sc=scratch.getContext('2d');sc.drawImage(rendered.canvas,left-rendered.pad,top-rendered.pad);target.save();target.globalAlpha=layer.opacity??1;target.globalCompositeOperation=layer.blendMode==='normal'?'source-over':layer.blendMode;target.drawImage(scratch,0,0);target.restore();}
- children.forEach(l=>paint(l,cc));function clean(l){delete l._target;(l.children||[]).forEach(clean)}children.forEach(clean);return writePsd({width:s.width,height:s.height,canvas:composite,children},{noBackground:true,trimImageData:true});
+ function paint(layer,target){if(layer.hidden)return;const temporary=[];const paintFactory=(w,h)=>{const c=factory(w,h);temporary.push(c);return c};try{let base,left=layer.left||0,top=layer.top||0;if(layer.children){base=paintFactory(s.width,s.height);layer.children.forEach(l=>paint(l,base.getContext('2d')));left=top=0;}else base=layer.canvas;let style=layer._target.layerStyle;if(layer._target.strokeWidth&&layer._target.stroke&&!style?.stroke)style={...(style||{enabled:true}),stroke:{color:layer._target.stroke,size:layer._target.strokeWidth,opacity:1,position:'outside'}};if(layer._target.type==='text'&&layer._target.gradient){style=style?.enabled===false?{enabled:true,gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1}}:{...(style||{enabled:true}),gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1},...(style?.gradientOverlay?{gradientOverlay:style.gradientOverlay}:{})};}const effectBounds=layer._target.width?{x:layer._target.x-left,y:layer._target.y-top,width:layer._target.width,height:layer._target.height}:alphaBounds(base);if(normalizeMask(layer._target.displayMask)?.enabled){const masked=paintFactory(base.width,base.height),mc=masked.getContext('2d');mc.drawImage(base,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(displayMaskCanvas(layer._target.displayMask,s.width,s.height,paintFactory,Path2D),-left,-top);base=masked;}const rendered=styleCanvas(base,style,paintFactory,effectBounds),scratch=paintFactory(s.width,s.height),sc=scratch.getContext('2d');sc.drawImage(rendered.canvas,left-rendered.pad,top-rendered.pad);target.save();target.globalAlpha=layer.opacity??1;target.globalCompositeOperation=layer.blendMode==='normal'?'source-over':layer.blendMode;target.drawImage(scratch,0,0);target.restore();}finally{for(const canvas of temporary)canvas.width=canvas.height=1}}
+ children.forEach(l=>paint(l,cc));function clean(l){delete l._target;if(l.canvas){const canvas=l.canvas;l.imageData=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);canvas.width=canvas.height=1;delete l.canvas}(l.children||[]).forEach(clean)}children.forEach(clean);return writePsd({width:s.width,height:s.height,canvas:composite,children},{noBackground:true,trimImageData:false});
  }finally{for(const image of decodedImages.values())releaseDecodedImage(image);decodedImages.clear()}
 }
 function portableHtmlRuntime(original, edge) {

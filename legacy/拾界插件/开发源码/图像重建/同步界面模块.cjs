@@ -41,7 +41,10 @@ const groups={
     "free-assistant.css",
     "original-annotations.js",
     "original-annotations.css",
-    "canvas-compare.js"
+    "canvas-compare.js",
+    "split-registration.js",
+    "manual-rotate.js",
+    "canvas-size.js"
   ],
   "网页抓取": [
     "url-capture.js"

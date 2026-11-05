@@ -19245,12 +19245,13 @@ function decodeUsage(nodes) {
 function assertExportCapacity(s) {
   validate(s);
   const usage = sceneUsage(s), nodes = allNodes(s, true), decoded = decodeUsage(nodes);
-  let layerRasterPixels = 0, maskPixels = 0, maxDepth = 0;
+  let layerRasterPixels = 0, maxLayerRasterPixels = 0, maskPixels = 0, maxDepth = 0;
   for (const n of nodes) {
     const box = n.type === "text" ? textInkBounds(n) : n, pad = Math.ceil(n.strokeWidth || 0) + 2, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
     if (w > 12e3 || h > 12e3) capacityError("PSD_LAYER_RASTER_EDGE", "\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D\u5B9E\u9645\u663E\u793A\u7F13\u5B58\u8FB9\u957F", Math.max(w, h), 12e3, "\u50CF\u7D20", "export");
     if (w * h > SCENE_CAPACITY_LIMITS.layerRasterPixels) capacityError("PSD_LAYER_RASTER_PIXELS", "\u56FE\u5C42\u300C" + (n.name || n.id) + "\u300D\u5B9E\u9645\u663E\u793A\u7F13\u5B58", w * h, SCENE_CAPACITY_LIMITS.layerRasterPixels, "MP", "export");
     layerRasterPixels += w * h;
+    maxLayerRasterPixels = Math.max(maxLayerRasterPixels, w * h);
     if (n.displayMask?.enabled !== false && n.displayMask) maskPixels += s.width * s.height;
   }
   const owner = /* @__PURE__ */ new Map();
@@ -19267,13 +19268,13 @@ function assertExportCapacity(s) {
     maxDepth = Math.max(maxDepth, depth);
   }
   const decodeWorkingPixels = Math.min(decoded.decodedPixels, Math.max(SCENE_CAPACITY_LIMITS.decodeCachePixels, decoded.maxDecodedPixels));
-  const estimatedWorkingBytes = 4 * (layerRasterPixels * 3 + maskPixels * 2 + s.width * s.height * (6 + 2 * maxDepth) + decodeWorkingPixels) + usage.uniqueImageBytes * 2;
+  const estimatedWorkingBytes = 4 * (layerRasterPixels * 2 + maxLayerRasterPixels + maskPixels * 2 + s.width * s.height * (6 + 2 * maxDepth) + decodeWorkingPixels) + usage.uniqueImageBytes * 2;
   if (estimatedWorkingBytes > SCENE_CAPACITY_LIMITS.psdWorkingBytes) capacityError("PSD_WORKING_BYTES", "PSD\u5BFC\u51FA\u9884\u8BA1\u5DE5\u4F5C\u5185\u5B58", estimatedWorkingBytes, SCENE_CAPACITY_LIMITS.psdWorkingBytes, "MiB", "export");
   return { ...usage, ...decoded, layerRasterPixels, maskPixels, estimatedWorkingBytes };
 }
 function validate(s) {
   if (!s || s.format !== "shijie-scene" || s.version !== 2 || !Array.isArray(s.nodes) || s.nodes.length > 700) throw Error("\u8BF7\u9009\u62E9AI\u62C6\u56FE\u52A9\u624B\u56FE\u7247\u5DE5\u7A0B\uFF08v2\uFF09\uFF0C\u6700\u591A 700 \u5C42");
-  if (![s.width, s.height].every((v) => Number.isInteger(v) && v > 0 && v <= 6e3) || s.width * s.height > 6e6) throw Error("\u753B\u5E03\u5C3A\u5BF8\u8D85\u9650");
+  if (![s.width, s.height].every((v) => Number.isInteger(v) && v > 0 && v <= 6e3) || s.width * s.height > 36e6) throw Error("\u753B\u5E03\u5C3A\u5BF8\u8D85\u9650");
   if (s.background != null && !/^#[0-9a-f]{6}$/i.test(s.background)) throw Error("\u753B\u5E03\u80CC\u666F\u8272\u65E0\u6548");
   const ids = /* @__PURE__ */ new Set();
   for (const n of s.nodes) {
@@ -19283,7 +19284,7 @@ function validate(s) {
     if (n.fontWeight !== void 0 && (!Number.isFinite(n.fontWeight) || n.fontWeight < 100 || n.fontWeight > 900)) throw Error("\u5B57\u91CD\u65E0\u6548");
     if (n.radius !== void 0 && (!Number.isFinite(n.radius) || n.radius < 0 || n.radius > 6e3)) throw Error("\u5706\u89D2\u65E0\u6548");
     for (const k of ["x", "y", "width", "height"]) if (!Number.isFinite(n[k]) || Math.abs(n[k]) > 12e3) throw Error("\u56FE\u5C42\u5750\u6807\u65E0\u6548");
-    if (n.width <= 0 || n.height <= 0 || n.width * n.height > 6e6) throw Error("\u56FE\u5C42\u5C3A\u5BF8\u65E0\u6548");
+    if (n.width <= 0 || n.height <= 0 || n.width * n.height > 36e6) throw Error("\u56FE\u5C42\u5C3A\u5BF8\u65E0\u6548");
     if (n.type !== "image" && !/^#[\da-f]{6}$/i.test(n.fill)) throw Error("\u56FE\u5C42\u989C\u8272\u65E0\u6548");
     normalizeGradient(n.gradient);
     normalizeStyle(n.layerStyle);
@@ -19548,7 +19549,7 @@ function releaseDecodedImage(im) {
 async function compactPsdImages(scene) {
   validate(scene);
   decodeUsage(allNodes(scene, true));
-  const s = structuredClone(scene);
+  const s = structuredClone(Object.fromEntries(["format", "version", "width", "height", "title", "nodes", "groups", "edges", "background"].filter((key) => scene[key] !== void 0).map((key) => [key, scene[key]])));
   for (const n of allNodes(s, true)) {
     if (n.type !== "image" || n.layerStyle || n.displayMask || n.rotation) continue;
     const image = await loadImage(n.src), w = image.width, h = image.height;
@@ -19616,34 +19617,50 @@ async function psd(s) {
   try {
     let paint = function(layer, target) {
       if (layer.hidden) return;
-      let base, left = layer.left || 0, top = layer.top || 0;
-      if (layer.children) {
-        base = factory(s.width, s.height);
-        layer.children.forEach((l) => paint(l, base.getContext("2d")));
-        left = top = 0;
-      } else base = layer.canvas;
-      let style = layer._target.layerStyle;
-      if (layer._target.strokeWidth && layer._target.stroke && !style?.stroke) style = { ...style || { enabled: true }, stroke: { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" } };
-      if (layer._target.type === "text" && layer._target.gradient) {
-        style = style?.enabled === false ? { enabled: true, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 } } : { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
+      const temporary = [];
+      const paintFactory = (w, h) => {
+        const c = factory(w, h);
+        temporary.push(c);
+        return c;
+      };
+      try {
+        let base, left = layer.left || 0, top = layer.top || 0;
+        if (layer.children) {
+          base = paintFactory(s.width, s.height);
+          layer.children.forEach((l) => paint(l, base.getContext("2d")));
+          left = top = 0;
+        } else base = layer.canvas;
+        let style = layer._target.layerStyle;
+        if (layer._target.strokeWidth && layer._target.stroke && !style?.stroke) style = { ...style || { enabled: true }, stroke: { color: layer._target.stroke, size: layer._target.strokeWidth, opacity: 1, position: "outside" } };
+        if (layer._target.type === "text" && layer._target.gradient) {
+          style = style?.enabled === false ? { enabled: true, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 } } : { ...style || { enabled: true }, gradientOverlay: { ...normalizeGradient(layer._target.gradient), enabled: true, opacity: 1 }, ...style?.gradientOverlay ? { gradientOverlay: style.gradientOverlay } : {} };
+        }
+        const effectBounds = layer._target.width ? { x: layer._target.x - left, y: layer._target.y - top, width: layer._target.width, height: layer._target.height } : alphaBounds(base);
+        if (normalizeMask(layer._target.displayMask)?.enabled) {
+          const masked = paintFactory(base.width, base.height), mc = masked.getContext("2d");
+          mc.drawImage(base, 0, 0);
+          mc.globalCompositeOperation = "destination-in";
+          mc.drawImage(displayMaskCanvas(layer._target.displayMask, s.width, s.height, paintFactory, Path2D), -left, -top);
+          base = masked;
+        }
+        const rendered = styleCanvas(base, style, paintFactory, effectBounds), scratch = paintFactory(s.width, s.height), sc = scratch.getContext("2d");
+        sc.drawImage(rendered.canvas, left - rendered.pad, top - rendered.pad);
+        target.save();
+        target.globalAlpha = layer.opacity ?? 1;
+        target.globalCompositeOperation = layer.blendMode === "normal" ? "source-over" : layer.blendMode;
+        target.drawImage(scratch, 0, 0);
+        target.restore();
+      } finally {
+        for (const canvas of temporary) canvas.width = canvas.height = 1;
       }
-      const effectBounds = layer._target.width ? { x: layer._target.x - left, y: layer._target.y - top, width: layer._target.width, height: layer._target.height } : alphaBounds(base);
-      if (normalizeMask(layer._target.displayMask)?.enabled) {
-        const masked = factory(base.width, base.height), mc = masked.getContext("2d");
-        mc.drawImage(base, 0, 0);
-        mc.globalCompositeOperation = "destination-in";
-        mc.drawImage(displayMaskCanvas(layer._target.displayMask, s.width, s.height, factory, Path2D), -left, -top);
-        base = masked;
-      }
-      const rendered = styleCanvas(base, style, factory, effectBounds), scratch = factory(s.width, s.height), sc = scratch.getContext("2d");
-      sc.drawImage(rendered.canvas, left - rendered.pad, top - rendered.pad);
-      target.save();
-      target.globalAlpha = layer.opacity ?? 1;
-      target.globalCompositeOperation = layer.blendMode === "normal" ? "source-over" : layer.blendMode;
-      target.drawImage(scratch, 0, 0);
-      target.restore();
     }, clean = function(l) {
       delete l._target;
+      if (l.canvas) {
+        const canvas = l.canvas;
+        l.imageData = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = canvas.height = 1;
+        delete l.canvas;
+      }
       (l.children || []).forEach(clean);
     };
     const factory = (w, h) => {
@@ -19715,7 +19732,7 @@ async function psd(s) {
     const children = grouped(s, exportNodes, layers, (g, children2) => ({ id: 1e4 + (s.groups || []).indexOf(g), name: g.name || "\u5206\u7EC4", children: children2, opened: true, hidden: layerHidden(g), ...g.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, opacity: g.opacity ?? 1, blendMode: normalizeStyle(g.layerStyle)?.blendMode || "normal", ...g.layerStyle ? { effects: nativeEffects(g.layerStyle) } : {}, ...g.displayMask ? { mask: nativeMask(g.displayMask, s.width, s.height, factory, Path2D) } : {}, _target: g }));
     children.forEach((l) => paint(l, cc));
     children.forEach(clean);
-    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: true });
+    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: false });
   } finally {
     for (const image of decodedImages.values()) releaseDecodedImage(image);
     decodedImages.clear();

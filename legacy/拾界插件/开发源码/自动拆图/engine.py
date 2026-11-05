@@ -13,7 +13,7 @@ def png(image):
 def load_source(value):
  if not isinstance(value,str) or len(value)>36000000 or not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+',value):raise ValueError('图片数据无效或过大')
  with Image.open(io.BytesIO(base64.b64decode(value.split(',',1)[1],validate=True))) as im:
-  if im.width*im.height>6000000 or max(im.size)>6000:raise ValueError('图片尺寸超限')
+  if im.width*im.height>36000000 or max(im.size)>6000:raise ValueError('图片尺寸超限')
   return im.convert('RGB')
 def ink_mask(rgb,row):
     h,w=rgb.shape[:2];x0,y0,x1,y1=row['bbox'];patch=rgb[y0:y1,x0:x1]
