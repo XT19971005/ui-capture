@@ -73,7 +73,7 @@ Python/npm 依赖由 `uv.lock`、带哈希的 `deploy/requirements.lock` 和 `pa
 
 预检和协议测试不等于真实公司授权或真实 AI 推理成功。不会借用开发者账号，也不以裁剪代替 AI 补全来冒充验收。
 
-若明确选择公网 HTTP 入口，编辑器使用 `crypto.getRandomValues()` 补齐缺失的 UUID v4 生成能力，HTTPS/localhost 保留浏览器原生实现。HTTP 下公司 Key、OpenAI API Key 和团队令牌的网页提交仍被拦截；可使用 Codex 设备码入口，密钥提交需配置 HTTPS。线上每人需要独立连接 AI，本地个人登录不会随源码部署。
+若明确选择公网 HTTP 入口，编辑器使用 `crypto.getRandomValues()` 补齐缺失的 UUID v4 生成能力，HTTPS/localhost 保留浏览器原生实现。按部署要求，HTTP 与 HTTPS 均允许提交公司 Agent、OpenAI API Key、Codex 团队令牌及其他模型 Key；仍校验公司登录、使用权限、CSRF、参数和请求大小，凭据按用户隔离保存。HTTP 的网络传输不加密，服务器上的加密保存不能保护传输过程。线上每人需要独立连接 AI，本地个人登录不会随源码部署。
 
 ## 升级、停机和备份
 

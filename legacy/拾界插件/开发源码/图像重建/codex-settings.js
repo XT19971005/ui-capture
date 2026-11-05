@@ -191,7 +191,6 @@
   for (const id of ['company-key','company-model','company-enabled']) $(id).oninput = () => { companyDirty = true; $('company-test').disabled = true; companyNote('修改尚未保存', '保存后可测试新的配置。'); };
   $('company-save').onclick = () => action(async () => {
     provider('company');
-    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交 Key');
     const api_key = $('company-key').value.trim(), model = $('company-model').value.trim(), enabled = $('company-enabled').checked;
     if (!model) throw Error('请填写公司接口可用的模型 ID');
     $('company-key').value = '';
@@ -222,7 +221,6 @@
   };
   $('codex-token-connect').onclick = () => action(async () => {
     provider('codex');
-    if (location.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交访问令牌');
     const token = $('codex-token').value.trim();
     if (!token) { $('codex-token').focus(); throw Error('请先粘贴 Codex 访问令牌'); }
     $('codex-token').value = '';
@@ -231,7 +229,6 @@
   });
   $('codex-api-connect').onclick = () => action(async () => {
     provider('codex'); method('api');
-    if (location.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) throw Error('请通过 HTTPS 打开AI拆图助手后再提交 API Key');
     const api_key = $('codex-api-key').value.trim();
     if (!api_key) { $('codex-api-key').focus(); throw Error('请先填写 OpenAI 平台 API Key'); }
     $('codex-api-key').value = '';

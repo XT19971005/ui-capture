@@ -7,7 +7,7 @@ from shijie.pipeline.models import Job
 class NewCapabilities(TestCase):
     def setUp(self):
         Service.setUp(self)
-        self.client.defaults['HTTP_HOST']='localhost'
+        self.client.defaults['HTTP_HOST']='testserver'
     send=Service.send
 
     def scene(self):

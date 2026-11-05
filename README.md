@@ -50,7 +50,7 @@ OpenAI 平台密钥使用 **连接设置 → Codex / OpenAI → OpenAI API Key**
 
 Codex 保留两种连接方式：
 
-- **团队访问令牌**：Business / Enterprise 成员可在 [ChatGPT 访问令牌管理](https://chatgpt.com/admin/access-tokens) 创建具有 Codex 权限的令牌，粘贴到拾界并点击“验证并连接”。工作区需要允许访问令牌及本地 Codex；没有入口时请联系工作区管理员。令牌通过 CLI 标准输入验证，先在临时账号目录确认连接，成功后才替换当前用户的凭据。只允许 HTTPS 或本机回环地址提交，不保存到浏览器或工程。参见 [官方权限说明](https://learn.chatgpt.com/docs/enterprise/access-tokens)。
+- **团队访问令牌**：Business / Enterprise 成员可在 [ChatGPT 访问令牌管理](https://chatgpt.com/admin/access-tokens) 创建具有 Codex 权限的令牌，粘贴到拾界并点击“验证并连接”。工作区需要允许访问令牌及本地 Codex；没有入口时请联系工作区管理员。令牌通过 CLI 标准输入验证，先在临时账号目录确认连接，成功后才替换当前用户的凭据。HTTP/HTTPS 部署均可提交，不保存到浏览器或工程；HTTP 传输不加密。参见 [官方权限说明](https://learn.chatgpt.com/docs/enterprise/access-tokens)。
 - **设备码登录**：点击“获取设备码”，复制大字显示的码，打开官方登录页授权。支持重新获取、取消、重开窗口恢复和自动检查；检查连接不会覆盖设备码。团队成员需要工作区管理员允许设备码登录。参见 [官方认证说明](https://learn.chatgpt.com/docs/auth)。
 
 两种 Codex 方式都使用当前拾界用户自己的权限；登录后还需实际提供图像生成能力才能拆图。未连接或缺少图像生成时会在提交前明确提示，保留原图和编辑内容。服务不会自动读取宿主开发者的 Codex 登录。

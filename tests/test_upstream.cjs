@@ -2,6 +2,18 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const edge=path.join(__dirname,'../legacy/拾界插件/插件程序/edge');
 function helpers(){const c={structuredClone,crypto:require('node:crypto').webcrypto,TextEncoder};c.window=c;for(const file of ['original-annotations.js','free-assistant.js'])vm.runInNewContext(fs.readFileSync(path.join(edge,file),'utf8'),c);return c;}
 const plain=v=>JSON.parse(JSON.stringify(v));
+test('connection settings open the selected company or Codex panel; only Taishi opens its own key form',()=>{
+ const handler=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8').split('\n').find(line=>line.trim().startsWith("q('[data-connect]').onclick="));
+ assert.ok(handler);
+ for(const provider of ['auto','company','codex','taishi']){
+  const clicks=[],button={},dialog={querySelector:()=>({}),addEventListener(){}};
+  const c={q:()=>button,provider:{value:provider},modelSettingsDialog:{close:()=>clicks.push('close')},models(){},
+   document:{getElementById:id=>({click:()=>clicks.push(id)}),querySelector:()=>dialog,createElement:()=>dialog,body:{append(){}}},
+   window:{ShijieInlinePanels:{open:()=>clicks.push('taishi')}}};
+  vm.runInNewContext(handler,c);button.onclick();
+  assert.deepEqual(clicks,provider==='taishi'?['close','taishi']:['close','codex-settings',...(provider==='auto'?[]:['ai-provider-'+provider])]);
+ }
+});
 test('marks stay separate from source pixels, preserve chronology and reject stale source identity',async()=>{
  const c=helpers(),a=c.ShijieOriginalAnnotations,source='clean-source';const hash=require('node:crypto').createHash('sha256').update(source).digest('hex');
  const empty=a.empty({width:200,height:100},hash),one=a.addStroke(empty,'#ffdf24','角色',a.shapeStroke('rect',[[10,20],[50,60]]));
