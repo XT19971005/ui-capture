@@ -315,3 +315,9 @@ body.unified-workbench.web-workbench #url-capture-form[hidden]{display:none!impo
 .unified-workbench .view-tools #actual{display:inline-flex!important}
 
 .toolbar button.toolbar-snap{display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}.toolbar button.toolbar-snap[aria-pressed="true"]{color:#dfd2ff;background:#392c50;border-color:#80659f}.toolbar button.toolbar-snap[aria-pressed="false"]{color:#b7bfd0;background:transparent}
+
+.shared-ai-settings .assistant-key-row{display:flex;align-items:stretch;gap:7px;min-width:0;width:100%}
+.shared-ai-settings .assistant-key-row input{flex:1;min-width:0;width:0}
+.shared-ai-settings .assistant-key-row button{flex:none;min-width:50px}
+.shared-ai-settings [data-text-status]{overflow-wrap:anywhere;line-height:1.55}
+.shared-ai-settings .ai-connection-actions{flex-wrap:wrap;gap:7px}

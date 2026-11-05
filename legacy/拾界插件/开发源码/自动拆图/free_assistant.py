@@ -7,7 +7,7 @@ SCHEMA=obj({'reply':{'type':'string'},'action':{'type':'string','enum':['discuss
 
 def validate_request(body):
  if not isinstance(body,dict) or set(body)-{'image','scene','selectedIds','messages','provider','model','annotations','annotationTargetId','workspace','attachment'} or not {'image','scene','selectedIds','messages','provider','model'}<=set(body):raise ValueError('助手参数无效')
- if body['provider'] not in ('auto','codex','company','taishi') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
+ if body['provider'] not in ('auto','codex','company','taishi','tygpt') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
  from selected_dialogue import validate_dialogue
  validate_dialogue({'action':'discuss','messages':body['messages']})
  workspace=body.get('workspace')

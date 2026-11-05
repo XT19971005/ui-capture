@@ -65,6 +65,9 @@ def gateway_analyze(prompt,images,schema,model,cancelled,on_status,on_text=None)
  return json.loads(text)
 
 def analyze(prompt,images,schema,provider,model,cancelled,on_status,on_text=None):
+ if provider=='tygpt':
+  from tygpt_transport import tygpt_analyze
+  return tygpt_analyze(prompt,images,schema,model,cancelled,on_status,on_text)
  if provider=='taishi':return gateway_analyze(prompt,images,schema,model,cancelled,on_status,on_text)
  from codex_client import CLIENT
  # Freeze the request's model without changing the user's persistent Codex default.

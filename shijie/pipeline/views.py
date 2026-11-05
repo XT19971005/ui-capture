@@ -109,7 +109,7 @@ def engine(request, route):
                              'localProjectStoreVersion': 1, 'sourceAnnotationsVersion': 1, 'assistantVersion': 1,
                              'freeAssistantVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
                              'jobModes': ['codex', 'local-layered', 'refine-ui', 'refine-selected', 'repair-order', 'replace-image']})
-    if route in ('assistant/models', 'assistant/key', 'image-provider'):
+    if route in ('assistant/models', 'assistant/key', 'assistant/tygpt-key', 'image-provider'):
         from . import providers
         if method == 'GET' and route == 'assistant/models':
             return JsonResponse(providers.models(owner, request.GET.get('provider', 'auto')))
@@ -119,7 +119,7 @@ def engine(request, route):
             if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=owner.pk)
-                return JsonResponse(providers.save(owner, body(request), 'taishi' if route=='assistant/key' else 'aimake'))
+                return JsonResponse(providers.save(owner, body(request), 'tygpt' if route=='assistant/tygpt-key' else 'taishi' if route=='assistant/key' else 'aimake'))
     if route == 'ai/status' and method == 'GET':
         from . import ai
         return JsonResponse(ai.connections(owner))
@@ -224,8 +224,8 @@ def engine(request, route):
                     return JsonResponse({'error': '本机分层服务尚未就绪，请启动本机模型服务后重试；原图和编辑已保留', 'code': 'LOCAL_MODEL_UNAVAILABLE'}, status=503)
             if (needs_text and analysis=='company') or (needs_images and image_provider=='codex' and provider=='company'):
                 if not company.credentials(owner):raise ValueError('请先配置并启用个人公司 Agent')
-            if analysis=='taishi':
-                state = providers.models(owner, 'taishi')
+            if analysis in ('taishi','tygpt'):
+                state = providers.models(owner, analysis)
                 if not state['ready'] or value['model'] not in [m['id'] for m in state['models']]:raise ValueError('请选择当前太石账号可用的模型')
             if needs_images and image_provider=='aimake': providers.secret(owner, 'aimake')
             if needs_codex:
@@ -238,7 +238,7 @@ def engine(request, route):
                     return JsonResponse({'error': IMAGE_GENERATION_REQUIRED_MESSAGE, 'code': 'CODEX_IMAGE_GENERATION_UNAVAILABLE'}, status=422)
                 if route=='assistant/jobs' and analysis=='codex' and value['model'] and value['model'] not in [m['id'] for m in state.get('models', [])]:
                     raise ValueError('当前 Codex 账号没有提供所选模型')
-            snapshot = {'provider': provider, 'analysisProvider':analysis, 'imageProvider':image_provider, 'needsCodex':needs_codex, 'codexModel':owner.codex_model}
+            snapshot = {'provider': provider, 'analysisProvider':analysis, 'imageProvider':image_provider, 'imageModel':providers.image_status(owner)['model'], 'needsCodex':needs_codex, 'codexModel':owner.codex_model}
             project=value.get('projectId') or (value.get('resume') or {}).get('_projectId') or (value.get('workspace') or {}).get('projectId')
             if project is not None:
                 if not isinstance(project,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',project):raise ValueError('任务工程标识无效')

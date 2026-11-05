@@ -45,7 +45,8 @@ def main():
         local_root = connection.get('local_model_root')
         envelope = 'analysisProvider' in connection
         CLIENT.company = connection.get('company') if envelope and connection['analysisProvider']=='company' else None if envelope or local_root else connection or None
-        import assistant_models, image_provider
+        import assistant_models, image_provider, tygpt_transport
+        tygpt_transport.CONNECTION = {'key': connection.get('tygpt')}
         assistant_models.CONNECTION = {'key': connection.get('taishi')}
         image_provider.CONNECTION = connection.get('image', {'provider':'codex','model':'gpt-image-2'})
         needs_codex = connection.get('needsCodex', not CLIENT.company and not local_root)
