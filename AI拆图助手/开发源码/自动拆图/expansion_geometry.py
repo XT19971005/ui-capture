@@ -1,7 +1,7 @@
 """Reserve transparent room without shrinking the original content."""
 import math
 
-def margins(width,height,max_pixels=6000000):
+def margins(width,height,max_pixels=36000000):
  def size(mx,my):return width+2*mx,height+2*my
  def valid(mx,my):
   w,h=size(mx,my);return max(w,h)<=6000 and w*h<=max_pixels

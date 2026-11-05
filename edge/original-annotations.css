@@ -31,3 +31,8 @@
 #original-annotations .original-mark-colors button:nth-child(n+22){color:#fff;text-shadow:0 1px 1px #0008}
 
 #original-annotations .original-mark-colors button:is(:nth-child(10),:nth-child(11),:nth-child(12),:nth-child(18)){color:#fff;text-shadow:0 1px 1px #0008}
+
+/* Fixed screen-size UI labels; intentionally separate from raster references. */
+#original-annotation-badges{position:fixed;inset:0;z-index:112;pointer-events:none!important;overflow:hidden}
+#original-annotation-badges[hidden]{display:none}
+#original-annotation-badges .original-stroke-number{position:absolute;box-sizing:border-box;width:24px;height:18px;display:flex;align-items:center;justify-content:center;border:1px solid;border-radius:4px;background:#171923ed;color:#fff;font:700 11px/1 Arial,sans-serif;box-shadow:0 1px 3px #0008;pointer-events:none!important;user-select:none}

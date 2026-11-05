@@ -19,18 +19,20 @@ def register(app,jobs,lock,pool,project_store=None):
 
  @app.get('/assistant/models')
  def assistant_models():
-  from assistant_models import status
+  from assistant_models import status,_TygptError
   try:return jsonify(status(request.args.get('provider','codex')))
-  except Exception:return jsonify(error='模型连接不可用，请检查本人账号或太石Key'),503
+  except _TygptError as error:return jsonify(error=str(error)),503
+  except Exception:return jsonify(error='模型连接不可用，请检查本人Codex账号或TYGPT PAT'),503
 
  @app.post('/assistant/key')
  def assistant_key():
-  from assistant_models import save_key
+  from assistant_models import save_key,_TygptError
   try:
    body=request.get_json(silent=True)
    if not isinstance(body,dict) or set(body)!={'key'}:raise ValueError('连接参数无效')
    return jsonify(save_key(body['key']))
-  except Exception:return jsonify(error='太石连接未保存，请核对本人Key、网关权限及网络'),400
+  except _TygptError as error:return jsonify(error=str(error)),400
+  except Exception:return jsonify(error='TYGPT连接未保存，请核对本人PAT、网络及模型权限'),400
 
  def work(ident,body,split=False):
   item=jobs[ident]

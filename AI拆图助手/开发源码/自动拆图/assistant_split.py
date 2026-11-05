@@ -25,19 +25,18 @@ def validate(body):
   if not body.get('backgroundOnly'):
    if b['width']<=0 or b['height']<=0:raise ValueError('素材范围无效')
    outside=b['x']<0 or b['y']<0 or b['x']+b['width']>body['width'] or b['y']+b['height']>body['height']
-   if outside and (body.get('annotations') or {}).get('allowExpand') is True:
+   if outside:
     if max(abs(v) for v in b.values())>12000 or b['width']*b['height']>36000000:raise ValueError('素材参考范围超过安全尺寸')
     x=max(0,b['x']);y=max(0,b['y']);right=min(body['width'],b['x']+b['width']);bottom=min(body['height'],b['y']+b['height'])
     if right<=x or bottom<=y:raise ValueError('素材范围未包含任何原图参考，无法识别目标')
     # This box locates visible reference pixels, never bounds completed output.
     layer['instruction']+='；完整形体允许延伸至原画外，旧框不是裁切边界；box仅定位可见参考，不得压缩或裁去补全部分。'
     layer['box']=b={'x':x,'y':y,'width':right-x,'height':bottom-y}
-   elif outside:raise ValueError('素材范围超出画板')
    if layer.get('assetKind')=='background' and b!={'x':0,'y':0,'width':body['width'],'height':body['height']}:raise ValueError('场景底稿须覆盖完整参考画布')
- if body.get('outpaint') and (len(body['layers'])!=1 or body['layers'][0]['box']['x']!=0 or body['layers'][0]['box']['y']!=0 or body['layers'][0]['box']['width']!=body['width'] or not body['height']<body['layers'][0]['box']['height']<=6000 or body['layers'][0]['box']['height']%1 or body['width']*body['layers'][0]['box']['height']>36000000):raise ValueError('上下扩建须保持原宽度，目标高度须大于原图且在安全尺寸内')
  if body.get('backgroundOnly'):
   b=body['layers'][0]['box']
-  if len(body['layers'])!=1 or b['x']!=0 or b['y']!=0 or b['width']!=body['width'] or not body['height']<=b['height']<=6000 or b['height']%1 or b['width']*b['height']>36000000:raise ValueError('背景画布须保持原宽，可指定原高度或上下扩建高度')
+  if len(body['layers'])!=1 or b['x']!=0 or b['y']!=0 or any(b[k]%1 or not body[k]<=b[k]<=6000 for k in ('width','height')) or b['width']*b['height']>36000000:raise ValueError('背景扩建目标须容纳原图，宽高为安全范围内的整数；缩小画布请使用调整画布')
+  if body.get('outpaint') and b['width']==body['width'] and b['height']==body['height']:raise ValueError('扩建目标与原画布相同，请指定更大的宽度或高度')
  with load_source(body['image']) as image:
   if image.size!=(body['width'],body['height']):raise ValueError('原图尺寸与拆层画板不符')
  if body.get('outpaint'):
@@ -61,7 +60,7 @@ def generate(body,home,cancelled,progress,on_scene=None):
  from incremental_assets import extract_once
  nodes=[]
  def partial_scene():
-  return {'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':copy.deepcopy(nodes),'groups':[],'edges':[],'_partial':True,'recognition':{'extractionStatus':'INCOMPLETE','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':copy.deepcopy(body['layers']),'pendingLayers':copy.deepcopy([body['layers'][i] for i,n in enumerate(nodes) if n.get('boundaryReviewRequired')]+body['layers'][len(nodes):]),'timing':{'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}}}
+  return {'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':copy.deepcopy(nodes),'groups':[],'edges':[],'_partial':True,'recognition':{'extractionStatus':'INCOMPLETE','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':copy.deepcopy(body['layers']),'pendingLayers':copy.deepcopy(body['layers'][len(nodes):]),'timing':{'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}}}
  try:
   for index,layer in enumerate(body['layers']):
    if cancelled():raise InterruptedError('已停止指定拆层')
@@ -79,13 +78,13 @@ def generate(body,home,cancelled,progress,on_scene=None):
     policy=BACKGROUND_PRESERVATION if body.get('backgroundOnly') else '场景底稿以原图配色、亮度和笔触为准，仅保留未另成层的环境；本轮独立清单中的自然对象也必须去掉并补齐其后的环境，不能因其是自然对象而重复留在底稿。禁止提亮、增艳、锐化、增加反光或重排环境。'
     prompt=prefix+layer['instruction']+'。保留原横竖构图、未另成层场景对象的原位置和大小，完整画布宽高比例 '+str(body['width'])+':'+str(body['height'])+'，铺满四角的不透明背景，无透明孔洞、羽化边缘、棋盘格、边框，不裁切或重排。'+policy
     refs=[source]
-    if b['height']>body['height']:
+    if b['width']>body['width'] or b['height']>body['height']:
      with Image.open(source) as im:original=im.convert('RGBA')
-     offset=(int(b['height'])-original.height)//2
-     canvas=Image.new('RGB',(int(b['width']),int(b['height'])),(127,127,127));canvas.paste(original,(0,offset));guide=assets/'扩建画布.png';canvas.save(guide);refs=[guide]
-     prompt='只对第一张画布上下灰色新增区域进行上下扩建，灰色必须全部被匹配的自然水面/背景替代，原有中间区域左右不动，不移动或重绘已有物体。原图内容位于y='+str(offset)+'到'+str(offset+original.height)+'。输出完整不透明画布 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
-    if not body.get('outpaint') and b['height']>body['height']:
-     prompt='一次生成同时完成去掉全部UI、补全遮挡背景及上下扩建，不分两次。第一张参考为目标尺寸画布，中间原截图从y='+str(offset)+'开始，高度'+str(body['height'])+'；上下灰色只是新增区域，不是成品。保留自然场景原位置与原宽，不拉伸、不移动鱼与荷花；移除原截图全部UI和文字及其阴影，补齐遮挡，新增区域续画水面，不得粘回含UI原图。目标完整不透明尺寸 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
+     offset_x=(int(b['width'])-original.width)//2;offset_y=(int(b['height'])-original.height)//2
+     canvas=Image.new('RGB',(int(b['width']),int(b['height'])),(127,127,127));canvas.paste(original,(offset_x,offset_y));guide=assets/'扩建画布.png';canvas.save(guide);canvas.close();refs=[guide]
+     prompt='仅在第一张画布灰色新增区域向四周扩建（原宽不变时为上下扩建），不拉伸或重排已有内容。原图位于x='+str(offset_x)+',y='+str(offset_y)+'，原尺寸'+str(original.width)+'×'+str(original.height)+'；灰色不是成品。输出完整不透明画布 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
+     if not body.get('outpaint'):
+      prompt='一次生成同时完成去掉全部UI、补全遮挡背景及四周扩建。原截图位于x='+str(offset_x)+',y='+str(offset_y)+'，原尺寸'+str(original.width)+'×'+str(original.height)+'；保持未删除场景内容的位置、大小和朝向，新增区域续画自然背景，不粘回含UI原图，不重排。完整不透明目标尺寸 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
     record=CLIENT.generate(prompt,refs,target,transparent=False,cancelled=cancelled,on_status=lambda m:progress(0,m))
     if cancelled():raise InterruptedError('已停止背景提取')
     if not isinstance(record,dict) or not record.get('actualImageGeneration'):raise ValueError('背景未完成实际生成')
@@ -96,8 +95,8 @@ def generate(body,home,cancelled,progress,on_scene=None):
      if rgba.getchannel('A').getextrema()[0]!=255:raise ValueError('完整背景出现透明区域，未应用；没有自动重试')
      # Outpaint normalizes newly generated margins only: original center is restored byte-for-byte below.
      if not mismatch and rgba.size!=(b['width'],b['height']):rgba=rgba.resize((int(b['width']),int(b['height'])),Image.Resampling.LANCZOS)
-     if body.get('outpaint') and not mismatch:rgba.paste(original,(0,offset))
-     candidate={'id':ident,'type':'image','name':layer['name'],**b,'src':png(rgba),'assetKind':'background','provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','generationRecord':record,'review':True,'assetReviewStatus':'NOT_REVIEWED'}
+     if body.get('outpaint') and not mismatch:rgba.paste(original,(offset_x,offset_y))
+     candidate={'id':ident,'type':'image','name':layer['name'],**b,'src':png(rgba),'assetKind':'background','provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','generationRecord':{k:record[k] for k in ('actualImageGeneration','transparent','provider','model','genId','postprocessing') if k in record},'review':True,'assetReviewStatus':'NOT_REVIEWED'}
      if mismatch:
       scale=min(b['width']/rgba.width,b['height']/rgba.height);width=rgba.width*scale;height=rgba.height*scale
       candidate.update(x=b['x']+(b['width']-width)/2,y=b['y']+(b['height']-height)/2,width=width,height=height,positionReviewRequired=True,boundaryReviewRequired=True,assetReviewStatus='NEEDS_REVIEW',reviewIssue='背景返回画幅与目标不同，已完整保留原比例和生成像素，未拉伸或裁切；需校对后再作为完整底稿。'+('上下扩建原中间区域尚未回贴，原始图保留供对照。' if body.get('outpaint') else ''))
@@ -116,9 +115,13 @@ def generate(body,home,cancelled,progress,on_scene=None):
  result={'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':nodes,'groups':[],'edges':[],'recognition':{'extractionStatus':'COMPLETED','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':body['layers']}}
  if body.get('backgroundOnly') and not nodes[0].get('positionReviewRequired'):
   result.update(width=nodes[0]['width'],height=nodes[0]['height'],source=nodes[0]['src'],comparisonSource=nodes[0]['src'],originalSource=nodes[0]['src'],originalSize={'width':nodes[0]['width'],'height':nodes[0]['height']})
- clipped=[body['layers'][i] for i,n in enumerate(nodes) if n.get('boundaryReviewRequired')]
- if clipped:
-  result['_partial']=True;result['recognition'].update(extractionStatus='INCOMPLETE',pendingLayers=copy.deepcopy(clipped),requestedLayers=copy.deepcopy(body['layers']))
+ if any(n.get('boundaryReviewRequired') or n.get('positionReviewRequired') for n in nodes):
+  result['recognition']['reviewStatus']='NEEDS_REVIEW'
+  for n in nodes:
+   if n.get('boundaryReviewRequired') or n.get('positionReviewRequired'):n.update(review=True,assetReviewStatus='NEEDS_REVIEW')
+ # Outpaint must preserve source pixels; a different returned aspect leaves this unfinished.
+ if body.get('outpaint') and nodes[0].get('positionReviewRequired'):
+  result['_partial']=True;result['recognition'].update(extractionStatus='INCOMPLETE',pendingLayers=copy.deepcopy(body['layers']))
  result['recognition']['timing']={'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}
  progress(1,'指定素材层已生成，等待预览确认')
  return result

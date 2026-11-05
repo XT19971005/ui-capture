@@ -14,7 +14,7 @@ class ExpandedTests(unittest.TestCase):
    with Image.open(io.BytesIO(base64.b64decode(result['src'].split(',')[1]))) as saved:self.assertEqual(saved.getpixel((0,50)),(200,220,255,1))
 
  def test_large_original_keeps_its_pixels_and_uses_safe_margins(self):
-  mx,my=margins(2048,2048);self.assertGreater(mx,0);self.assertLessEqual((2048+2*mx)*(2048+2*my),6000000)
+  mx,my=margins(2048,2048);self.assertGreater(mx,0);self.assertLessEqual((2048+2*mx)*(2048+2*my),36000000)
  def test_asset_can_extend_beyond_old_box_without_being_fitted_back(self):
   with tempfile.TemporaryDirectory() as folder:
    p=Path(folder);source=p/'source.png';Image.new('RGBA',(80,100)).save(source)
@@ -46,7 +46,7 @@ class ExpandedTests(unittest.TestCase):
    p=Path(folder);source=p/'source.png';Image.new('RGBA',(2048,1143)).save(source)
    def generate(prompt,images,target,**kwargs):
     with Image.open(images[0]) as ref:side=ref.width
-    self.assertLessEqual(side*side,6000000)
+    self.assertLessEqual(side*side,36000000)
     im=Image.new('RGBA',(side,side));im.paste((80,100,120,255),(50,50,side-50,side-50));im.save(target);return {'actualImageGeneration':True}
    with patch('image_provider.CLIENT.generate',side_effect=generate):n=extract(source,{'id':'layer','name':'大素材','extractionBrief':'完整'},p,lambda:False,lambda *_:None)
-   self.assertLessEqual(n['width']*n['height'],6000000)
+   self.assertLessEqual(n['width']*n['height'],36000000)

@@ -52,3 +52,21 @@ class ImageProviderTests(unittest.TestCase):
   for url in ['http://example.com/a','https://user:pass@example.com/a','https://127.0.0.1/file']:
    with self.assertRaises(ValueError):p.safe_https(url)
 if __name__=='__main__':unittest.main()
+
+class FidelityTransportTests(unittest.TestCase):
+ def test_large_reference_does_not_collapse_to_one_megapixel(self):
+  from PIL import Image
+  with tempfile.TemporaryDirectory() as folder:
+   file=Path(folder)/'reference.png';Image.new('RGB',(2048,2048)).save(file)
+   self.assertEqual(p.dimensions([file]),{'width':2048,'height':2048})
+ def test_small_reference_uses_smallest_valid_area_instead_of_unnecessary_upscale(self):
+  from PIL import Image
+  with tempfile.TemporaryDirectory() as folder:
+   file=Path(folder)/'reference.png';Image.new('RGB',(320,320)).save(file)
+   shape=p.dimensions([file]);self.assertLess(shape['width']*shape['height'],700000)
+ def test_pixelcut_stage_does_not_inject_flowers_or_conflicting_transparency(self):
+  with tempfile.TemporaryDirectory() as folder,patch.object(p,'key',return_value='test'),patch.object(p,'request',return_value=[{'id':'pixelcut-background-removal'}]),patch.object(p,'generate',return_value={}) as generate,patch.object(p,'remove_background',return_value={'size':[1024,1024]}):
+   p.generate_transparent('仅提取战斧，其他对象和背景全部透明。',[],Path(folder)/'output.png',lambda:False,900,None)
+   prompt=generate.call_args.args[0]
+   self.assertNotIn('花瓣',prompt);self.assertIn('仅提取战斧',prompt)
+   self.assertIn('本阶段背景使用纯白',prompt);self.assertIn('冲突',prompt)

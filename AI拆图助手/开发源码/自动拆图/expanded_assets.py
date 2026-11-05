@@ -41,7 +41,7 @@ def extract(source,layer,assets,cancelled,on_status,annotations=None):
   import json
   marked_state=json.loads(info.read_text('utf8'))
  allow_outside=bool(annotations and annotations.get('allowExpand') is True) or bool(isinstance(marked_state,dict) and marked_state.get('allowExpand') is True)
- budget=36000000 if allow_outside or w*h>6000000 else 6000000
+ budget=36000000
  if allow_outside:
   from source_annotations import mark_margins
   mx,my=mark_margins(w,h)

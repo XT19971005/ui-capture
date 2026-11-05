@@ -45,7 +45,7 @@ class SourceAnnotationTests(unittest.TestCase):
  def test_assistant_receives_clean_image_and_separate_guides_and_names(self):
   from unittest.mock import patch
   import free_assistant
-  source,state=self.fixture();body={'image':source,'scene':{'width':80,'height':100,'nodes':[]},'selectedIds':[],'messages':[{'role':'user','content':'只讨论，黄色是什么'}],'provider':'taishi','model':'vision','annotations':state}
+  source,state=self.fixture();body={'image':source,'scene':{'width':80,'height':100,'nodes':[]},'selectedIds':[],'messages':[{'role':'user','content':'只讨论，黄色是什么'}],'provider':'tygpt','model':'vision','annotations':state}
   result={'reply':'黄色标出后方勋章','action':'discuss','instruction':'','targetIds':[],'reference':'original','name':'','layers':[]}
   with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=result) as analyze:
    free_assistant.plan(body,Path(folder),lambda:False,lambda *_:None)

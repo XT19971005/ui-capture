@@ -312,3 +312,4 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  if cancelled():raise InterruptedError('已取消')
  progress(1,'独立图片候选已生成，请预览后应用' if fresh else '替换候选已生成，请预览后应用')
  return scene
+
