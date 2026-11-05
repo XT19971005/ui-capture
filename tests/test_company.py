@@ -206,7 +206,7 @@ class Connections(TestCase):
         self.client.force_login(self.user)
 
     def post(self, value, route='connection', **kwargs):
-        return self.client.post('/api/engine/company/' + route, json.dumps(value), content_type='application/json', HTTP_HOST='127.0.0.1', **kwargs)
+        return self.client.post('/api/engine/company/' + route, json.dumps(value), content_type='application/json', HTTP_HOST='testserver', **kwargs)
 
     def test_credentials_encrypted_per_user_and_never_echoed(self):
         response = self.post({**CONFIG, 'enabled': True})
@@ -229,14 +229,11 @@ class Connections(TestCase):
         self.post({'api_key': '', 'model': 'grok-other', 'enabled': True})
         self.assertEqual(company.credentials(self.user)['api_key'], CONFIG['api_key'])
 
-    def test_bad_input_busy_and_http_preserve_existing_connection(self):
+    def test_bad_input_and_busy_preserve_existing_connection_over_http(self):
         self.post({**CONFIG, 'enabled': True})
         original = company.path(self.user).read_bytes()
         for bad in [{'endpoint': 'https://evil.test'}, {'api_key': 'bad\nkey'}, {'model': ''}, {'enabled': 'yes'}]:
             self.assertEqual(self.post({**CONFIG, 'enabled': True, **bad}).status_code, 400)
-        response = self.client.post('/api/engine/company/connection', json.dumps({**CONFIG, 'enabled': True}), content_type='application/json')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('HTTPS', response.json()['error'])
         Job.objects.create(owner=self.user, mode='codex', title='busy')
         self.assertEqual(self.post({**CONFIG, 'enabled': False}).status_code, 400)
         self.assertEqual(company.path(self.user).read_bytes(), original)
@@ -295,13 +292,27 @@ class Connections(TestCase):
         job = Job.objects.get()
         self.assertEqual(json.loads((job_root(job) / 'connection.json').read_text()), {'provider': 'company', 'analysisProvider':'company', 'imageProvider':'codex', 'needsCodex':False,'codexModel':self.user.codex_model})
 
-    def test_company_settings_require_csrf(self):
+    def test_http_credentials_require_csrf_login_and_permission(self):
         from django.test import Client
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.user)
-        response = client.post('/api/engine/company/connection', json.dumps({**CONFIG, 'enabled': True}), content_type='application/json', HTTP_HOST='127.0.0.1')
-        self.assertEqual(response.status_code, 403)
+        routes = ('company/connection', 'company/test', 'codex/api-key', 'codex/access-token', 'assistant/key', 'image-provider')
+        for route in routes:
+            self.assertEqual(client.post('/api/engine/' + route, '{}', content_type='application/json').status_code, 403)
+            self.assertEqual(Client().post('/api/engine/' + route, '{}', content_type='application/json').status_code, 401)
         self.assertFalse(company.path(self.user).exists())
+        csrf = client.get('/api/me').json()['csrf']
+        response = client.post('/api/engine/company/connection', json.dumps({**CONFIG, 'enabled': True}),
+                               content_type='application/json', HTTP_X_CSRFTOKEN=csrf, HTTP_ORIGIN='http://testserver')
+        self.assertEqual(response.status_code, 200, response.content)
+        original = company.path(self.user).read_bytes()
+        response = client.post('/api/engine/company/connection', json.dumps({**CONFIG, 'enabled': False}),
+                               content_type='application/json', HTTP_X_CSRFTOKEN=csrf, HTTP_ORIGIN='http://foreign.example')
+        self.assertEqual(response.status_code, 403)
+        self.user.groups.clear()
+        for route in routes:
+            self.assertEqual(client.post('/api/engine/' + route, '{}', content_type='application/json', HTTP_X_CSRFTOKEN=csrf).status_code, 403)
+        self.assertEqual(company.path(self.user).read_bytes(), original)
 
     def test_company_status_never_starts_an_unconfigured_codex_process(self):
         from shijie.pipeline import ai

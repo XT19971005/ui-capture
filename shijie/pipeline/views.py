@@ -8,7 +8,6 @@ import re
 from html import escape
 from pathlib import Path
 from uuid import UUID
-from urllib.parse import urlsplit
 from django.conf import settings
 from django.db import connection, transaction
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -117,8 +116,6 @@ def engine(request, route):
         if method == 'GET' and route == 'image-provider':
             return JsonResponse(providers.image_status(owner))
         if method == 'POST' and route != 'assistant/models':
-            if not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost','127.0.0.1','::1'):
-                return error('请通过 HTTPS 打开AI拆图助手后再配置密钥')
             if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=owner.pk)
@@ -134,8 +131,6 @@ def engine(request, route):
         if route == 'company/connection' and method == 'GET':
             return JsonResponse(company.status(owner))
         if route in ('company/connection', 'company/test') and method == 'POST':
-            if not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost', '127.0.0.1', '::1'):
-                return error('请通过 HTTPS 打开AI拆图助手后再配置公司 Agent', 400)
             if len(request.body) > 20 * 1024:
                 raise ValueError('连接请求超过大小限制')
             value = body(request)
@@ -152,8 +147,6 @@ def engine(request, route):
         if route == 'codex/login' and method == 'GET':
             return JsonResponse({'ok': True, 'pending': ai.pending_login(owner)})
         if route in ('codex/login', 'codex/login/cancel', 'codex/logout', 'codex/access-token', 'codex/api-key') and method == 'POST':
-            if route in ('codex/access-token', 'codex/api-key') and not request.is_secure() and urlsplit('//' + request.get_host()).hostname not in ('localhost', '127.0.0.1', '::1'):
-                return error('请通过 HTTPS 打开AI拆图助手后再提交访问令牌或 API Key', 400)
             if len(request.body) > 20 * 1024:
                 raise ValueError('账号请求超过大小限制')
             value = body(request)

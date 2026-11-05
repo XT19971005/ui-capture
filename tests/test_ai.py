@@ -29,7 +29,7 @@ class Connections(TestCase):
         self.home.mkdir(mode=0o700)
 
     def post(self, route, value):
-        return self.client.post('/api/engine/codex/' + route, json.dumps(value), content_type='application/json', HTTP_HOST='127.0.0.1')
+        return self.client.post('/api/engine/codex/' + route, json.dumps(value), content_type='application/json', HTTP_HOST='testserver')
 
     def pending(self):
         ident = 'a0f9213b-65a8-43cd-8aba-c03bb45e49eb'
@@ -120,15 +120,12 @@ class Connections(TestCase):
         self.assertEqual((self.home / 'auth.json').read_text(), 'existing-account')
         self.assertFalse(list(self.home.glob('token-check-*')))
 
-    def test_token_endpoint_requires_secure_transport_and_csrf(self):
+    def test_http_token_endpoint_still_requires_csrf(self):
         from django.test import Client
         with patch('subprocess.run') as run:
-            response = self.client.post('/api/engine/codex/access-token', '{"token":"private-token-123456789"}', content_type='application/json')
-            self.assertEqual(response.status_code, 400)
-            self.assertIn('HTTPS', response.json()['error'])
             browser = Client(enforce_csrf_checks=True)
             browser.force_login(self.user)
-            response = browser.post('/api/engine/codex/access-token', '{"token":"private-token-123456789"}', content_type='application/json', HTTP_HOST='127.0.0.1')
+            response = browser.post('/api/engine/codex/access-token', '{"token":"private-token-123456789"}', content_type='application/json')
             self.assertEqual(response.status_code, 403)
             run.assert_not_called()
 
@@ -165,9 +162,8 @@ class Connections(TestCase):
             for key in ['', 'x'*9000, 'unsafe\nkey', {'key':'x'}]:
                 self.assertEqual(self.post('api-key', {'api_key':key}).status_code, 400)
             payload = {'api_key':'sk-proj-private-platform-test-key'}
-            self.assertEqual(self.client.post('/api/engine/codex/api-key', json.dumps(payload), content_type='application/json').status_code, 400)
             browser = Client(enforce_csrf_checks=True); browser.force_login(self.user)
-            self.assertEqual(browser.post('/api/engine/codex/api-key', json.dumps(payload), content_type='application/json', HTTP_HOST='127.0.0.1').status_code, 403)
+            self.assertEqual(browser.post('/api/engine/codex/api-key', json.dumps(payload), content_type='application/json').status_code, 403)
             Job.objects.create(owner=self.user, mode='codex', title='busy')
             self.assertEqual(self.post('api-key', payload).status_code, 400)
             verify.assert_not_called(); cli.assert_not_called()

@@ -79,16 +79,19 @@ test('device renewal cancels the previous attempt before requesting another code
   await h.nodes.get('codex-login').onclick();
   assert.equal(h.nodes.get('codex-device-code').value, 'NEXT-5678');
 });
-test('token is never submitted over non-local plain HTTP', async () => {
+test('team token can be submitted over remote HTTP and is cleared afterwards', async () => {
   const h = setup();
   h.context.location.hostname = 'remote.example';
   h.nodes.get('codex-token').value = 'private-team-token-value';
   await h.nodes.get('codex-token-connect').onclick();
-  assert.equal(h.calls.length, 0);
-  assert.match(h.nodes.get('codex-connection').textContent, /HTTPS/);
+  const sent = h.calls.filter(call => call.route === 'engine/codex/access-token');
+  assert.equal(sent.length, 1);
+  assert.equal(JSON.parse(sent[0].options.body).token, 'private-team-token-value');
+  assert.equal(h.nodes.get('codex-token').value, '');
 });
 test('company connection saves privately and probe is an explicit separate action', async () => {
   const h = setup();
+  h.context.location.hostname = 'remote.example';
   assert.ok(h.nodes.get('company-key'), 'company API key entry must exist');
   h.nodes.get('company-key').value = 'private-company-test-key';
   h.nodes.get('company-model').value = 'grok-4.6';
@@ -151,14 +154,17 @@ test('OpenAI API Key has its own method and submits only to the API key endpoint
   assert.ok(!h.calls.some(call => call.route === 'engine/codex/access-token'));
 });
 
-test('API Key entry refuses remote HTTP and clears the secret when closed', async () => {
+test('API Key entry supports remote HTTP and clears unsent secrets when closed', async () => {
   const h = setup(), input = h.nodes.get('codex-api-key');
   assert.ok(input);
   input.value = 'sk-proj-private-api-test-key';
   h.context.location.hostname = 'remote.example';
   await h.nodes.get('codex-api-connect').onclick();
-  assert.equal(h.calls.length, 0);
-  assert.match(h.nodes.get('codex-connection').textContent, /HTTPS/);
+  const sent = h.calls.filter(call => call.route === 'engine/codex/api-key');
+  assert.equal(sent.length, 1);
+  assert.equal(JSON.parse(sent[0].options.body).api_key, 'sk-proj-private-api-test-key');
+  assert.equal(input.value, '');
+  input.value = 'another-unsent-test-key';
   h.nodes.get('codex-close').onclick();
   assert.equal(input.value, '');
 });
