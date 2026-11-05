@@ -88,14 +88,14 @@ def upload(file,secret,cancelled):
 
 def dimensions(images):
  if not images:return {'width':1024,'height':1024}
- with Image.open(images[0]) as source:ratio=source.width/source.height
+ with Image.open(images[0]) as source:ratio=source.width/source.height;target_area=max(655360,min(8294400,source.width*source.height))
  if not 1/3<=ratio<=3:raise ValueError('亿创自定义画布仅支持1:3至3:1，当前原图比例不支持，未改变比例或提交生成')
  candidates=[]
  for width in range(16,3841,16):
   height=round(width/ratio/16)*16;area=width*height
   if height<16 or height>3840 or not 655360<=area<=8294400:continue
   error=abs(width/height-ratio)/ratio
-  if error<=.001:candidates.append((abs(area-1048576),error,width,height))
+  if error<=.001:candidates.append((abs(area-target_area),error,width,height))
  if not candidates:raise ValueError('亿创暂不能保持该画布比例，未提交生成')
  _,_,width,height=min(candidates)
  return {'width':width,'height':height}
@@ -179,7 +179,7 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
  target=Path(target)
  with tempfile.TemporaryDirectory(prefix='pixelcut-stage-',dir=target.parent) as folder:
   rgb=Path(folder)/'generated.png'
-  instruction=prompt+'\n最终透明背景由后续Pixelcut处理。本阶段输出纯白背景，禁止画棋盘格或彩色标线，保留白色实体、完整花瓣和细枝；不因换底改变对象造型。'
+  instruction=prompt+'\n阶段输出说明：前文的透明要求描述最终成品；为交给Pixelcut去背景，本阶段背景使用纯白，该阶段说明仅覆盖背景输出要求，避免与RGBA指令冲突，其他主体要求全部不变。不得添加阴影、底座、棋盘格、描边或彩色标线，不增加参考中不存在的对象。保留原有白色实体、细线、镂空和柔和边缘，不因换底改变造型、大小、方向、光照、颜色或在画布上的位置。'
   record=generate(instruction,images,rgb,transparent=False,cancelled=cancelled,timeout=timeout,on_status=on_status,**kwargs)
   post=remove_background(rgb,target,secret,cancelled,timeout,on_status)
   record.update(file=str(target),transparent=True,size=post['size'],postprocessing=post)
@@ -193,13 +193,12 @@ def generate(prompt,images,target,transparent=False,cancelled=lambda:False,timeo
  secret=key(value);notice=on_status or (lambda _:None)
  if not any(m['id']==model for m in catalog(secret)):raise ValueError('所选亿创图片模型不可用')
  if cancelled():raise InterruptedError('已取消')
- instruction=prompt+('\n必须输出真正RGBA透明PNG，背景Alpha为0；禁止棋盘格、纯色底或彩笔标线。' if transparent else '')
+ instruction=prompt+('\n保真编辑优先级：可见原图的轮廓、内部孔洞、纹理、非对称细节、颜色和朝向是依据，不是风格灵感；只推断被遮挡或出画的缺失部分，不重新设计、不变成同类另一款。保持第一张参考画布中的相对位置和比例，不自动居中、放大主体或重新排版。其他参考只帮助定位目标，不把标线或其他对象画进结果。' if unused.get('allow_identity_change') is False else '')+('\n必须输出真正RGBA透明PNG，背景Alpha为0；禁止棋盘格、纯色底或彩笔标线。' if transparent else '')
  generation_input(model,instruction,images,[]);notice('亿创正在上传本层参考…');urls=[upload(file,secret,cancelled) for file in images]
  model_input=generation_input(model,instruction,images,urls)
  if cancelled():raise InterruptedError('已取消；尚未提交亿创生成')
  ident=uuid.uuid4().hex;receipt=STATE/('亿创任务_'+ident+'.json');record={'requestId':ident,'model':model,'state':'submitting','createdAt':time.time()}
  receipt.write_text(json.dumps(record),encoding='utf-8')
- instruction=prompt+('\n必须输出真正RGBA透明PNG，背景Alpha为0；禁止棋盘格、纯色底或彩笔标线。' if transparent else '')
  if cancelled():
   record['state']='cancelled-before-submit';receipt.write_text(json.dumps(record),encoding='utf-8');raise InterruptedError('已取消；尚未提交亿创生成')
  try:job=request('/models/'+model+'/generate',{'input':model_input,'request_num':1,'client_request_id':ident},secret)

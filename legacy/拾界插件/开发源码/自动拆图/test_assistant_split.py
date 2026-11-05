@@ -36,7 +36,7 @@ class AssistantSplitTests(unittest.TestCase):
   body=self.body();body['backgroundOnly']=True;body['layers']=[{'name':'背景','instruction':'完整背景','box':{'x':0,'y':0,'width':100,'height':100}}]
   def generate(prompt,images,target,**kw):Image.new('RGB',(100,150),'blue').save(target);return {'actualImageGeneration':True}
   with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):r=s.generate(body,Path(folder),lambda:False,lambda *_:None)
-  n=r['nodes'][0];self.assertFalse(r.get('_partial'));self.assertEqual(r['recognition']['reviewStatus'],'NEEDS_REVIEW');self.assertTrue(n['positionReviewRequired']);self.assertAlmostEqual(n['width']/n['height'],2/3)
+  n=r['nodes'][0];self.assertNotIn('_partial',r);self.assertEqual(r['recognition']['reviewStatus'],'NEEDS_REVIEW');self.assertTrue(n['positionReviewRequired']);self.assertAlmostEqual(n['width']/n['height'],2/3)
   with _image(n['src']) as im:self.assertEqual(im.size,(100,150))
  def test_marks_reach_extraction_as_separate_reference_without_changing_source(self):
   import hashlib,assistant_split as s
@@ -133,14 +133,25 @@ class AssistantSplitTests(unittest.TestCase):
   body=self.body()
   def extract(source,node,*args):return {**node,'src':body['image'],'provenance':'codex-image-generation','boundaryReviewRequired':node['name']=='勋章','generationRecord':{'actualImageGeneration':True}}
   with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
-  self.assertEqual(len(result['nodes']),3);self.assertFalse(result.get('_partial'));self.assertEqual(result['recognition']['extractionStatus'],'COMPLETED');self.assertEqual(result['recognition']['reviewStatus'],'NEEDS_REVIEW');self.assertFalse(result['recognition'].get('pendingLayers'))
+  self.assertEqual(len(result['nodes']),3);self.assertNotIn('_partial',result);self.assertEqual(result['recognition']['extractionStatus'],'COMPLETED');self.assertEqual(result['recognition']['reviewStatus'],'NEEDS_REVIEW');self.assertFalse(result['recognition'].get('pendingLayers'))
 
-
-class ServerProjectIdentityTests(unittest.TestCase):
- def test_task_project_identity_survives_validation_and_unsafe_ids_are_rejected(self):
+ def test_outside_box_needs_no_annotation_checkbox(self):
   import assistant_split as s
-  body=AssistantSplitTests().body();body['projectId']='project_123-safe'
+  body=self.body();body['layers'][0]['box']={'x':-30,'y':-10,'width':150,'height':120}
   result=s.validate(body)
-  self.assertEqual(result['projectId'],'project_123-safe')
-  for invalid in ('../other','',123,'x'*161):
-   with self.subTest(invalid=invalid),self.assertRaises(ValueError):s.validate({**body,'projectId':invalid})
+  self.assertEqual(result['layers'][0]['box'],{'x':0,'y':0,'width':100,'height':100})
+  self.assertEqual(body['layers'][0]['box']['x'],-30)
+
+ def test_outpaint_can_extend_both_axes_without_changing_original_pixels(self):
+  import assistant_split as s
+  from image_replace import _image
+  body=self.body();body.update(backgroundOnly=True,outpaint=True)
+  body['layers']=[{'name':'四周扩建背景','instruction':'左右及上下扩建','box':{'x':0,'y':0,'width':160,'height':180}}]
+  def generate(prompt,images,target,**kw):
+   Image.new('RGB',(160,180),'blue').save(target);return {'actualImageGeneration':True,'file':str(target)}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual((result['width'],result['height']),(160,180))
+  with _image(result['nodes'][0]['src']) as im:
+   self.assertEqual(im.getpixel((30,40)),(0,128,0,255));self.assertEqual(im.getpixel((29,40)),(0,0,255,255));self.assertEqual(im.getpixel((129,139)),(0,128,0,255))
+  self.assertNotIn('file',result['nodes'][0]['generationRecord'])

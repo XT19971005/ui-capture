@@ -42,7 +42,7 @@ def reference_frame(state):
  return {'x':left,'y':top,'width':state['width'],'height':state['height'],'canvasWidth':state['width']+left+right,'canvasHeight':state['height']+top+bottom}
 
 def draw_marks(canvas,items,offset=(0,0)):
- draw=ImageDraw.Draw(canvas);width=max(2,round(max(canvas.size)*.009));ox,oy=offset
+ draw=ImageDraw.Draw(canvas);width=max(2,min(4,round(max(canvas.size)*.0015)));ox,oy=offset
  for item in items:
   for stroke in item['strokes']:
    pts=[(x+ox,y+oy) for x,y in stroke];draw.line(pts,fill=item['color'],width=width,joint='curve')

@@ -142,3 +142,22 @@ class ServerProviderCompatibilityTests(unittest.TestCase):
    body=FreeAssistantTests().body();body['provider']=provider;body['workspace']={'projectId':'server-project','title':'工程','hiddenLayers':[],'recentOutcomes':[],'earlierUserRequests':[]}
    result=f.validate_request(body)
    self.assertEqual(result['provider'],provider);self.assertEqual(result['workspace']['projectId'],'server-project')
+
+class DiscussionChoiceTests(FreeAssistantTests):
+ def test_style_choices_are_discussion_not_permission_to_generate(self):
+  import free_assistant as f
+  result={**self.plan(),'action':'discuss','nextStep':'choose','choices':[{'label':'海岛风格','message':'细化夏日海岛风格'},{'label':'蒸汽风格','message':'细化蒸汽风格'}]}
+  self.assertEqual(f.validate_plan(result,self.body())['nextStep'],'choose')
+  with self.assertRaises(ValueError):f.validate_plan({**result,'action':'generate'},self.body())
+ def test_incomplete_or_oversized_choices_never_become_generation_confirmation(self):
+  import free_assistant as f
+  base={**self.plan(),'action':'discuss','nextStep':'choose'}
+  for choices in ([],[{'label':'唯一项','message':'细化'}],[{'label':'a','message':'x'}]*9):
+   with self.subTest(choices=choices),self.assertRaises(ValueError):f.validate_plan({**base,'choices':choices},self.body())
+ def test_model_receives_choice_and_short_selection_context_rules(self):
+  import free_assistant as f
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.plan()) as analyze:
+   f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   prompt=analyze.call_args.args[0]
+   self.assertIn('nextStep=choose',prompt);self.assertIn('仅选择方案不代表授权生图',prompt)
+   self.assertIn('角色参考',prompt)

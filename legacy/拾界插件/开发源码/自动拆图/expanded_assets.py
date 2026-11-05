@@ -7,11 +7,12 @@ def register_asset(target,reference_side,origin):
  """Preserve returned pixels; registration is a separate, explicitly reviewed transform."""
  raw=Path(target).read_bytes()
  with Image.open(target) as im:
-  if max(im.size)>6000 or im.width*im.height>36000000:raise ValueError('生成素材原始像素超过当前上限；没有缩小或裁切')
+  if max(im.size)>6000 or im.width*im.height>36000000:raise ValueError('生成素材超过服务器尺寸上限')
   im.load()
   if im.mode!='RGBA' or im.getchannel('A').getextrema()[0]!=0:raise ValueError('生成素材没有真实透明通道')
   box=im.getchannel('A').getbbox()
   if not box:raise ValueError('生成素材为空透明图片')
+  if max(im.size)>6000 or im.width*im.height>36000000:raise ValueError('生成素材原始像素超过当前上限；没有缩小或裁切')
   width,height=im.size
   # A faint glow/noise pixel is not evidence that the object's shape was cut.
   # This mask is used for review only; original PNG/low-alpha pixels are untouched.
@@ -20,13 +21,13 @@ def register_asset(target,reference_side,origin):
  rw,rh=(reference_side,reference_side) if isinstance(reference_side,(int,float)) else reference_side
  scale=min(rw/width,rh/height)
  mismatch=abs((width/height)/(rw/rh)-1)>.001
- issues=['扩展素材的位置与比例尚未通过原图校准，请叠回原图检查']
+ issues=[]
  if mismatch:issues.append('返回画幅与参考不同，保留原比例；当前位置为临时登记，请对照原图调整')
  if edge:issues.append('生成素材触及图片边缘，可能不完整；原始像素已保留，需检查或返修')
  return {'src':'data:image/png;base64,'+base64.b64encode(raw).decode('ascii'),
   'x':origin[0]+(rw-width*scale)/2,'y':origin[1]+(rh-height*scale)/2,
-  'width':width*scale,'height':height*scale,'positionReviewRequired':True,'boundaryReviewRequired':edge,
-  'reviewIssue':'；'.join(issues),'registration':{'method':'reference-center-provisional' if mismatch else 'reference-canvas-provisional','scale':scale,'rawWidth':width,'rawHeight':height}}
+  'width':width*scale,'height':height*scale,'positionReviewRequired':mismatch,'boundaryReviewRequired':edge,
+  'reviewIssue':'；'.join(issues),'registration':{'method':'reference-center-provisional' if mismatch else 'reference-canvas','scale':scale,'rawWidth':width,'rawHeight':height}}
 
 def extract(source,layer,assets,cancelled,on_status,annotations=None):
  from image_provider import CLIENT
@@ -73,25 +74,12 @@ def extract(source,layer,assets,cancelled,on_status,annotations=None):
   mark_data=json.loads(info.read_text('utf8'));mark_items=mark_data['items'] if isinstance(mark_data,dict) else mark_data
   aligned=canvas.copy();draw_marks(aligned,mark_items,(px+mx,py+my));aligned.save(marked)
   images.append(marked);prompt+='第二张是同画布彩笔语义标注，'+RULES+'颜色说明：'+info.read_text('utf8')
- x,y,lw,lh=(layer[k] for k in ('x','y','width','height'));pad=math.ceil(max(lw,lh)*.1)
- detail_box=(max(0,math.floor(x-pad)),max(0,math.floor(y-pad)),min(w,math.ceil(x+lw+pad)),min(h,math.ceil(y+lh+pad)))
- if detail_box[2]<=detail_box[0] or detail_box[3]<=detail_box[1]:raise ValueError('素材定位范围没有可读取的原图细节')
- detail=assets/(layer['id']+'_原始细节.png');original.crop(detail_box).save(detail);images.append(detail)
- prompt+='最后一张是未经缩放或标注的原图局部细节，仅供精确保留纹理、花纹和光照，不是输出构图或裁切边界。其在原图中的范围为'+str(detail_box)+'；最终仍按第一张扩展画布的位置与比例输出完整对象。'
  record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False)
  if cancelled():raise InterruptedError('已取消')
  if not isinstance(record,dict) or not record.get('actualImageGeneration'):raise ValueError('扩展素材未完成实际生成')
  registered=register_asset(target,(rw,rh),(-mx-px,-my-py))
- from asset_geometry import align_to_source
- if on_status:on_status('正在按原图地标校准位置与比例')
- # The requested box only limits landmark search; never fit the complete object
- # into the visible fragment or treat the generated square as registration proof.
- aligned=align_to_source(source,{**registered,'type':'image',**{k:layer[k] for k in ('x','y','width','height')}})
- if cancelled():raise InterruptedError('已取消')
- if aligned:
-  registered.update({k:aligned[k] for k in ('src','x','y','width','height','sourceAlignment')})
-  registered['registration']={'method':'source-landmarks','referenceCanvas':registered['registration']}
-  registered['positionReviewRequired']=False
-  registered['reviewIssue']='生成素材触及图片边缘，可能不完整；原始像素已保留，需检查或返修' if registered['boundaryReviewRequired'] else ''
+ from asset_registration import calibrate
+ if on_status:on_status('正在自动校对素材大小与位置…')
+ registered=calibrate(source,registered,layer) if all(k in layer for k in ('x','y','width','height')) else registered
  src=registered['src']
  return {'id':layer['id'],'name':layer['name'],'type':'image',**registered,'provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','assetKind':'complete-asset','assetReviewStatus':'NEEDS_REVIEW' if registered['reviewIssue'] else 'NOT_REVIEWED','review':True,'generationRecord':{'actualImageGeneration':True,'transparent':True,'sourceOriginalSHA256':hashlib.sha256(Path(source).read_bytes()).hexdigest(),'generatedAssetSHA256':hashlib.sha256(base64.b64decode(src.split(',',1)[1])).hexdigest(),'expandedCanvas':True,**{k:record[k] for k in ('provider','model','genId','postprocessing') if k in record}}}
