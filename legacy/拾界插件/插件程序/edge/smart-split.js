@@ -46,9 +46,10 @@ window.ShijieSmartSplit=(()=>{
  }
  function nativeConnect(){if(!window.SHIJIE)throw Error('请从AI拆图助手服务打开页面');return Promise.resolve({url:SHIJIE.prefix+'/api/engine'});}
  async function request(path,options={}){
+  if(/^\/(?:codex\/|ai\/|company\/|assistant\/(?:models|key|tygpt-key)|image-provider|local-model\/status)/.test(path)&&typeof ShijieService.request==='function')return ShijieService.request('engine'+path,options);
   const response=await fetch(connection.url+path,{...options,headers:ShijieService.headers(),cache:'no-store'});
   let data;try{data=await response.json()}catch(_){const error=Error(response.status===413?'工程传输数据超过容量限制，原工程已保留。请保存工程后重试。':'服务器引擎返回了无法读取的响应（HTTP '+response.status+'），原工程已保留。');error.status=response.status;throw error}
-  if(!response.ok){const error=Error(typeof data?.error==='string'?data.error:'服务器处理请求失败');error.status=response.status;error.code=data?.code;if(['CODEX_LOGIN_REQUIRED','COMPANY_GENERATION_PENDING','CODEX_IMAGE_GENERATION_UNAVAILABLE'].includes(error.code))document.getElementById('codex-settings')?.click();throw error}return data;
+  if(!response.ok){const error=Error(typeof data?.error==='string'?data.error:'服务器处理请求失败');error.status=response.status;error.code=data?.code;if(['CODEX_LOGIN_REQUIRED','CODEX_LOGIN_PENDING','COMPANY_GENERATION_PENDING','CODEX_IMAGE_GENERATION_UNAVAILABLE'].includes(error.code))document.getElementById('codex-settings')?.click();throw error}return data;
  }
  async function connect(){connection=await nativeConnect();const state=await request('/health');if(!state.codexAvailable)throw Error('未找到服务器 Codex，请安装 Codex CLI 并登录自己的账号');if(!state.ready)throw Error('AI拆图助手运行依赖不完整，请联系管理员检查服务：'+(state.missing||[]).join('、'));return state;}
  async function awaitCancelledCleanup(run,onProgress){

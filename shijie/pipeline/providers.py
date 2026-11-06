@@ -5,7 +5,7 @@ import json
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.views.decorators.debug import sensitive_variables
-from .storage import user_root, write_json
+from .storage import user_root, write_json, connection_version, commit_connection
 from .company import idle
 
 
@@ -32,10 +32,14 @@ def secret(user, provider):
         raise ValueError('连接密钥无法解密，请在模型设置中重新填写') from None
 
 
-def image_status(user):
+def image_status(user, refresh=False):
     value = read(user).get('aimake', {})
+    models=value.get('models',[])
+    if refresh and value.get('key'):
+        from image_provider import catalog
+        models=catalog(secret(user,'aimake'))
     return {'provider': value.get('provider', 'codex'), 'model': value.get('model', 'gpt-image-2'),
-            'configured': bool(value.get('key')), 'models': value.get('models', [])}
+            'configured': bool(value.get('key')), 'models': models, 'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
 
 
 def models(user, provider):
@@ -62,10 +66,21 @@ def models(user, provider):
 
 
 @sensitive_variables()
+def image_catalog(user, data):
+    if not isinstance(data,dict) or set(data)-{'key'}:raise ValueError('模型目录参数无效')
+    key=data.get('key') if 'key' in data else secret(user,'aimake')
+    if not isinstance(key,str) or not key or len(key)>4096 or any(not 33<=ord(c)<=126 for c in key):raise ValueError('请填写有效亿创 Key')
+    from image_provider import catalog
+    models=catalog(key)
+    return {'models':models,'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
+
+
+@sensitive_variables()
 def save(user, data, provider):
     idle(user)
     from assistant_models import gateway_models
-    from image_provider import catalog, MODELS
+    from image_provider import catalog, valid_model
+    version=connection_version(path(user))
     if provider == 'tygpt':
         import tygpt_transport
         if not isinstance(data,dict) or set(data)!={'key'}:raise ValueError('TYGPT连接参数无效')
@@ -74,11 +89,12 @@ def save(user, data, provider):
         tygpt_transport.validate_pat(key); available=tygpt_transport.gateway_models(key)
         if not available:raise ValueError('TYGPT未返回可用模型，原连接保留')
         value=read(user);value['tygpt']={'key':cipher(user).encrypt(key.encode()).decode()}
-        write_json(path(user),value)
+        commit_connection(user,path(user),version,value)
         return {'ready':True,'provider':'tygpt','models':available,'model':tygpt_transport._default_model(available)}
     if not isinstance(data, dict) or (set(data) != {'key'} if provider == 'taishi' else
-            set(data) - {'provider','model','key'} or data.get('provider') not in ('codex','aimake') or data.get('model') not in MODELS):
+            set(data) - {'provider','model','key'} or data.get('provider') not in ('codex','aimake') or not valid_model(data.get('model'))):
         raise ValueError('模型连接参数无效')
+    available=[]
     value = read(user)
     connection = value.setdefault(provider, {})
     if 'key' in data:
@@ -92,12 +108,12 @@ def save(user, data, provider):
         if data['provider'] == 'aimake' and not connection.get('key'): raise ValueError('请先填写本人亿创 Key')
         if data['provider']=='aimake':
             available=catalog(secret(user,'aimake')) if 'key' not in data else connection['models']
-            if not any(m['id']==data['model'] for m in available):raise ValueError('本人亿创账号未提供该模型')
+            if not any(m['id']==data['model'] for m in available):raise ValueError('亿创 Key 已通过目录验证，但账号未提供当前所选模型；请读取模型目录后重新选择，原连接已保留')
             connection['models']=available
         connection.update(provider=data['provider'], model=data['model'])
-    write_json(path(user), value)
+    commit_connection(user,path(user),version,value)
     return ({'ready': True, 'provider':'taishi', 'models':connection['models'], 'model':connection['models'][0]['id']}
-            if provider == 'taishi' else {**image_status(user), 'ready':True})
+            if provider == 'taishi' else {**image_status(user), 'ready':True, 'catalogIncomplete':bool(getattr(available,'unavailable',[]))})
 
 
 @sensitive_variables()

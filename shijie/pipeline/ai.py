@@ -9,7 +9,7 @@ import requests
 from pathlib import Path
 from django.views.decorators.debug import sensitive_variables
 from .models import Job
-from .storage import user_root, write_json
+from .storage import user_root, write_json, connection_version, commit_connection
 from .processes import start, stop, environment
 
 
@@ -19,20 +19,27 @@ def home(user):
 
 def execute(user, action, codex_home=None):
     root = user_root(user.pk) / 'ai-requests' / str(uuid.uuid4())
-    process = start('ai_session.py', root, codex_home or home(user), action, user.codex_model)
-    result = root / 'response.json'
-    for _ in range(120):
-        if result.exists():
-            value = json.loads(result.read_text())
-            if action != 'login':
-                process.wait(timeout=10)
-                shutil.rmtree(root)
-            return value
-        if process.poll() is not None:
-            break
-        time.sleep(0.25)
-    stop(process)
-    return {'ok': False, 'ready': False, 'error': 'Codex 连接未成功，请检查服务器网络和运行环境后重试'}
+    process, handed_off = None, False
+    try:
+        process = start('ai_session.py', root, codex_home or home(user), action, user.codex_model)
+        result = root / 'response.json'
+        for _ in range(120):
+            if result.exists():
+                value = json.loads(result.read_text())
+                handed_off = action == 'login' and value.get('ok') is True and bool(value.get('userCode'))
+                return value
+            if process.poll() is not None:
+                break
+            time.sleep(0.25)
+        return {'ok': False, 'ready': False, 'error': 'Codex 连接未成功，请检查服务器网络和运行环境后重试'}
+    finally:
+        if not handed_off:
+            try:
+                if process is not None:
+                    try:process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:stop(process)
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
 
 
 @sensitive_variables()
@@ -51,6 +58,15 @@ def status(user):
             except ValueError as exc:
                 return {'ok': False, 'ready': False, 'provider': 'apiKey', 'imageGeneration': False, 'models': [], 'error': str(exc)}
     return {**execute(user, 'status'), 'pending': pending_login(user)}
+
+
+def account_busy(user):
+    directory=home(user)
+    if not directory.exists():return False
+    with (directory/'account.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return True
+    return False
 
 
 def pending_login(user, internal=False):
@@ -74,6 +90,16 @@ def pending_login(user, internal=False):
             return {**result, 'requestId': ident} if internal else result
         except (OSError, ValueError, KeyError, TypeError):
             return None
+
+
+def login_result(user):
+    try:
+        value=json.loads((home(user)/'device-login-result.json').read_text())
+        if not isinstance(value,dict):return None
+        if type(value.get('success')) is not bool or not isinstance(value.get('completedAt'),(int,float)) or not 0<=time.time()-value['completedAt']<1800:return None
+        return {'success':value['success'],'completedAt':value['completedAt'],
+                'error': '本次设备码授权已取消，原有连接保留' if value.get('cancelled') else '本次设备码授权未成功，请重新获取设备码并检查 ChatGPT 工作区权限；原有连接保留' if not value['success'] else ''}
+    except (OSError,ValueError,TypeError):return None
 
 
 def cancel_login(user):
@@ -101,7 +127,9 @@ def logout(user):
     if Job.objects.filter(owner=user, status__in=['queued', 'running']).exists():
         raise ValueError('请先完成或取消当前任务，再退出 AI 账号')
     cancel_login(user)
-    return execute(user, 'logout')
+    result=execute(user, 'logout')
+    if result.get('ok'):(home(user)/'device-login-result.json').unlink(missing_ok=True)
+    return result
 
 
 @sensitive_variables('token')
@@ -111,16 +139,20 @@ def access_token(user, token, *, api_key=False):
         raise ValueError(f'请输入有效的 {label}，最多 8192 个字符')
     if Job.objects.filter(owner=user, status__in=['queued', 'running']).exists():
         raise ValueError('请先完成或取消当前任务，再切换 AI 账号')
+    version=connection_version(home(user)/'auth.json')
     if api_key:
         verify_api_key(token)
     cancel_login(user)
     directory = home(user)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (directory / 'account.lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise ValueError('账号操作正在进行，请稍后重试')
+        from django.db import transaction
+        from shijie.accounts.models import User
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=user.pk)
+            if Job.objects.filter(owner=user,status__in=['queued','running']).exists():raise ValueError('请先完成或取消当前任务，再切换 AI 账号')
+            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise ValueError('账号操作正在进行，请稍后重试')
         # Validate in a disposable home so a rejected token cannot replace a working account.
         with tempfile.TemporaryDirectory(prefix='token-check-', dir=directory) as temporary:
             staged = Path(temporary)
@@ -141,7 +173,8 @@ def access_token(user, token, *, api_key=False):
             state = execute(user, 'status', codex_home=staged)
             if not state.get('ok') or not state.get('ready'):
                 raise ValueError(f'暂时无法验证 {label} 的连接，原有连接已保留；请检查模型权限或稍后重试')
-            write_json(directory / 'auth.json', json.loads((staged / 'auth.json').read_text()))
+            commit_connection(user,directory/'auth.json',version,json.loads((staged/'auth.json').read_text()))
+            (directory / 'device-login-result.json').unlink(missing_ok=True)
             return state
 
 
@@ -180,4 +213,5 @@ def connections(user):
     configured = (home(user) / 'auth.json').is_file()
     codex = status(user) if configured else {'ok': True, 'ready': False, 'models': [], 'imageGeneration': False, 'pending': pending_login(user)}
     codex['configured'] = configured
+    codex['loginResult'] = login_result(user)
     return {'ok': True, 'active': selected_provider(user), 'company': company.status(user), 'codex': codex}

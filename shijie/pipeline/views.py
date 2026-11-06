@@ -109,17 +109,19 @@ def engine(request, route):
                              'localProjectStoreVersion': 1, 'sourceAnnotationsVersion': 1, 'assistantVersion': 1,
                              'freeAssistantVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
                              'jobModes': ['codex', 'local-layered', 'refine-ui', 'refine-selected', 'repair-order', 'replace-image']})
+    if route=='image-provider/catalog' and method=='POST':
+        if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
+        from . import providers
+        return JsonResponse(providers.image_catalog(owner,body(request)))
     if route in ('assistant/models', 'assistant/key', 'assistant/tygpt-key', 'image-provider'):
         from . import providers
         if method == 'GET' and route == 'assistant/models':
             return JsonResponse(providers.models(owner, request.GET.get('provider', 'auto')))
         if method == 'GET' and route == 'image-provider':
-            return JsonResponse(providers.image_status(owner))
+            return JsonResponse(providers.image_status(owner,refresh=True))
         if method == 'POST' and route != 'assistant/models':
             if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
-            with transaction.atomic():
-                User.objects.select_for_update().get(pk=owner.pk)
-                return JsonResponse(providers.save(owner, body(request), 'tygpt' if route=='assistant/tygpt-key' else 'taishi' if route=='assistant/key' else 'aimake'))
+            return JsonResponse(providers.save(owner, body(request), 'tygpt' if route=='assistant/tygpt-key' else 'taishi' if route=='assistant/key' else 'aimake'))
     if route == 'ai/status' and method == 'GET':
         from . import ai
         return JsonResponse(ai.connections(owner))
@@ -134,18 +136,18 @@ def engine(request, route):
             if len(request.body) > 20 * 1024:
                 raise ValueError('连接请求超过大小限制')
             value = body(request)
+            if route == 'company/test':
+                if value != {}:raise ValueError('测试连接参数无效')
+                return JsonResponse(company.probe(owner))
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=owner.pk)
-                if route == 'company/test':
-                    if value != {}: raise ValueError('测试连接参数无效')
-                    return JsonResponse(company.probe(owner))
-                return JsonResponse(company.save(owner, value))
+                return JsonResponse(company.save(owner,value))
     if route.startswith('codex/'):
         from . import ai
         if route == 'codex/status' and method == 'GET':
             return JsonResponse(ai.status(owner))
         if route == 'codex/login' and method == 'GET':
-            return JsonResponse({'ok': True, 'pending': ai.pending_login(owner)})
+            return JsonResponse({'ok': True, 'pending': ai.pending_login(owner), 'loginResult':ai.login_result(owner)})
         if route in ('codex/login', 'codex/login/cancel', 'codex/logout', 'codex/access-token', 'codex/api-key') and method == 'POST':
             if len(request.body) > 20 * 1024:
                 raise ValueError('账号请求超过大小限制')
@@ -153,12 +155,10 @@ def engine(request, route):
             field = {'codex/access-token': 'token', 'codex/api-key': 'api_key'}.get(route)
             if set(value) != ({field} if field else set()):
                 raise ValueError('账号请求参数无效')
+            if route == 'codex/access-token':return JsonResponse(ai.access_token(owner,value['token']))
+            if route == 'codex/api-key':return JsonResponse(ai.access_token(owner,value['api_key'],api_key=True))
             with transaction.atomic():
                 User.objects.select_for_update().get(pk=owner.pk)
-                if route == 'codex/access-token':
-                    return JsonResponse(ai.access_token(owner, value['token']))
-                if route == 'codex/api-key':
-                    return JsonResponse(ai.access_token(owner, value['api_key'], api_key=True))
                 operation = {'codex/login': ai.login, 'codex/login/cancel': ai.cancel_login, 'codex/logout': ai.logout}[route]
                 return JsonResponse(operation(owner))
         if route == 'codex/model' and method == 'POST':
@@ -229,6 +229,8 @@ def engine(request, route):
                 if not state['ready'] or value['model'] not in [m['id'] for m in state['models']]:raise ValueError('请选择当前太石账号可用的模型')
             if needs_images and image_provider=='aimake': providers.secret(owner, 'aimake')
             if needs_codex:
+                if ai.pending_login(owner) or (ai.account_busy(owner) and not Job.objects.filter(owner=owner,status__in=['queued','running']).exists()):
+                    return JsonResponse({'error':'Codex 账号正在登录或验证连接，请先完成或取消设备码登录，或等待 Key 验证结束后重试；任务未提交，原工程已保留','code':'CODEX_LOGIN_PENDING'},status=409)
                 state = ai.status(owner)
                 if not state.get('ok'):
                     return JsonResponse({'error': '暂时无法检查 Codex 连接，任务未提交。请打开「AI 连接」检查后重试；原图和编辑已保留。', 'code': 'CODEX_UNAVAILABLE'}, status=503)

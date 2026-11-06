@@ -4,11 +4,20 @@
   window.SHIJIE = {prefix: script.dataset.prefix, user: Number(script.dataset.user), csrf: script.dataset.csrf};
   const headers = () => ({'Content-Type': 'application/json', 'X-CSRFToken': SHIJIE.csrf, 'X-Shijie-User': String(SHIJIE.user)});
   async function request(route, options = {}) {
-    const response = await fetch(SHIJIE.prefix + '/api/' + route, {...options, headers: headers(), cache: 'no-store'});
-    let data;
-    try { data = await response.json(); } catch { throw Error('服务暂不可用，请重试'); }
-    if (!response.ok) throw Error(data.error || '请求未完成');
-    return data;
+    const connection=/^engine\/(?:codex\/|ai\/|company\/|assistant\/(?:models|key|tygpt-key)|image-provider|local-model\/status)/.test(route);
+    const controller=connection?new AbortController():null;
+    const timeout=controller?setTimeout(()=>controller.abort(),options.method==='POST'?100000:45000):null;
+    try {
+      const response = await fetch(SHIJIE.prefix + '/api/' + route, {...options, ...(controller?{signal:controller.signal}:{}), headers: headers(), cache: 'no-store'});
+      let data;
+      try { data = await response.json(); } catch { throw Error('服务暂不可用，请重试'); }
+      if (!response.ok) throw Error(data.error || '请求未完成');
+      return data;
+    } catch(error) {
+      if(controller?.signal.aborted)throw Error(options.method==='POST'?'连接请求超时，保存或授权结果尚未确认；请检查已有连接后再操作':'连接检查超时，请稍后重试；已有连接保留');
+      if(connection&&error instanceof TypeError)throw Error('连接服务网络请求失败，请检查网络或重新登录；已有连接保留');
+      throw error;
+    } finally { if(timeout!==null)clearTimeout(timeout); }
   }
   const exportFonts = new Map();
   let runningSnapshotSource = null;

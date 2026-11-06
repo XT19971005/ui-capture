@@ -13,7 +13,7 @@ from django.views.decorators.debug import sensitive_variables
 from PIL import Image
 import company_agent
 from .models import Job
-from .storage import user_root, write_json
+from .storage import user_root, write_json, connection_version, commit_connection
 
 
 def path(user):
@@ -73,11 +73,12 @@ def save(user, data):
 @sensitive_variables()
 def probe(user):
     idle(user)
+    version=connection_version(path(user))
     config = credentials(user, include_disabled=True)
     if config is None: raise ValueError('请先保存公司 Agent 连接')
     value = read(user)
     value['checkedAt'] = None
-    write_json(path(user), value)
+    version=commit_connection(user,path(user),version,value)
     colors = {'red': (255, 0, 0), 'green': (0, 255, 0), 'blue': (0, 0, 255)}
     chosen = secrets.choice(list(colors))
     with tempfile.TemporaryDirectory(prefix='company-probe-', dir=user_root(user.pk)) as folder:
@@ -91,5 +92,5 @@ def probe(user):
             raise ValueError(str(exc)) from None
         if result['color'] != chosen: raise ValueError('公司 Agent 未正确识别测试图片，请选择支持视觉分析的模型')
     value['checkedAt'] = timezone.now().isoformat()
-    write_json(path(user), value)
+    commit_connection(user,path(user),version,value)
     return status(user)

@@ -13,6 +13,7 @@ root = Path(os.environ['SHIJIE_TASK_ROOT'])
 CLIENT.selected_model = sys.argv[2] or None
 action = sys.argv[1]
 pending_file = Path(os.environ['CODEX_HOME']) / 'device-login.json'
+completion_file = pending_file.with_name('device-login-result.json')
 try:
     with (Path(os.environ['CODEX_HOME']) / 'account.lock').open('a') as lock:
         if action != 'status':
@@ -21,6 +22,7 @@ try:
             except BlockingIOError:
                 raise ValueError('已有账号登录或处理进行中，请稍后重试')
         if action == 'login':
+            completion_file.unlink(missing_ok=True)
             value = CLIENT.call('account/login/start', {'type': 'chatgptDeviceCode'}, timeout=25)
             from urllib.parse import urlsplit
             url = value.get('verificationUrl', '')
@@ -32,12 +34,15 @@ try:
             try:
                 for _ in range(3600):
                     if CLIENT.login_done.wait(.25):
+                        write_json(completion_file, {'success':CLIENT.login_success is True,'completedAt':time.time()})
                         break
                     if (root / 'cancel').exists():
                         CLIENT.call('account/login/cancel', {'loginId': value['loginId']})
+                        write_json(completion_file, {'success':False,'cancelled':True,'completedAt':time.time()})
                         break
                 else:
                     CLIENT.call('account/login/cancel', {'loginId': value['loginId']})
+                    write_json(completion_file, {'success':False,'completedAt':time.time()})
             finally:
                 pending_file.unlink(missing_ok=True)
         elif action == 'status':
@@ -52,6 +57,7 @@ try:
         else:
             raise ValueError('账号操作无效')
 except Exception:
+    if action=='login' and not completion_file.exists():write_json(completion_file, {'success':False,'completedAt':time.time()})
     if not (root / 'response.json').exists():
         write_json(root / 'response.json', {'ok': False, 'ready': False, 'error': 'Codex 未连接；请检查设备码登录权限、服务网络或已有登录操作'})
 finally:

@@ -67,8 +67,15 @@
     <div class="codex-footer"><button id="codex-check">检查连接</button><button id="codex-logout" hidden>断开此账号</button><span>连接仅属于当前AI拆图助手账号</span></div></section>`;
   document.body.append(panel);
   const $ = id => panel.querySelector('#' + id);
-  let pending = null, timer = null, polling = false, busy = false, checking = false;
+  let pending = null, timer = null, polling = false, busy = false, checking = false, checkRevision = 0;
   let selectedPanel = null, companyDirty = false, companyState = {}, codexState = {}, activeProvider = 'codex';
+  function controls() {
+    for(const id of ['codex-login','codex-token-connect','codex-api-connect','codex-cancel-login','codex-logout','company-save','codex-api-key','codex-token','company-key','company-model','company-enabled','ai-provider-company','ai-provider-codex','ai-provider-local','codex-method-api','codex-method-token','codex-method-device']) $(id).disabled=busy;
+    $('codex-check').disabled=busy||checking;
+    $('codex-model').disabled=busy||!codexState.ready;
+    $('company-test').disabled=busy||!companyState.configured||companyDirty;
+    $('codex-copy').disabled=busy||!pending;
+  }
   const request = (route, value) => ShijieService.request('engine/codex/' + route,
     value === undefined ? {} : {method: 'POST', body: JSON.stringify(value)});
   function note(title, message) { $('codex-status-title').textContent = title; $('codex-connection').textContent = message; }
@@ -133,6 +140,7 @@
     $('codex-expiry').textContent = value ? '等待你在官方页面完成授权。' : '设备码会一直显示在这里，检查连接不会清除它。';
     clearTimeout(timer);
     if (value && panel.open) timer = setTimeout(poll, 3000);
+    controls();
   }
   async function poll() {
     if (!panel.open || !pending || polling || busy) return;
@@ -153,15 +161,17 @@
     $('codex-connected').hidden = !state.ready; $('codex-logout').hidden = !state.configured && !state.ready;
     codexState = state; routing();
     if (state.pending) { showCode(state.pending); note('等待完成 ChatGPT 授权', '设备码已准备好。完成授权后才会切换账号，当前连接仍保留。'); }
+    else if (state.loginResult && !state.loginResult.success) { showCode(null); note('本次设备码授权未完成', state.loginResult.error || '请重新获取设备码；原有连接仍保留。'); }
     else if (state.ready) { showCode(null); note(state.provider === 'apiKey' ? '已连接 · OpenAI API Key' : state.imageGeneration ? '已连接 · 可以拆图' : '已连接 · 暂不能拆图', state.provider === 'apiKey' ? 'API Key 已通过鉴权。'+(state.imageGeneration ? 'Codex 提供图像生成入口；实际模型权限、额度和结果需以任务执行为准。' : '当前 Codex 未提供图像生成入口，暂不能完整拆分。') : state.imageGeneration ? '账号已连接，且提供图像生成能力。关闭此窗口即可开始拆分。' : '当前账号未提供图像生成能力。请确认所选工作区的权限；登录成功不代表已开通图像生成。'); }
     else { if (state.pending) showCode(state.pending); note(pending ? '等待完成授权' : '尚未连接 Codex', pending ? '设备码已准备好，可在“设备码登录”中查看。也可以改用 API Key 或团队访问令牌。' : '可使用 OpenAI API Key、团队访问令牌或设备码登录。'); }
   }
   async function check() {
     if (checking) return;
-    checking = true; $('codex-check').disabled = true;
+    const revision=++checkRevision;checking = true; controls();
     note('正在检查', '正在检查账号和图像生成能力…');
     try {
       const state = await ShijieService.request('engine/ai/status');
+      if(revision!==checkRevision)return;
       if (!state.ok) throw Error(state.error || '读取连接失败');
       activeProvider = state.active;
       displayCompany(state.company);
@@ -170,19 +180,18 @@
       routing();
       if (!selectedPanel) { provider(state.codex.configured || state.codex.pending ? 'codex' : 'company'); method(state.codex.pending ? 'device' : state.codex.provider === 'apiKey' || !state.codex.configured ? 'api' : 'token'); }
     }
-    catch (error) { note('检查未完成', error.message); $('ai-active').textContent = '连接状态读取失败'; $('ai-capabilities').textContent = error.message; }
-    finally { checking = false; $('codex-check').disabled = false; }
+    catch (error) { if(revision===checkRevision){note('检查未完成', error.message); $('ai-active').textContent = '连接状态读取失败'; $('ai-capabilities').textContent = error.message;} }
+    finally { if(revision===checkRevision){checking = false;controls();} }
   }
   async function action(work) {
     if (busy) return;
-    busy = true;
-    for (const id of ['codex-login', 'codex-token-connect', 'codex-api-connect', 'codex-cancel-login', 'codex-logout', 'codex-check', 'company-save', 'company-test']) $(id).disabled = true;
+    busy = true;++checkRevision;checking=false;controls();
     try { await work(); } catch (error) { if (selectedPanel === 'company') companyNote('操作未完成', error.message); else note('连接未完成', error.message); }
-    finally { busy = false; for (const id of ['codex-login', 'codex-token-connect', 'codex-api-connect', 'codex-cancel-login', 'codex-logout', 'codex-check', 'company-save', 'company-test']) $(id).disabled = false; $('company-test').disabled = !companyState.configured || companyDirty; if (pending && panel.open) { clearTimeout(timer); timer = setTimeout(poll, 3000); } }
+    finally { busy = false;controls(); if (pending && panel.open) { clearTimeout(timer); timer = setTimeout(poll, 3000); } }
   }
-  button.onclick = async () => { if (!panel.open) panel.showModal(); await check(); };
+  button.onclick = async () => { if(busy)return;if (!panel.open) panel.showModal(); await check(); };
   $('codex-close').onclick = () => panel.close();
-  panel.onclose = () => { clearTimeout(timer); $('codex-token').value = ''; $('codex-api-key').value = ''; $('company-key').value = ''; };
+  panel.onclose = () => { ++checkRevision;checking=false;controls();clearTimeout(timer); $('codex-token').value = ''; $('codex-api-key').value = ''; $('company-key').value = ''; };
   $('ai-provider-company').onclick = () => provider('company');
   $('ai-provider-codex').onclick = () => provider('codex');
   $('ai-provider-local').onclick = async () => { provider('local'); await checkLocal(); };

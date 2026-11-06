@@ -59,3 +59,24 @@ def write_scene(path, value):
 
 def read_scene(path):
     return decode_job(json.loads(Path(path).read_text()))
+
+
+def connection_version(path):
+    import hashlib
+    try:return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except FileNotFoundError:return None
+
+
+def commit_connection(user, path, version, value):
+    """Network checks run before this short, shared commit boundary."""
+    from django.db import transaction
+    from shijie.accounts.models import User
+    from .models import Job
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=user.pk)
+        if Job.objects.filter(owner=user,status__in=['queued','running']).exists():
+            raise ValueError('请先完成或取消当前任务，再修改或测试 AI 连接')
+        if connection_version(path)!=version:
+            raise ValueError('连接设置已在另一窗口发生变化，请重新打开 AI 设置后重试；当前连接已保留')
+        write_json(path,value)
+        return connection_version(path)
