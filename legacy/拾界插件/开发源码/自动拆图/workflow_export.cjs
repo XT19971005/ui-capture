@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),cp=require('child_process');
 const root=path.resolve(__dirname,'../..'),nm=path.resolve(root,'../../node_modules'),cv=require(path.join(nm,'@napi-rs/canvas')),ag=require(path.join(nm,'ag-psd'));
 globalThis.document={createElement:()=>cv.createCanvas(1,1)};globalThis.Path2D=cv.Path2D;globalThis.ShijieNodeCanvas=cv;ag.initializeCanvas(cv.createCanvas);
-for(const [family,,file] of require('./fonts.json'))if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入容器字体: '+file);
+for(const [family,,file] of require('./fonts-runtime.cjs').fonts)if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入字体: '+file);
 const S=require('./scene-native.cjs'),skill=path.resolve(root,'../技能包/game-ui-to-psd/scripts');
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 function spawnResult(label,result){

@@ -1,7 +1,10 @@
 'use strict';
 (() => {
   const script = document.currentScript;
-  window.SHIJIE = {prefix: script.dataset.prefix, user: Number(script.dataset.user), csrf: script.dataset.csrf};
+  window.SHIJIE = {prefix: script.dataset.prefix, user: Number(script.dataset.user), csrf: script.dataset.csrf, sharedCodex:script.dataset.sharedCodex==='true'};
+  if (window.SHIJIE.sharedCodex) {
+    try { const key='shijie.assistant.text-model:'+window.SHIJIE.user, pref=JSON.parse(localStorage.getItem(key)||'null'); if(pref?.provider!=='codex')localStorage.setItem(key,JSON.stringify({provider:'codex',model:''})); } catch {}
+  }
   const headers = () => ({'Content-Type': 'application/json', 'X-CSRFToken': SHIJIE.csrf, 'X-Shijie-User': String(SHIJIE.user)});
   async function request(route, options = {}) {
     const connection=/^engine\/(?:codex\/|ai\/|company\/|assistant\/(?:models|key|tygpt-key)|image-provider|local-model\/status)/.test(route);
@@ -73,7 +76,10 @@
       logout.append(csrf, button); actions.append(logout);
       try {
         const me = await request('me');
-        if (me.admin) { const link = document.createElement('a'); link.href = SHIJIE.prefix + '/users/'; link.textContent = '账号授权'; actions.append(link); }
+        if (me.admin) {
+          const link = document.createElement('a'); link.href = SHIJIE.prefix + '/users/'; link.textContent = '账号授权'; actions.append(link);
+          const shared=document.createElement('a');shared.href=SHIJIE.prefix+'/desktop-service/';shared.textContent='共享服务';actions.append(shared);
+        }
       } catch (e) { document.getElementById('status').textContent = e.message; }
     }
     const job = new URLSearchParams(location.search).get('job');

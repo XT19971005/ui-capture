@@ -4,7 +4,7 @@ function runtime(overrides={}){
  if(!fs.existsSync(file))throw Error('缺少运行配置: '+file);
  const read=f=>JSON.parse(fs.readFileSync(f,'utf8').replace(/^\uFEFF/,''));
  const local=path.join(path.dirname(file),'runtime.local.json');
- const settings={...read(file),...(fs.existsSync(local)?read(local):{}),...overrides};
+ const settings={...read(file),...(fs.existsSync(local)?read(local):{}),...(process.env.SHIJIE_PYTHON?{python:process.env.SHIJIE_PYTHON}:{}),...overrides};
  const bundle=path.resolve(__dirname,'../..'),roots={'@bundle/':bundle,'@workspace/':path.dirname(bundle),'@skill/':path.dirname(__dirname)};
  for(const key of ['workspaceRoot','agPsd','canvas','svgpath','psdTools','imagegenSkill','imagegenCLI']){
   for(const [prefix,root] of Object.entries(roots))if(typeof settings[key]==='string'&&settings[key].startsWith(prefix)){settings[key]=path.resolve(root,settings[key].slice(prefix.length));break;}

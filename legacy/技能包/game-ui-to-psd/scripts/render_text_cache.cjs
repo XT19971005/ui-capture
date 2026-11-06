@@ -1,14 +1,19 @@
 // Render complete text from font data onto transparent pixels; never sample screenshot RGB.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),{libraries}=require('./runtime.cjs');
+const {fontFile}=require('../../../拾界插件/开发源码/自动拆图/fonts-runtime.cjs');
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
 function renderText(text,options={}){
  const {cv}=libraries(options.runtime||{}),fontName=text.style?.font?.name;
- const fonts={ArialMT:'/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf','Arial-BoldMT':'/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',MicrosoftYaHei:'/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc','MicrosoftYaHei-Bold':'/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc','NotoSansCJKSC-Regular':'/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc','NotoSansCJKSC-Bold':'/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc'};
- // Linux substitutes are recorded in proof.fontFile; unsupported faces require an explicit installed font.
- const fontFile=options.fontFile||fonts[fontName];
+ const fonts={ArialMT:['Liberation Sans',400],'Arial-BoldMT':['Liberation Sans',700],MicrosoftYaHei:['Noto Sans CJK SC',400],'MicrosoftYaHei-Bold':['Noto Sans CJK SC',700],
+  'NotoSansCJKSC-Regular':['Noto Sans CJK SC',400],'NotoSansCJKSC-Bold':['Noto Sans CJK SC',700],
+  'NotoSansCJKsc-Regular':['Noto Sans CJK SC',400],'NotoSansCJKsc-Bold':['Noto Sans CJK SC',700],
+  'NotoSerifCJKsc-Regular':['Noto Serif CJK SC',400],'NotoSerifCJKsc-Bold':['Noto Serif CJK SC',700],
+  LiberationSans:['Liberation Sans',400],'LiberationSans-Bold':['Liberation Sans',700],LiberationSerif:['Liberation Serif',400],'LiberationSerif-Bold':['Liberation Serif',700]};
+ // Explicit substitutes are recorded in proof.fontFile; never fall back to an unrelated OS face.
+ const resolvedFile=options.fontFile||(fonts[fontName]&&fontFile(...fonts[fontName]));
  if(!fonts[fontName]&&!options.fontFile)throw Error('请为该原生字体配置实际文件：'+fontName);
  const family='CleanCache_'+fontName;
- if(!cv.GlobalFonts.registerFromPath(fontFile,family))throw Error('无法加载文字缓存字体：'+fontFile);
+ if(!cv.GlobalFonts.registerFromPath(resolvedFile,family))throw Error('无法加载文字缓存字体：'+resolvedFile);
  const probe=cv.createCanvas(1,1).getContext('2d'),size=text.style.fontSize;
  probe.font=`${size}px "${family}"`;probe.textBaseline='alphabetic';
  const color=text.style.fillColor,css=`rgb(${color.r},${color.g},${color.b})`,operations=[];
@@ -32,7 +37,7 @@ function renderText(text,options={}){
  const canvas=cv.createCanvas(right-left,bottom-top),ctx=canvas.getContext('2d');ctx.font=probe.font;ctx.textBaseline='alphabetic';ctx.fillStyle=css;
  for(const o of operations){const t=o.matrix;ctx.setTransform(t[0],t[1],t[2],t[3],t[4]-left,t[5]-top);ctx.fillText(o.value,0,0);}
  const png=canvas.toBuffer('image/png');
- return {canvas,png,x:left,y:top,width:canvas.width,height:canvas.height,proof:{method:'font-only-transparent-render',nativeTextSHA256:sha(JSON.stringify(text)),cacheSHA256:sha(png),fillColor:color,fontFile,glyphCount:text.text.replace(/\s/g,'').length,arcLayout:options.arcLayout||null}};
+ return {canvas,png,x:left,y:top,width:canvas.width,height:canvas.height,proof:{method:'font-only-transparent-render',nativeTextSHA256:sha(JSON.stringify(text)),cacheSHA256:sha(png),fillColor:color,fontFile:resolvedFile,glyphCount:text.text.replace(/\s/g,'').length,arcLayout:options.arcLayout||null}};
 }
 function repairProject(project,arcLayouts={}){
  const root=path.resolve(project),dirs=require('./project_dirs.cjs')(root),file=path.join(root,(dirs.plan+'/项目.json')),job=JSON.parse(fs.readFileSync(file,'utf8')),dir=path.join(root,(dirs.plan+'/干净文字缓存'));fs.mkdirSync(dir,{recursive:true});let index=0;const rows=[];

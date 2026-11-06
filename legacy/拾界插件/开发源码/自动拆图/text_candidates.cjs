@@ -1,7 +1,7 @@
 // Compare actual native glyphs at a uniform scale, never stretch a broad font.
 const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'../..'),cv=require('@napi-rs/canvas');
 const input=JSON.parse(fs.readFileSync(0,'utf8')),target=Buffer.from(input.mask,'base64'),w=input.width,h=input.height;
-const defaults=require('./fonts.json');
+const defaults=require('./fonts-runtime.cjs').fonts;
 let fonts=input.fonts||defaults.filter(([family])=>!/[\u4e00-\u9fff]/.test(input.text)||family==='Noto Sans CJK SC').map(([family,weight,file])=>({file,family,weight}));
 fonts=fonts.filter(f=>fs.existsSync(f.file)&&cv.GlobalFonts.registerFromPath(f.file,f.family));
 const lines=String(input.text).replace(/\r\n?/g,'\n').split('\n'),skews=input.skews||[input.skew||0];

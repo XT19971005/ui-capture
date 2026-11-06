@@ -6,20 +6,21 @@ window.StudioBase=(()=>{
  const overlap=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const memory=ShijieSession.library,hidden=new Set(),persisted=new Map(),retired=new Map();let writeQueue=Promise.resolve(),sequence=0;
- const localWeb=!!window.SHIJIE;
+ const localWeb=!!window.SHIJIE,sharedLocal=!!window.SHIJIE?.sharedCodex,projectOrigins=new Map();
  let legacyLoaded=false,localLoaded=false,activeDirectory=null,directoryEpoch=0;
  function clearLocalEntries(){for(const [key,value] of memory)if(value.source==='local-disk')memory.delete(key);for(const [key,value] of persisted)if(value.source==='local-disk')persisted.delete(key)}
- const localError=e=>Error('服务器工程库不可用：'+(e?.message||'请连接服务器后重试')+'。当前编辑仍在页面中，可导出工程文件。');
+ const localError=e=>Error((sharedLocal?'本地工程目录不可用：':'服务器工程库不可用：')+(e?.message||(sharedLocal?'请选择自己电脑上的工程文件夹':'请连接服务器后重试'))+'。当前编辑仍在页面中，可导出工程文件。');
  function sameDoc(a,b){if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;if(Array.isArray(a)!==Array.isArray(b))return false;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&sameDoc(a[k],b[k]))}
  async function restoreSaved(){if(localWeb&&legacyLoaded)return;try{for(const p of await ShijieSession.legacySaved()){if(!persisted.has(p.id)&&!retired.has(p.id))persisted.set(p.id,clone(p));if(!hidden.has(p.id)&&!memory.has(p.id)){const entry=clone(p);if(localWeb)entry.source='browser-legacy';if(entry.doc)entry.doc._projectId=entry.id;memory.set(entry.id,entry)}}legacyLoaded=true;ShijieSession.legacyLibraryError=null}catch(e){if(!localWeb)throw e;ShijieSession.legacyLibraryError=e.message}}
  async function localProjects(refresh=false){
-  if(!localWeb||localLoaded&&!refresh)return;
+  if(!localWeb||localLoaded&&!refresh&&!sharedLocal)return;
   try{
    if(!window.ShijieSmartSplit?.savedProjects)throw Error('服务器需要更新');
    const epoch=directoryEpoch,observed=new Map(memory),data=await ShijieSmartSplit.savedProjects();
    if(epoch!==directoryEpoch)return;
    if(!Array.isArray(data.projects))throw Error('服务器工程列表响应无效');
    if(typeof data.directory==='string'){if(activeDirectory&&activeDirectory!==data.directory){clearLocalEntries();for(const p of data.projects)hidden.delete(p.id)}activeDirectory=data.directory}
+   else if(sharedLocal&&data.directory===null&&activeDirectory){++directoryEpoch;clearLocalEntries();activeDirectory=null}
    const found=new Set(data.projects.map(p=>p.id));
    // A late list must not retire or replace a save completed while it was in flight.
    for(const [key,entry] of memory)if(entry.source==='local-disk'&&!found.has(key)&&entry===observed.get(key)){
@@ -31,17 +32,21 @@ window.StudioBase=(()=>{
     if(old?.source!=='local-disk'||old.persistedVersion!==p.persistedVersion)memory.set(p.id,{...p,source:'local-disk'});
     if(!persisted.has(p.id)||persisted.get(p.id)?.source!=='local-disk')persisted.set(p.id,{...p,source:'local-disk'});
    }
-   localLoaded=true;ShijieSession.localLibraryError=null;
+   localLoaded=true;ShijieSession.localLibraryError=data.unreadable?'所选目录中有 '+data.unreadable+' 个工程文件无法读取，原文件已保留。':null;
   }catch(e){ShijieSession.localLibraryError=e.message;throw localError(e)}
  }
  async function deliveries(){if(!window.ShijieSmartSplit?.projects)return;try{const data=await ShijieSmartSplit.projects();ShijieSession.libraryError=null;for(const p of data.items||[])if(!hidden.has(p.id)&&!memory.has(p.id))memory.set(p.id,{...p,kind:p.kind||'image',saveMode:'saved',source:'delivery',revision:p.revision||String(p.updated||0)})}catch(e){ShijieSession.libraryError=e.message}}
  function expectedVersion(key){const old=retired.get(key);return old?{version:old.version,allowMissing:old.version===old.removedVersion}:persisted.get(key)?.persistedVersion||persisted.get(key)?.revision||null}
  function retire(removed){if(!removed)return;const known=persisted.get(removed.id),old=retired.get(removed.id),version=known?.persistedVersion||known?.revision||old?.version||null;retired.set(removed.id,{version,removedVersion:removed.version});persisted.delete(removed.id)}
  const library={
-  canConnectDirectory:false,
+  get canConnectDirectory(){return sharedLocal&&!!window.ShijieBrowserProjects?.supported()},
   directory:()=>activeDirectory,
+  directoryName:()=>sharedLocal?window.ShijieBrowserProjects?.directoryName()||'':activeDirectory,
   setDirectory(directory){
-   const task=writeQueue.catch(()=>{}).then(async()=>{if(!localWeb)throw Error('请在本机网页版连接目录');const result=await ShijieSmartSplit.setProjectDirectory(directory);if(typeof result.directory!=='string')throw Error('工程目录响应无效');if(activeDirectory!==result.directory){++directoryEpoch;clearLocalEntries();localLoaded=false;hidden.clear()}activeDirectory=result.directory;return result});writeQueue=task;return task;
+   // Start the browser picker synchronously while the button's user activation is live.
+   const picked=sharedLocal?(window.ShijieBrowserProjects?.pickDirectory()||Promise.reject(Error('本地工程模块尚未加载，请刷新页面'))):null;
+   if(picked)picked.catch(()=>{});
+   const task=writeQueue.catch(()=>{}).then(async()=>{if(!localWeb)throw Error('请在本机网页版连接目录');const result=await ShijieSmartSplit.setProjectDirectory(picked?await picked:directory);if(typeof result.directory!=='string')throw Error('工程目录响应无效');if(activeDirectory!==result.directory){++directoryEpoch;clearLocalEntries();localLoaded=false;hidden.clear()}activeDirectory=result.directory;ShijieSession.localLibraryError=null;return result});writeQueue=task;return task;
   },
   canClearBrowser:false,
   clearMigratedBrowser(){
@@ -57,7 +62,7 @@ window.StudioBase=(()=>{
    });writeQueue=task;return task;
   },
   async list(){await restoreSaved();await Promise.all([localProjects(true).catch(()=>{}),deliveries()]);return [...memory.values()].map(p=>{if(!localWeb)return clone(p);const {doc,...meta}=p;return clone(meta)})},
-  async get(key){await restoreSaved();try{await localProjects()}catch(e){if(!memory.has(key))throw e}let entry=memory.get(key);if(!entry&&!hidden.has(key)){await deliveries();entry=memory.get(key)}if(entry?.source==='local-disk'&&!entry.doc){try{const epoch=directoryEpoch,directory=activeDirectory,result=await ShijieSmartSplit.savedProject(key,directory);if(epoch!==directoryEpoch||directory!==activeDirectory||result.directory&&result.directory!==directory)throw Error('工程目录已切换，请刷新列表后重试');entry={...result.project,source:'local-disk'};if(!entry.doc)throw Error('工程正文无效');memory.set(key,entry);persisted.set(key,entry)}catch(e){throw localError(e)}}if(entry?.source==='delivery'&&!entry.doc){const doc=await ShijieSmartSplit.project(key);entry={...entry,doc:clone(doc)};memory.set(key,entry)}return entry?clone(entry):undefined},
+  async get(key){await restoreSaved();try{await localProjects()}catch(e){if(sharedLocal||!memory.has(key))throw e}let entry=memory.get(key);if(!entry&&!hidden.has(key)){await deliveries();entry=memory.get(key)}if(entry?.source==='local-disk'&&!entry.doc){try{const epoch=directoryEpoch,directory=activeDirectory,result=await ShijieSmartSplit.savedProject(key,directory);if(epoch!==directoryEpoch||directory!==activeDirectory||result.directory&&result.directory!==directory)throw Error('工程目录已切换，请刷新列表后重试');entry={...result.project,source:'local-disk'};if(!entry.doc)throw Error('工程正文无效');memory.set(key,entry);persisted.set(key,entry)}catch(e){throw localError(e)}}if(sharedLocal&&entry?.source==='local-disk')projectOrigins.set(key,{directory:activeDirectory,version:entry.persistedVersion});if(entry?.source==='delivery'&&!entry.doc){const doc=await ShijieSmartSplit.project(key);entry={...entry,doc:clone(doc)};memory.set(key,entry)}return entry?clone(entry):undefined},
   async update(key,change){const previous=await library.get(key),value=change(previous);if(value)return library.put(value.doc,value.kind,{manual:true})},
   hasSaved(key){return persisted.has(key)||memory.get(key)?.source==='delivery'||memory.get(key)?.source==='local-disk'},
   isDirty(doc){const saved=persisted.get(doc?._projectId);return !!doc&&(!saved||!sameDoc(doc,saved.doc))},
@@ -67,8 +72,8 @@ window.StudioBase=(()=>{
    if(!doc._projectId)doc._projectId=id();const requestedDirectory=activeDirectory,snapshot=clone(doc),key=doc._projectId,entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,saveMode:'saved',savedAt:Date.now()};
    const task=writeQueue.catch(()=>{}).then(async()=>{
     if(window.ProjectThumbnail?.render){try{entry.thumbnail=await ProjectThumbnail.render({kind,doc:snapshot});entry.thumbnailRevision=entry.revision}catch(error){entry.coverWarning='封面未生成：'+String(error.message||error).slice(0,160)}}
-    await restoreSaved();let saved;if(localWeb){try{await localProjects();if(requestedDirectory&&requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请确认保存目录后重试');const previous=persisted.get(key),result=await ShijieSmartSplit.saveProject({...entry,_expectedDirectory:requestedDirectory||activeDirectory,_expectedVersion:previous?.source==='local-disk'?previous.persistedVersion:null});if(!result.project?.persistedVersion)throw Error('磁盘未返回保存确认');saved={...entry,...result.project,source:'local-disk'}}catch(e){throw localError(e)}}else saved=await ShijieSession.saveManual(entry,expectedVersion(key));
-    retired.delete(key);persisted.set(key,saved);hidden.delete(key);memory.set(key,saved);return clone(saved);
+    await restoreSaved();let saved;if(localWeb){try{await localProjects();if(requestedDirectory&&requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请确认保存目录后重试');const previous=persisted.get(key),origin=projectOrigins.get(key),version=sharedLocal?(origin?.directory===activeDirectory?origin.version:null):(previous?.source==='local-disk'?previous.persistedVersion:null),result=await ShijieSmartSplit.saveProject({...entry,_expectedDirectory:requestedDirectory||activeDirectory,_expectedVersion:version});if(!result.project?.persistedVersion)throw Error('磁盘未返回保存确认');saved={...entry,...result.project,source:'local-disk'}}catch(e){throw localError(e)}}else saved=await ShijieSession.saveManual(entry,expectedVersion(key));
+    retired.delete(key);persisted.set(key,saved);hidden.delete(key);memory.set(key,saved);if(sharedLocal)projectOrigins.set(key,{directory:activeDirectory,version:saved.persistedVersion});return clone(saved);
    });writeQueue=task;return task;
   },
   remove(key){

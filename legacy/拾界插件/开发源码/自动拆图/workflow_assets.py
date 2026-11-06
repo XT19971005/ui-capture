@@ -6,6 +6,7 @@ from image_provider import CLIENT
 from layer_review import approved_asset_names
 from design_properties import design_fields
 from split_strategy import CONTAINER_EXTRACTION_RULES
+from fonts_runtime import font_file
 
 from reference_fidelity import COLOR_PRESERVATION
 COLOR_PRESERVATION+='牌面、标签和材质印字以实际像素为准：即使字样不符合常识，也禁止把 B 改成 8、改牌点花色或补成标准顺子；不要重新排扇形间距、重画叠放边缘。看不清的隐藏内容只标为推测，不能当成已经确认。'
@@ -262,7 +263,7 @@ def complete_asset(source,node,assets,structure,cancelled,original_source=None,f
  return result
 
 def review_sheets(scene,qa):
- nodes=scene['nodes'];font=ImageFont.truetype('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',15);pages=[]
+ nodes=scene['nodes'];font=ImageFont.truetype(font_file('Noto Sans CJK SC'),15);pages=[]
  for start in range(0,len(nodes),8):
   group=nodes[start:start+8];atlas=Image.new('RGB',(1280,((len(group)+3)//4)*370),(35,38,43));draw=ImageDraw.Draw(atlas)
   for offset,n in enumerate(group):

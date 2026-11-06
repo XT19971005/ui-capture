@@ -18,6 +18,9 @@ class Job(models.Model):
     heartbeat = models.DateTimeField(null=True)
     started_at = models.DateTimeField(null=True)
     finished_at = models.DateTimeField(null=True)
+    executor = models.CharField(max_length=16, default='server')
+    relay_lease = models.CharField(max_length=64, blank=True)
+    relay_run = models.CharField(max_length=64, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=['status', 'created_at']), models.Index(fields=['owner', 'created_at'])]
@@ -29,3 +32,12 @@ class Audit(models.Model):
     target = models.CharField(max_length=160)
     detail = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class DesktopService(models.Model):
+    """One privately paired desktop; no OpenAI credentials are stored here."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    enabled = models.BooleanField(default=False)
+    token_digest = models.CharField(max_length=64, blank=True)
+    capabilities = models.JSONField(default=dict)
+    heartbeat = models.DateTimeField(null=True)

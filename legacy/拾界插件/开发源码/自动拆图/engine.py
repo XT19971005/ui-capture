@@ -7,7 +7,8 @@ from PIL import Image,ImageDraw,ImageFont
 import planner
 from design_properties import design_fields,attach_groups
 from plan_contract import vector,link_art_text
-FONT=Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc')
+from fonts_runtime import font_file
+FONT=Path(font_file('Noto Sans CJK SC',700))
 def png(image):
  stream=io.BytesIO();image.save(stream,format='PNG');return 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii')
 def load_source(value):
@@ -68,6 +69,7 @@ def text_nodes(rows,rgb,art_ids):
             # A failed glyph match does not establish center alignment. Keep
             # the source anchor, measure each line, and label the fallback.
             node={'id':uuid.uuid4().hex,'name':value,'type':'text','text':value,'x':round(x,2),'y':round(y,2),'width':round(width,2),'height':round(height,2),'fontSize':size,'fontWeight':700,'fill':'#'+''.join(f'{v:02x}' for v in fill),'strokeWidth':0,'confidence':round(row['confidence']*100,1),'review':True,'fontMatchApproximate':True,'fontFitStatus':'FALLBACK','provenance':'rapidocr','sourceTextId':row['id'],'sourceBox':{'x0':int(round(x)),'y0':int(round(y)),'x1':int(round(x+width)),'y1':int(round(y+height))}}
+            node['fontFamily']='Noto Sans CJK SC'  # Keep export on the same face used above.
             if leading is not None:node['lineHeight']=leading
             nodes.append(node)
     # Fit genuine editable glyphs rather than treating padded OCR boxes as their size.

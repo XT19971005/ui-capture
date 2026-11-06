@@ -1,12 +1,13 @@
 """Isolated legacy algorithm runner; progress and recovery bytes survive process exit."""
-import fcntl
 import importlib
 import json
 import os
 import sys
 import traceback
 import tempfile
+import time
 from contextlib import nullcontext
+from host_lock import exclusive
 from pathlib import Path
 from codex_client import CLIENT, CodexLoginRequired, CodexImageGenerationRequired, CodexImageGenerationFailed, CodexQuotaExceeded
 from company_agent import CompanyError
@@ -24,6 +25,10 @@ def main():
     completed_progress = 0
     CLIENT.selected_model = model or None
     stage = 'account_lock'
+    started = time.monotonic()
+
+    def finish(value):
+        write_json(root / 'finished.json', {**value, 'elapsedSeconds': time.monotonic()-started})
 
     def cancelled():
         return (root / 'cancel').exists()
@@ -50,9 +55,7 @@ def main():
         assistant_models.CONNECTION = {'key': connection.get('taishi')}
         image_provider.CONNECTION = connection.get('image', {'provider':'codex','model':'gpt-image-2'})
         needs_codex = connection.get('needsCodex', not CLIENT.company and not local_root)
-        with (nullcontext() if not needs_codex else (Path(os.environ['CODEX_HOME']) / 'account.lock').open('a')) as lock:
-            if lock is not None:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with (nullcontext() if not needs_codex else exclusive(Path(os.environ['CODEX_HOME']) / 'account.lock')):
             stage = 'validate_input'
             raw = read_scene(root / 'input.json')
             mode = connection.get('mode', raw.get('mode','codex'))
@@ -118,9 +121,9 @@ def main():
                 scene['delivery']['sessionId'] = ident
             write_scene(root / 'result.json', scene)
             incomplete = scene.get('_partial') or scene.get('recognition', {}).get('pendingGenerationIds')
-            write_json(root / 'finished.json', {'status': 'completed', 'message': '部分素材未完成，已保留现有图层，可继续拆分' if incomplete else '处理完成；可在任务记录中找回结果'})
+            finish({'status': 'completed', 'message': '部分素材未完成，已保留现有图层，可继续拆分' if incomplete else '处理完成；可在任务记录中找回结果'})
     except InterruptedError:
-        write_json(root / 'finished.json', {'status': 'cancelled', 'message': '已取消，中间图层已保留'})
+        finish({'status': 'cancelled', 'message': '已取消，中间图层已保留'})
     except Exception as exc:
         # Store code locations, never provider text, image payloads or credentials.
         try:
@@ -136,7 +139,7 @@ def main():
             message = str(exc)
         else:
             message = '任务处理发生异常，原图和已有图层已保留；请联系管理员检查任务记录'
-        write_json(root / 'finished.json', {'status': 'failed', 'message': message})
+        finish({'status': 'failed', 'message': message})
     finally:
         CLIENT.close()
 

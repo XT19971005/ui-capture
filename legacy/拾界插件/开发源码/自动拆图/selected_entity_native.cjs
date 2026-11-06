@@ -5,7 +5,7 @@ const input=JSON.parse(fs.readFileSync(0,'utf8'));
  let union=null;for(const n of input.nodes){const p=new cv.Path2D(n.d);p.setFillType(cv.FillType.EvenOdd);const moved=p.transform({a:1,b:0,c:0,d:1,e:n.x-input.box.x,f:n.y-input.box.y});union=union?union.op(moved,cv.PathOp.Union):moved;}if(!union)throw Error('没有可联合的原生路径');process.stdout.write(JSON.stringify({d:union.toSVGString(),bounds:union.computeTightBounds()}));return;
  }
  if(input.operation!=='preview')throw Error('未知选集原生操作');globalThis.document={createElement:()=>cv.createCanvas(1,1)};globalThis.Path2D=cv.Path2D;globalThis.ShijieNodeCanvas=cv;
-for(const [family,,file] of require('./fonts.json'))if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入容器字体: '+file);
+for(const [family,,file] of require('./fonts-runtime.cjs').fonts)if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入字体: '+file);
  // The installed SVG rasterizer drops embedded images. Reuse the native composite
  // so the model sees actual bitmap layers, inherited masks and opacity.
  const ag=require(path.join(nm,'ag-psd'));ag.initializeCanvas(cv.createCanvas,(w,h)=>new cv.ImageData(w,h));

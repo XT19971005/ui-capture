@@ -53,6 +53,11 @@ def body(request):
 
 def api(request, route):
     try:
+        if route == 'desktop-service':
+            from . import desktop_service
+            response=desktop_service.admin(request, body(request) if request.method=='POST' else None)
+            response['Cache-Control']='no-store'
+            return response
         if route == 'me' and request.method == 'GET':
             return JsonResponse({'id': request.user.pk, 'name': request.user.display_name or request.user.email,
                                  'roles': sorted(roles(request.user)), 'admin': is_admin(request.user), 'csrf': get_token(request)})
@@ -94,6 +99,31 @@ def engine(request, route):
     owner = request.user
     root = user_root(owner.pk)
     directory = '/users/' + str(owner.pk) + '/projects'
+    from . import desktop_service
+    desktop=desktop_service.current()
+    if desktop and desktop.enabled:
+        state=desktop_service.model_state(desktop)
+        if route=='saved-projects' or route.startswith('saved-projects/'):
+            return error('共享模式的工程保存在使用者本地，请刷新网页并选择本地文件夹；当前编辑保留',409)
+        if method=='GET' and route in ('assistant/models','codex/status'):
+            return JsonResponse(state)
+        if method=='GET' and route=='ai/status':
+            return JsonResponse({'ok':True,'active':'codex','shared':True,'codex':state,'company':{'configured':False,'enabled':False}})
+        if method=='GET' and route=='codex/login':
+            return JsonResponse({'ok':True,'pending':None,'shared':True})
+        if route=='image-provider' and method in ('GET','POST'):
+            if method=='POST':
+                value=body(request)
+                if value!={'provider':'codex','model':'gpt-image-2'}:
+                    return error('图片模型由共享电脑统一提供，无需填写个人 Key',409)
+            return JsonResponse({'provider':'codex','model':'gpt-image-2','configured':state['ready'],'shared':True,'models':[]})
+        if route=='codex/model' and method=='POST':
+            value=body(request)
+            if set(value)!={'model'} or value['model'] not in [m['id'] for m in state['models']]:raise ValueError('请选择共享服务提供的模型')
+            owner.codex_model=value['model'];owner.save(update_fields=['codex_model'])
+            return JsonResponse({'ok':True,'model':value['model']})
+        if method=='POST' and (route.startswith(('codex/','company/')) or route in ('assistant/key','assistant/tygpt-key','image-provider/catalog')):
+            return error('当前由管理员共享电脑提供模型，无需登录 Codex 或填写个人 Key',409)
     if route == 'feedback' and method == 'POST':
         if len(request.body) > 8 * 1024**2:
             return error('反馈内容超过8 MB，请缩小截图', 413)
@@ -207,10 +237,16 @@ def engine(request, route):
             validated = {'mode':'assistant-split', 'title':value['title'], 'resume':None}
         else:
             validated = validate_job(value)
-        from . import ai, company, providers
         from codex_client import LOGIN_REQUIRED_MESSAGE, IMAGE_GENERATION_REQUIRED_MESSAGE
         with transaction.atomic():
+            from .models import DesktopService
+            # Global mode lock precedes the user lock in every submission.
+            DesktopService.objects.get_or_create(pk=1)
+            service=DesktopService.objects.select_for_update().get(pk=1)
             User.objects.select_for_update().get(pk=owner.pk)
+            if service.enabled and validated['mode']!='local-layered':
+                return desktop_service.enqueue(owner,value,validated,root,len(request.body),service)
+            from . import ai, company, providers
             provider = 'local' if validated['mode'] == 'local-layered' else ai.selected_provider(owner)
             needs_images = requires_generation(validated)
             analysis = value.get('provider', 'auto') if route=='assistant/jobs' else provider
@@ -329,6 +365,9 @@ def page(request, page):
         return error('仅支持 GET', 405)
     if not page:
         return redirect(settings.PREFIX + '/image-editor.html')
+    if page=='desktop-service/':
+        if not is_admin(request.user):return error('只有管理员可以配置共享服务',403)
+        return render(request,'desktop-service.html',{'prefix':settings.PREFIX})
     if page in ('users/', 'tasks/'):
         if page == 'users/' and not is_admin(request.user):
             return error('无权管理账号', 403)
@@ -340,12 +379,16 @@ def page(request, page):
         return error('文件不存在', 404)
     if path.suffix == '.html':
         html = path.read_text()
-        tag = '<script src="' + escape(settings.PREFIX) + '/static/server/bootstrap.js" data-prefix="' + escape(settings.PREFIX) + '" data-user="' + str(request.user.pk) + '" data-csrf="' + get_token(request) + '"></script>'
+        from .desktop_service import public
+        shared='true' if public()['enabled'] else 'false'
+        tag = '<script src="' + escape(settings.PREFIX) + '/static/server/bootstrap.js" data-prefix="' + escape(settings.PREFIX) + '" data-user="' + str(request.user.pk) + '" data-shared-codex="'+shared+'" data-csrf="' + get_token(request) + '"></script>'
         tag += '<link rel="stylesheet" href="' + escape(settings.PREFIX) + '/static/server/fonts.css">'
+        if shared=='true':tag+='<script src="'+escape(settings.PREFIX)+'/static/server/shared-codex.js"></script><script src="'+escape(settings.PREFIX)+'/static/server/local-projects.js"></script>'
         html = html.replace('<head>', '<head>' + tag, 1)
         return HttpResponse(html)
     raw = path.read_bytes()
     etag = '"' + hashlib.sha256(raw).hexdigest() + '"'
-    response = HttpResponse(status=304) if request.headers.get('If-None-Match') == etag else HttpResponse(raw, content_type=mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
+    content_type = 'font/woff2' if path.suffix.lower() == '.woff2' else mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+    response = HttpResponse(status=304) if request.headers.get('If-None-Match') == etag else HttpResponse(raw, content_type=content_type)
     response['ETag'] = etag
     return response

@@ -43,11 +43,12 @@ def write_json(path, value):
             os.fsync(f.fileno())
         os.replace(temporary, path)
         # Persist the rename as well as the bytes across host power failure.
-        fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        if os.name != 'nt':
+            fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)
@@ -58,7 +59,7 @@ def write_scene(path, value):
 
 
 def read_scene(path):
-    return decode_job(json.loads(Path(path).read_text()))
+    return decode_job(json.loads(Path(path).read_text(encoding='utf8')))
 
 
 def connection_version(path):

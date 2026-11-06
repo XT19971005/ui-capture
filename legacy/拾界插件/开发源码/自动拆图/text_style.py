@@ -3,7 +3,7 @@ from pathlib import Path
 import base64,json,shutil,subprocess
 import numpy as np
 import cv2
-FONTS=json.loads(Path(__file__).with_name('fonts.json').read_text())
+from fonts_runtime import FONTS
 def estimate(patch,text):
  h,w=patch.shape[:2]
  if min(h,w)<4 or not text:return None
@@ -52,7 +52,7 @@ def estimate(patch,text):
  if not node:raise RuntimeError('字体拟合需要与PSD相同的Node Canvas运行时')
  cjk=any('\u4e00'<=c<='\u9fff' for c in text)
  fonts=[{'family':family,'weight':weight,'file':file} for family,weight,file in FONTS if (not cjk or family in ('Noto Sans CJK SC','Noto Serif CJK SC')) and Path(file).is_file()]
- if not fonts:raise RuntimeError('没有可用的容器字体，请检查 fonts.json')
+ if not fonts:raise RuntimeError('没有可用的字体，请检查 fonts.json 和随附字体文件')
  # Slashes and diagonal glyph strokes are not proof that the whole line is italic.
  request={'text':text,'width':tw,'height':th,'mask':base64.b64encode(target.astype('uint8').tobytes()).decode(),'skew':skew,'skews':[0,skew] if skew else [0,.22],'fonts':fonts,'lineHeight':line_height,'uniformScale':True}
  native=subprocess.run([node,str(Path(__file__).with_name('text_candidates.cjs'))],input=json.dumps(request,ensure_ascii=False),capture_output=True,text=True,encoding='utf8',cwd=Path(__file__).resolve().parents[2],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

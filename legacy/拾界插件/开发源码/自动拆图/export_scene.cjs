@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'../..')
 const cv=require(path.join(nm,'@napi-rs/canvas')),ag=require(path.join(nm,'ag-psd'));
 globalThis.document={createElement(tag){if(tag!=='canvas')throw Error('Unsupported element');return cv.createCanvas(1,1)}};
 globalThis.Path2D=cv.Path2D;globalThis.ShijieNodeCanvas=cv;ag.initializeCanvas(cv.createCanvas);
-for(const [family,,file] of require('./fonts.json'))if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入容器字体: '+file);
+for(const [family,,file] of require('./fonts-runtime.cjs').fonts)if(!cv.GlobalFonts.registerFromPath(file,family))throw Error('无法载入字体: '+file);
 const S=require('./scene-native.cjs');
 async function main(){
  const [source,target,preview]=process.argv.slice(2);if(!source||!target||!preview)throw Error('Missing paths');

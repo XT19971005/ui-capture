@@ -17,7 +17,7 @@ PATCHES = obj({'patches': {'type': 'array', 'maxItems': 700, 'items': obj({'id':
                'notes': {'type': 'array', 'maxItems': 100, 'items': {'type': 'string'}}})
 QUALITY = obj({'status': {'type': 'string', 'enum': ['PASS', 'NEEDS_REVIEW']},
                'summary': {'type': 'string'}, 'issues': {'type': 'array', 'maxItems': 100, 'items': {'type': 'string'}}})
-FONTS = json.loads(Path(__file__).with_name('fonts.json').read_text())
+from fonts_runtime import FONTS
 TEXT_METRICS = {'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'letterSpacing', 'wordSpacing', 'lineHeight', 'width', 'height'}
 
 

@@ -16,7 +16,7 @@ from .processes import start, stop
 
 def recover():
     # Called only while holding the host-wide worker lock: never replay a potentially billed turn.
-    return Job.objects.filter(status='running').update(status='failed', message='执行进程已中断，中间图层保留，请手动续拆', finished_at=timezone.now())
+    return Job.objects.filter(status='running',executor='server').update(status='failed', message='执行进程已中断，中间图层保留，请手动续拆', finished_at=timezone.now())
 
 
 def resources(job):
@@ -33,7 +33,7 @@ def claim(blocked=frozenset()):
     with transaction.atomic():
         Job.objects.filter(status='queued',cancel_requested=True).update(status='cancelled',message='已取消',finished_at=timezone.now())
         # ponytail: scan the bounded persistent queue; add indexed resource columns if queue scale requires it.
-        for job in Job.objects.select_for_update(skip_locked=True).filter(status='queued', cancel_requested=False).order_by('created_at'):
+        for job in Job.objects.select_for_update(skip_locked=True).filter(status='queued', cancel_requested=False,executor='server').order_by('created_at'):
             if resources(job) & blocked: continue
             job.status = 'running'
             job.started_at = job.heartbeat = timezone.now()

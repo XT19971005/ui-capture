@@ -46,6 +46,7 @@ window.ShijieSmartSplit=(()=>{
  }
  function nativeConnect(){if(!window.SHIJIE)throw Error('请从AI拆图助手服务打开页面');return Promise.resolve({url:SHIJIE.prefix+'/api/engine'});}
  async function request(path,options={}){
+  if(window.SHIJIE?.sharedCodex&&/^\/saved-projects(?:[/?]|$)/.test(path)){if(!window.ShijieBrowserProjects)throw Error('本地工程模块尚未加载，请刷新页面；当前编辑保留，可导出工程文件。');return ShijieBrowserProjects.request(path,options)}
   if(/^\/(?:codex\/|ai\/|company\/|assistant\/(?:models|key|tygpt-key)|image-provider|local-model\/status)/.test(path)&&typeof ShijieService.request==='function')return ShijieService.request('engine'+path,options);
   const response=await fetch(connection.url+path,{...options,headers:ShijieService.headers(),cache:'no-store'});
   let data;try{data=await response.json()}catch(_){const error=Error(response.status===413?'工程传输数据超过容量限制，原工程已保留。请保存工程后重试。':'服务器引擎返回了无法读取的响应（HTTP '+response.status+'），原工程已保留。');error.status=response.status;throw error}
@@ -130,7 +131,7 @@ window.ShijieSmartSplit=(()=>{
   return run(source,doc.title,onProgress,doc.originalSource||source,doc,{mode:'replace-image',replacement:{targetId,region,prompt,reference:reference?{src:reference.src,region:reference.region??null}:null,...(selection?{selection:JSON.parse(JSON.stringify(selection))}:{}),...(replacement.intent?{intent:replacement.intent}:{}),...(replacement.task?{task:replacement.task}:{}),...(replacement.annotations?{annotations:JSON.parse(JSON.stringify(replacement.annotations))}:{})}});
  }
  async function savedProjects(){connection=await nativeConnect();return request('/saved-projects')}
- async function setProjectDirectory(directory){connection=await nativeConnect();return request('/saved-projects/settings/location',{method:'PUT',body:JSON.stringify({directory})})}
+ async function setProjectDirectory(directory){if(window.SHIJIE?.sharedCodex){if(!window.ShijieBrowserProjects)throw Error('本地工程模块尚未加载，请刷新页面');return ShijieBrowserProjects.setDirectory(directory)}connection=await nativeConnect();return request('/saved-projects/settings/location',{method:'PUT',body:JSON.stringify({directory})})}
  async function savedProject(id,directory){connection=await nativeConnect();const result=await request('/saved-projects/'+encodeURIComponent(id)+(directory?'?directory='+encodeURIComponent(directory):'')),wire=result.project;if(wire?.wireFormat==='shijie-image-table'&&wire.wireVersion===1)result.project=ShijieProjectCodec.decode({format:'shijie-project',version:1,doc:wire.job,images:wire.images});return result}
  async function saveProject(record){connection=await nativeConnect();return request('/saved-projects/'+encodeURIComponent(record.id),{method:'PUT',body:serializeJob(record,true)})}
  async function archiveBrowserProject(record,directory){connection=await nativeConnect();return request('/saved-projects/archive-browser',{method:'POST',body:serializeJob({...record,_expectedDirectory:directory},true)})}

@@ -9,12 +9,28 @@ location = /shijie {
     absolute_redirect off;
     return 302 /shijie/;
 }
+# Desktop relay uses its own paired bearer credential. Do not inherit an
+# interactive gateway login here; Django still validates every relay request.
+location ^~ /shijie/desktop-relay/v1/ {
+    access_log /var/log/nginx/shijie-access.log shijie_safe;
+    auth_request off;
+    auth_basic off;
+    proxy_pass http://127.0.0.1:8093;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Authorization $http_authorization;
+    client_max_body_size 276m;
+    proxy_read_timeout 120s;
+    proxy_request_buffering off;
+}
 location /shijie/ {
     access_log /var/log/nginx/shijie-access.log shijie_safe;
     proxy_pass http://127.0.0.1:8093;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Authorization $http_authorization;
     client_max_body_size 276m;
     proxy_read_timeout 120s;
     proxy_request_buffering off;
