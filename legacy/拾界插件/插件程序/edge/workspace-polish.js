@@ -129,11 +129,23 @@ document.addEventListener('DOMContentLoaded',()=>{
   catch(error){q('[data-text-status]').textContent=(saved?'TYGPT Key 已保存；检查失败：':'TYGPT Key 保存失败：')+safeError(error,secret)}
   finally{textKey.value='';operationBusy=savingKey=false;connectionControls()}
  };
- q('[data-login]').onclick=()=>{panel.close();document.getElementById('codex-settings')?.click();document.getElementById('ai-provider-codex')?.click();document.getElementById('codex-method-device')?.click()};
+ const loginDetails=document.createElement('div');loginDetails.className='shared-codex-login';loginDetails.hidden=true;loginDetails.innerHTML='<label>本次登录设备码<input data-device-code readonly aria-label="本次登录设备码"></label><button type="button" data-device-copy>复制设备码</button><button type="button" data-device-cancel>取消本次登录</button>';q('[data-text-status]').before(loginDetails);
+ let loginTimer=null,loginPending=null,loginChecking=false;
+ function showLogin(value){
+  if(value){const url=new URL(value.url);if(url.href!=='https://auth.openai.com/codex/device'||!/^[A-Z0-9-]{4,32}$/.test(value.userCode)||!Number.isFinite(value.expiresAt))throw Error('登录服务返回的信息无效');q('[data-login-link]').href=url.href;loginDetails.querySelector('[data-device-code]').value=value.userCode;}
+  loginPending=value;loginDetails.hidden=!value;q('[data-login-link]').hidden=!value;clearTimeout(loginTimer);if(value)loginTimer=setTimeout(checkLogin,3000);
+ }
+ async function checkLogin(){if(loginChecking||!loginPending||provider.value!=='codex')return;loginChecking=true;try{const value=await ShijieService.request('engine/codex/login');if(value.pending){showLogin(value.pending);if(value.pending.expiresAt<=Date.now()/1000){showLogin(null);q('[data-text-status]').textContent='本次登录已过期，请重新点击登录 Codex';}}else{showLogin(null);await models();if(value.loginResult&&!value.loginResult.success)q('[data-text-status]').textContent=value.loginResult.error||'本次登录未成功，原有连接保留';}}catch(error){q('[data-text-status]').textContent='登录状态检查失败：'+safeError(error);if(loginPending)loginTimer=setTimeout(checkLogin,5000);}finally{loginChecking=false}}
+ loginDetails.querySelector('[data-device-copy]').onclick=async()=>{const input=loginDetails.querySelector('[data-device-code]');try{await navigator.clipboard.writeText(input.value);q('[data-text-status]').textContent='设备码已复制，请打开登录页完成授权';}catch{input.focus();input.select();q('[data-text-status]').textContent='设备码已选中，请按 Ctrl+C 复制';}};
+ loginDetails.querySelector('[data-device-cancel]').onclick=async()=>{try{await ShijieService.request('engine/codex/login/cancel',{method:'POST',body:'{}'});showLogin(null);q('[data-text-status]').textContent='本次登录已取消，原有连接保留';}catch(error){q('[data-text-status]').textContent=safeError(error);}};
+ q('[data-login]').onclick=async()=>{if(operationBusy)return;operationBusy=true;connectionControls();q('[data-text-status]').textContent='正在准备登录…';try{const result=await ShijieSmartSplit.login();if(result.ok===false)throw Error(result.error||'登录未成功');showLogin(result);q('[data-text-status]').textContent='点击“打开登录页”，输入本次设备码完成授权后回来检查连接。';}catch(error){q('[data-text-status]').textContent='登录未完成：'+safeError(error);}finally{operationBusy=false;connectionControls();}};
+ const checkConnection=q('[data-check]').onclick;q('[data-check]').onclick=()=>loginPending?checkLogin():checkConnection();
+ panel.addEventListener('close',()=>clearTimeout(loginTimer));
+
  button.onclick=async()=>{
   if(operationBusy||window.studio?.isBusy()||window.ShijieFreeAssistant?.isBusy?.())return;q('[data-result]').textContent='';textKey.type='password';reveal.textContent='显示';reveal.setAttribute('aria-pressed','false');textKey.value=q('[data-image-key]').value='';
   try{const pref=JSON.parse(localStorage.getItem('shijie.assistant.text-model:'+window.SHIJIE.user)||'null');provider.value=['taishi','tygpt'].includes(pref?.provider)?'tygpt':'codex'}catch{provider.value='codex'}
-  visibility();window.ShijieInlinePanels.open(panel);operationBusy=true;connectionControls();void models();const openedRevision=revision;q('[data-image-status]').textContent='正在读取已有图片连接…';
+  visibility();window.ShijieInlinePanels.open(panel);if(provider.value==='codex')void ShijieService.request('engine/codex/login').then(value=>{if(value.pending)showLogin(value.pending)}).catch(()=>{});operationBusy=true;connectionControls();void models();const openedRevision=revision;q('[data-image-status]').textContent='正在读取已有图片连接…';
   try{const value=await ShijieSmartSplit.imageProvider();if(openedRevision!==revision)return;image.value=value.provider;imageModels(value);visibility();q('[data-image-status]').textContent=value.provider==='codex'?'使用当前登录用户的 Codex 账号':'亿创 · '+q('[data-image-model]').value+' 已配置'+(value.catalogIncomplete?'；部分模型目录暂未读全，可点击读取全部生图模型重试':'')}catch(error){if(openedRevision===revision)q('[data-image-status]').textContent='图片连接读取失败：'+safeError(error)}finally{operationBusy=false;connectionControls()}
  };
  q('[data-image-refresh]').onclick=async()=>{
