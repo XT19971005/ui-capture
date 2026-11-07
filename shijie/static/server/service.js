@@ -11,7 +11,7 @@
       for (const name of users ? ['账号', '当前权限', '授权'] : ['任务', '状态', '进度', '操作']) { const th = document.createElement('th'); th.textContent = name; row.append(th); } head.append(row);
       for (const item of users ? data.users : data.jobs) {
         const tr = document.createElement('tr');
-        cell(tr, users ? item.email : item.title); cell(tr, users ? item.roles.join('、') || '待授权' : states[item.status] || item.status);
+        cell(tr, users ? item.email : item.title); cell(tr, users ? item.roles.join('、') || '待授权' : item.deliveryPending ? '等待回传' : states[item.status] || item.status);
         if (!users) cell(tr, Math.round(item.progress * 100) + '% · ' + item.message);
         const actions = cell(tr, '');
         if (users && item.canManage) {

@@ -19859,7 +19859,7 @@ function portableHtmlRuntime(original, edge) {
   document.getElementById("save").onclick = () => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([JSON.stringify(scene)], { type: "application/json" }));
-    a.download = "\u62FE\u754C-\u7F51\u9875\u7F16\u8F91.scene.json";
+    a.download = (String(scene.title || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/g, "").trim().slice(0, 100) || "\u672A\u547D\u540D\u5DE5\u7A0B") + ".scene.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1e3);
   };

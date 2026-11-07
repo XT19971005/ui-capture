@@ -5,6 +5,15 @@ from PIL import Image
 from engine import png
 
 class AssistantSplitTests(unittest.TestCase):
+ def test_shared_project_id_is_validated_without_changing_the_request(self):
+  import assistant_split as s
+  body={**self.body(),'projectId':'shared-project_123'};before=copy.deepcopy(body)
+  self.assertEqual(s.validate(body)['projectId'],'shared-project_123')
+  self.assertEqual(body,before)
+  for ident in ('', '../other', 'x'*161, 123):
+   with self.subTest(projectId=ident),self.assertRaisesRegex(ValueError,'工程标识'):
+    s.validate({**body,'projectId':ident})
+
  def test_mixed_split_background_uses_opaque_generation_not_asset_expansion(self):
   import assistant_split as s
   body=self.body();body['layers']=[{'name':'纯净场景底稿','instruction':'去掉所有独立前景，补齐纯净背景','assetKind':'background','box':{'x':0,'y':0,'width':100,'height':100}},body['layers'][0]]

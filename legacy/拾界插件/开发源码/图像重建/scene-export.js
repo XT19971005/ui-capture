@@ -288,7 +288,7 @@ function portableHtmlRuntime(original, edge) {
   document.getElementById('reset').onclick = render;
   document.getElementById('save').onclick = () => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(scene)], {type:'application/json'}));
-    a.download = '拾界-网页编辑.scene.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    a.download = (String(scene.title || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').trim().slice(0, 100) || '未命名工程') + '.scene.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
   window.addEventListener('resize', () => { if (fitMode) fit(); }); render();
 }

@@ -51,6 +51,8 @@ def admin(request, data=None):
         return JsonResponse({'error':'共享服务配对需要 HTTPS；本机调试可使用回环地址'}, status=400)
     if not isinstance(data, dict) or data.get('action') not in ('pair','enable'):
         raise ValueError('共享服务参数无效')
+    if getattr(settings,'LAN_SHARED',False) and data['action']=='pair':
+        raise ValueError('局域网共享由本机启动程序自动配对，无需重新生成配对码')
     with transaction.atomic():
         DesktopService.objects.get_or_create(pk=1)
         service = DesktopService.objects.select_for_update().get(pk=1)
@@ -104,6 +106,8 @@ def model_state(service=None):
 def enqueue(owner, value, validated, root, size, service):
     """Called with desktop singleton and user rows locked in that order."""
     state=public(service)
+    if not state['enabled']:
+        return JsonResponse({'error':'共享服务已暂停，请联系本机管理员启用','code':'DESKTOP_PAUSED'},status=503)
     if not state['ready']:
         return JsonResponse({'error':'共享电脑离线或 Codex 未连接，任务未提交，请联系管理员','code':'DESKTOP_OFFLINE'},status=503)
     from .validation import requires_generation
@@ -164,6 +168,15 @@ def update(data):
     if job.status in ('completed','failed','cancelled'):
         return JsonResponse({'ok':True,'ack':True,'cancel':True})
     state=data.get('status')
+    if state=='delivery-pending':
+        if set(data)!={'id','lease','run','status'} or not job.relay_run:
+            raise ValueError('待回传状态参数无效')
+        # Model execution is over. Release the global running slot, but do not ACK
+        # delivery or require more user disk space to record this metadata.
+        job.status='delivery-pending';job.heartbeat=timezone.now()
+        job.message='生成结果保存在共享电脑，等待回传；请稍后刷新任务记录，无需重新生成'
+        job.save(update_fields=['status','heartbeat','message'])
+        return JsonResponse({'ok':True,'ack':False,'deferred':True})
     if state not in ('running','completed','failed','cancelled'):raise ValueError('任务状态无效')
     progress=data.get('progress',job.progress)
     if type(progress) not in (int,float) or not math.isfinite(progress) or not 0<=progress<=1:raise ValueError('进度无效')
@@ -174,7 +187,8 @@ def update(data):
     duration=elapsed if state!='running' and elapsed is not None else (timezone.now()-job.started_at).total_seconds() if job.started_at else 0
     expired=duration>settings.JOB_TIMEOUT
     folder=job_root(job)
-    check_space(user_root(job.owner_id),len(json.dumps(data).encode()))
+    if any(field in data for field in ('partial','result','previewText')):
+        check_space(user_root(job.owner_id),len(json.dumps(data).encode()))
     for field in ('partial','result'):
         if field not in data:continue
         scene=data[field]
@@ -212,7 +226,7 @@ def artifact(request):
     job=Job.objects.select_for_update().filter(pk=ident,executor='desktop').first()
     if not job or not secrets.compare_digest(job.relay_lease,lease):return JsonResponse({'error':'任务接单凭证不匹配'},status=409)
     if job.relay_run and not secrets.compare_digest(job.relay_run,request.headers.get('X-Shijie-Run','')):return JsonResponse({'error':'任务执行许可不匹配'},status=409)
-    if job.status not in ('running','completed'):return JsonResponse({'ok':True,'ack':True,'cancel':True})
+    if job.status not in ('running','delivery-pending','completed'):return JsonResponse({'ok':True,'ack':True,'cancel':True})
     size=int(request.headers.get('Content-Length','0'))
     if not 26<=size<=276*1024**2:raise ValueError('PSD 文件大小无效')
     check_space(user_root(job.owner_id),size)

@@ -25,7 +25,7 @@
  const source=document.createElement('div');source.className='source-info';source.innerHTML='<strong id="image-source-title">尚未导入图片</strong><span id="image-source-size">PNG / JPG / WebP</span>';document.querySelector('.panel-title').after(source);
  const title=document.querySelector('.layers .section-title');title.hidden=true;
  const bottom=document.createElement('div');bottom.className='layer-bottom';const box=document.createElement('button');box.id='add-box';box.textContent='＋ 矩形';box.onclick=()=>{if(!scene||busy)return;checkpoint('添加矩形');const n={id:uid(),name:'矩形',type:'rect',x:Math.max(0,(scene.width-220)/2),y:Math.max(0,(scene.height-120)/2),width:Math.min(220,scene.width),height:Math.min(120,scene.height),radius:8,fill:'#ad9aff',provenance:'manual'};scene.nodes.push(n);selected=n.id;refresh();changed();window.studio?.select([n.id],true)};
- const clear=document.createElement('button');clear.id='clear-image';clear.textContent='关闭工程';clear.title='关闭当前工程，已保存工程保留';clear.onclick=async()=>{if(!scene||busy)return;const owned=scene,ownerTask=task,snapshot=JSON.stringify(owned);clear.disabled=true;try{await window.studio.flush();if(scene!==owned||task!==ownerTask)return;if(JSON.stringify(scene)!==snapshot){status('工程已有新修改，未清空。');return}await window.studio.adapter.closeProject();if(scene)return;window.studio.setInitial(null);$('layer-count').textContent='0';$('image-source-title').textContent='尚未导入图片';$('image-source-size').textContent='PNG / JPG / WebP';for(const key of ['text','vector','raster'])$('stat-'+key).textContent='—';window.studio.sync(false)}catch(e){status('关闭工程未完成：'+e.message+'。当前工程保留。')}finally{clear.disabled=!scene||busy}};
+ const clear=document.createElement('button');clear.id='clear-image';clear.textContent='关闭工程';clear.title='关闭当前工程，已保存工程保留';clear.onclick=async()=>{if(!scene||busy)return;const owned=scene,ownerTask=task,snapshot=JSON.stringify(owned);clear.disabled=true;try{await window.studio.flush({leaving:true});if(scene!==owned||task!==ownerTask)return;if(JSON.stringify(scene)!==snapshot){status('工程已有新修改，未清空。');return}await window.studio.adapter.closeProject();if(scene)return;window.studio.setInitial(null);$('layer-count').textContent='0';$('image-source-title').textContent='尚未导入图片';$('image-source-size').textContent='PNG / JPG / WebP';for(const key of ['text','vector','raster'])$('stat-'+key).textContent='—';window.studio.sync(false)}catch(e){status('关闭工程未完成：'+e.message+'。当前工程保留。')}finally{clear.disabled=!scene||busy}};
  box.disabled=clear.disabled=!scene||busy;bottom.append($('add-text'),box,clear);document.querySelector('.layers').append(bottom);
  const propertyHead=document.createElement('div');propertyHead.className='property-heading';propertyHead.innerHTML='<span>图层</span>';$('properties').prepend(propertyHead);
  const positionGrid=$('properties').querySelector('.grid');positionGrid.after($('text-label'));$('text').rows=4;
@@ -60,7 +60,7 @@
  if(window.studio?.adapter.kind!=='web')return;
  const byId=id=>document.getElementById(id),studio=window.studio;
  document.body.classList.add('web-workbench');
- byId('empty').querySelector('h1').textContent='从浏览器抓取网页';byId('empty').querySelector('small').textContent='在目标网页点击插件抓取 · 也可从顶部打开工程';
+ byId('empty').querySelector('h1').textContent='打开网页工程';byId('empty').querySelector('small').textContent='从打开工程导入已保存的网页工程';
  const bar=document.querySelector('.studio-bar'),history=document.querySelector('[data-action=history]');
  if(history)document.querySelector('.history-tools').append(history);
  if(bar)bar.hidden=true;
@@ -68,8 +68,8 @@
  byId('actual').textContent='原尺寸';
  byId('clear').textContent='关闭工程';byId('clear').title='关闭当前工程，已保存工程保留';
  const close=byId('clear').onclick;
- byId('clear').onclick=async()=>{if(!current||busy)return;const owned=current;try{await studio.flush();if(current!==owned||busy)return;await close();studio.setInitial(null);studio.sync(false);status('已关闭工程，已保存工程保留')}catch(e){status('关闭工程未完成：'+e.message)}};
- const help=document.createElement('p');help.className='workspace-inspector-help';help.textContent='在目标网页点击浏览器插件抓取，或打开已保存工程。选择图层后可编辑文字、位置和样式。';byId('no-selection').append(help);
+ byId('clear').onclick=async()=>{if(!current||busy)return;const owned=current;try{await studio.flush({leaving:true});if(current!==owned||busy)return;await close();studio.setInitial(null);studio.sync(false);status('已关闭工程，已保存工程保留')}catch(e){status('关闭工程未完成：'+e.message)}};
+ const help=document.createElement('p');help.className='workspace-inspector-help';help.textContent='打开已保存的网页工程。选择图层后可编辑文字、位置和样式。';byId('no-selection').append(help);
  const view=document.querySelector('.view-tools'),fit=document.createElement('button');fit.id='fit-selected';fit.textContent='适应所选';fit.title='缩放查看所选图层，不修改设计尺寸';byId('fit-width').after(fit);
  fit.onclick=()=>{if(!current||studio.isBusy())return;const entries=studio.adapter.entries(),box=StudioBase.bounds(studio.roots().map(id=>entries.get(id)).filter(e=>e&&e.visible).map(e=>e.bounds));if(!box)return;const v=byId('preview');zoomMode='custom';scale=Math.min(8,Math.max(.002,Math.min((v.clientWidth-64)/Math.max(1,box.width),(v.clientHeight-64)/Math.max(1,box.height))));applyZoom();v.scrollLeft=origin.x+(box.x+box.width/2)*scale-v.clientWidth/2;v.scrollTop=origin.y+(box.y+box.height/2)*scale-v.clientHeight/2;studio.overlay();status('已适应所选图层；设计尺寸保持')};
  const toggle=document.createElement('button');toggle.id='inspector-toggle';toggle.textContent='设计栏';toggle.setAttribute('aria-controls','design-panel');view.append(toggle);

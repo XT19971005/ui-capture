@@ -4,9 +4,22 @@ function openWebExport(selectedOnly=false){$('output-range').value=selectedOnly?
 window.syncWebUI=function(){const independent=current?._linkChildren===false;for(const id of ['relation-linked','relation-independent'])$(id).disabled=!current||busy;$('relation-linked').setAttribute('aria-pressed',String(!independent));$('relation-independent').setAttribute('aria-pressed',String(independent));$('relation-hint').textContent=independent?'仅操作当前层，子级不变':'父级与子级一起变化';$('save-project').disabled=!current||busy;const format=$('output-format').value,selectedOnly=$('output-range').value==='selected';$('output-go').disabled=!current||busy||(selectedOnly&&!window.studio?.ids.size);$('output-go').textContent='导出 '+({png:'PNG',svg:'SVG',psd:'PSD',figma:'Figma 数据'}[format]);$('padding-field').hidden=!selectedOnly;$('scale-field').hidden=format==='figma';$('output-hint').textContent=format==='figma'?'需使用「AI拆图助手 · Figma 导入」插件。':selectedOnly?'不包含画板底色。':'';if(current){try{const data=selectedOnly&&window.studio?.ids.size?studio.adapter.selectionData(studio.roots(),+ $('output-padding').value||0):current;const p=format==='figma'?{width:data.width,height:data.height,scale:1}:ShijiePSD.exportPlan(D.exportData(data),$('export-scale').value);$('export-size').textContent=p.width+' × '+p.height+' px · '+Math.round(p.scale*100)+'%'}catch(e){$('export-size').textContent=e.message}}};
 for(const [id,linked] of [['relation-linked',true],['relation-independent',false]])$(id).onclick=()=>commit(()=>{current._linkChildren=linked},linked?'父子联动':'独立操作');
 for(const id of ['output-range','output-format','output-padding','export-scale'])$(id).onchange=syncWebUI;
-$('save-project').onclick=async()=>{if(!current||busy)return;try{await download(new Blob([ShijieProjectCodec.stringify(current)],{type:'application/json'}),filename('json').replace('.json','.shijie.json'));status('工程文件已下载')}catch(e){status(e.message)}};
+$('save-project').onclick=async()=>{if(!current||busy)return;try{await download(new Blob([ShijieProjectCodec.stringify(current)],{type:'application/json'}),filename('json').replace('.json','.ai-split.json'));status('工程文件已下载')}catch(e){status(e.message)}};
 function webExportNotice(message){let el=$('output-status');if(!el){el=document.createElement('p');el.id='output-status';el.className='tip';el.setAttribute('role','status');$('output-go').after(el)}el.textContent=message}
 $('output-go').onclick=async()=>{if(!current||busy)return;const type=$('output-format').value,selection=$('output-range').value==='selected',chosen=window.studio?.roots()||[];if(selection&&!chosen.length){status('请先选择图层');return}const data=D.exportData(selection?studio.adapter.selectionData(chosen,Math.max(0,Math.min(256,+$('output-padding').value||0))):current);let rendered;begin('正在导出…');$('cancel-job').disabled=true;try{let blob,ext=type==='figma'?'json':type;if(type==='figma')blob=new Blob([JSON.stringify(data)],{type:'application/json'});else{rendered=await ShijiePSD.renderForExport(data,progress,$('export-scale').value);const svg=type==='svg'?await (window.ShijieService?.portableArtwork?.(StudioBase.renderedSVG(rendered))||StudioBase.renderedSVG(rendered)):null;blob=type==='psd'?new Blob([ShijiePSD.encodePSD(rendered)],{type:'image/vnd.adobe.photoshop'}):type==='svg'?new Blob([svg],{type:'image/svg+xml'}):await new Promise(r=>rendered.canvas.toBlob(r,'image/png'))}if(!blob)throw Error('无法生成导出文件');await download(blob,filename(ext).replace('.'+ext,(selection?'-所选':'')+(type==='figma'?'-Figma':'')+'.'+ext));webExportNotice('已导出 '+(type==='figma'?'Figma 插件数据':type.toUpperCase()));status('就绪');if(rendered)warnings([...(current.warnings||[]),...rendered.warnings])}catch(e){webExportNotice('导出失败：'+e.message);status('导出未完成，请查看导出面板。')}finally{ShijiePSD.releaseRender(rendered);finish()}};
+/* Manual HTTP imports and local-folder imports share the same leave guard. */
+(()=>{
+ const openFile=importFile;
+ importFile=async file=>{
+  if(!file||busy)return;
+  const studio=window.studio,owner=studio?.adapter.get();
+  try{
+   await studio?.flush({leaving:true});
+   if(busy||window.studio!==studio||studio?.adapter.get()!==owner||owner&&StudioBase.library.isDirty(owner))throw Error('当前工程仍有未保存修改或已切换，请重试导入');
+  }catch(e){status(e.message);return}
+  return openFile(file);
+ };
+})();
 /* Webpage model adapter. Coordinates remain absolute within each captured document. */
 (()=>{
  const B=StudioBase,clone=B.clone,view=$('preview');

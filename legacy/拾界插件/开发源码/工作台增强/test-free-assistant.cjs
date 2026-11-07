@@ -15,6 +15,29 @@ test('model picker anchors to its trigger and stays within viewport',()=>{const 
 test('assistant infers sole visible reference even when locked without changing selection',()=>{const a=api(),d=doc();d.nodes[0].locked=false;assert.deepEqual(Array.from(a.effectiveSelection(d,[])),['a']);assert.deepEqual(Array.from(a.effectiveSelection(d,['a'])),['a']);d.nodes.push({...d.nodes[0],id:'b'});assert.deepEqual(Array.from(a.effectiveSelection(d,[])),[]);d.nodes[1].hidden=true;assert.deepEqual(Array.from(a.effectiveSelection(d,[])),['a']);d.nodes[0].locked=true;assert.deepEqual(Array.from(a.effectiveSelection(d,[])),['a'])});
 test('execution failure is recorded for the next dialogue',async()=>{const a=api(),d=doc();let bodies=[];const flow=a.createFlow({get:()=>d,ids:()=>[],request:async b=>{bodies.push(b);return {action:'correct',reply:'开始生成'}},execute:async()=>{throw Error('连接中断')}});await assert.rejects(flow.send('改字','codex',''),/连接中断/);assert.match(flow.messages().at(-1).content,/执行失败.*连接中断/);await assert.rejects(flow.send('再试','codex',''));assert.match(bodies[1].messages.at(-2).content,/连接中断/)});
 
+test('delivery waiting is retained as waiting history and never called generation failure',async()=>{
+ const a=api(),d=doc(),histories=[];let executions=0;
+ const error=Object.assign(Error('结果保存在共享电脑等待回传，无需重新生成'),{deliveryPending:true,jobId:'waiting-job'});
+ const flow=a.createFlow({get:()=>d,ids:()=>[],onHistory:history=>histories.push(history),request:async()=>({action:'split',reply:'开始生成'}),execute:async()=>{executions++;throw error}});
+ await assert.rejects(flow.send('拆层','codex',''),caught=>caught===error&&caught.deliveryPending);
+ assert.equal(executions,1);assert.match(flow.messages().at(-1).content,/等待回传/);
+ assert.doesNotMatch(flow.messages().at(-1).content,/执行失败|本次未完成|请根据此状态继续处理/);
+ assert.match(histories.at(-1).outcomes.at(-1),/等待回传/);
+ assert.doesNotMatch(histories.at(-1).outcomes.at(-1),/失败|未完成/);
+});
+
+test('analysis delivery waiting retains accurate history and guards the current snapshot',async()=>{
+ const d=doc(),histories=[];let guarded=null;
+ const scope={window:{ShijieService:{holdPendingDelivery:owner=>guarded=owner}},structuredClone};
+ vm.runInNewContext(fs.readFileSync(file,'utf8'),scope);
+ const error=Object.assign(Error('分析回复等待回传，无需重新生成'),{deliveryPending:true});
+ const flow=scope.window.ShijieFreeAssistant.createFlow({get:()=>d,ids:()=>[],onHistory:history=>histories.push(history),request:async()=>{throw error}});
+ await assert.rejects(flow.send('先分析','codex',''),caught=>caught===error);
+ assert.equal(guarded,d);assert.match(flow.messages().at(-1).content,/等待回传/);
+ assert.match(histories.at(-1).outcomes.at(-1),/等待回传/);
+ assert.doesNotMatch(flow.messages().at(-1).content,/失败|未完成/);
+});
+
 test('discussion survives annotation edits but is marked stale and never executes',async()=>{const a=api(),d=doc();let resolve,reply,executed=0;const flow=a.createFlow({get:()=>d,ids:()=>[],request:()=>new Promise(r=>resolve=r),onReply:(r,meta)=>{reply={r,meta}},execute:async()=>executed++});const waiting=flow.send('先讨论','codex','');d._sourceAnnotations={items:[]};resolve({action:'discuss',reply:'两侧一起拆成独立素材'});await waiting;assert.equal(flow.messages().at(-1).content,'两侧一起拆成独立素材');assert.equal(reply.meta.stale,true);assert.equal(executed,0)});
 test('discussion from another image is not inserted into the current conversation',async()=>{const a=api();let d=doc(),resolve,replies=0;const flow=a.createFlow({get:()=>d,ids:()=>[],request:()=>new Promise(r=>resolve=r),onReply:()=>replies++});const waiting=flow.send('先讨论','codex','');d={...doc(),_projectId:'other',source:'other-image'};resolve({action:'discuss',reply:'旧图回复'});await assert.rejects(waiting,/改变/);assert.equal(replies,0)});
 
@@ -70,3 +93,27 @@ test('chat selection and editing shortcuts belong to native browser text control
  assert.equal(a.nativeTextTarget(canvas,{isCollapsed:false,anchorNode:{parentElement:chat}}),true);
 });
 
+
+
+test('content naming accepts imported English filenames while preserving accurate Chinese and manual titles',()=>{
+ const a=api();for(const title of ['gd-hbimg-edge','DSC_0044.png','a5df001122','0044','未命名'])assert.equal(a.semanticTitle(title,'荷塘夏日主题界面','import'),'荷塘夏日主题界面');
+ assert.equal(a.semanticTitle('我的徽章','荷塘夏日主题界面','import'),null);
+ assert.equal(a.semanticTitle('my custom project','荷塘夏日主题界面','manual'),null);
+ assert.equal(a.semanticTitle('未命名','asset.png','import'),null);
+});
+test('existing AI reply names both discussion and execution with one analysis and respects project switches',async()=>{
+ const a=api();for(const action of ['discuss','generate']){
+  const d={...doc(),title:'gd-hbimg-edge',_titleSource:'import'};let requests=0,names=0,executed=0;
+  const env={get:()=>d,commit:async fn=>{names++;fn()}};
+  const flow=a.createFlow({get:()=>d,ids:()=>[],request:async()=>{requests++;return {action,reply:'已分析',name:'荷塘夏日主题界面'}},onName:(name,before,isCurrent)=>a.applySemanticTitle(env,before,name,isCurrent),execute:async(p,before)=>{executed++;assert.equal(before.title,'荷塘夏日主题界面')}});
+  await flow.send('分析图片内容','codex','');assert.equal(d.title,'荷塘夏日主题界面');assert.equal(d._titleSource,'ai');assert.equal(requests,1);assert.equal(names,1);assert.equal(executed,action==='discuss'?0:1);
+ }
+ let current={...doc(),title:'gd-hbimg-edge',_titleSource:'import'},release,named=0;const before=structuredClone(current),env={get:()=>current,commit:async fn=>{await new Promise(r=>release=r);fn();named++}};
+ const pending=a.applySemanticTitle(env,before,'荷塘夏日主题界面',()=>current._projectId==='p');current={...doc(),_projectId:'another',title:'Other',_titleSource:'manual'};release();await pending;assert.equal(current.title,'Other');assert.equal(before.title,'gd-hbimg-edge');assert.equal(named,1);
+});
+
+test('target pixels changed during asynchronous content naming never enter generated execution',async()=>{
+ const a=api(),d={...doc(),title:'gd-hbimg-edge',_titleSource:'import'};let resume,entered,executed=0;const ready=new Promise(r=>entered=r);
+ const flow=a.createFlow({get:()=>d,ids:()=>['a'],request:async()=>({action:'generate',reply:'开始',name:'荷塘背景'}),onName:async()=>{entered();await new Promise(r=>resume=r)},execute:async()=>executed++});
+ const pending=flow.send('生成背景','codex','');await ready;d.nodes[0].src='user-new-pixels';resume();await assert.rejects(pending,/改变|切换/);assert.equal(executed,0);
+});

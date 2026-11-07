@@ -1,19 +1,21 @@
 /* Shared geometry, local project library and selected-layer exports. */
 window.StudioBase=(()=>{
  const clone=v=>structuredClone(v),id=()=>crypto.randomUUID();
+ function prepareImportedProject(doc){const copy=clone(doc);if(!copy||typeof copy!=='object'||Array.isArray(copy))throw Error('导入工程文档无效');copy._projectId=id();return copy}
  const recoveryTime=entry=>{for(const key of ['persistedAt','updated','savedAt']){const value=entry?.[key];if(typeof value!=='number'&&typeof value!=='string')continue;if(value==='')continue;const time=typeof value==='number'?value:Date.parse(value);if(Number.isFinite(time)&&time>0&&Number.isFinite(new Date(time).getTime()))return time}return null};
  const bounds=items=>{if(!items.length)return null;const x=Math.min(...items.map(b=>b.x)),y=Math.min(...items.map(b=>b.y));return {x,y,width:Math.max(.01,Math.max(...items.map(b=>b.x+b.width))-x),height:Math.max(.01,Math.max(...items.map(b=>b.y+b.height))-y)}};
  const overlap=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const memory=ShijieSession.library,hidden=new Set(),persisted=new Map(),retired=new Map();let writeQueue=Promise.resolve(),sequence=0;
  const localWeb=!!window.SHIJIE,sharedLocal=!!window.SHIJIE?.sharedCodex,projectOrigins=new Map();
+ const manualFiles=()=>sharedLocal&&!window.ShijieBrowserProjects?.supported();
  let legacyLoaded=false,localLoaded=false,activeDirectory=null,directoryEpoch=0;
  function clearLocalEntries(){for(const [key,value] of memory)if(value.source==='local-disk')memory.delete(key);for(const [key,value] of persisted)if(value.source==='local-disk')persisted.delete(key)}
  const localError=e=>Error((sharedLocal?'本地工程目录不可用：':'服务器工程库不可用：')+(e?.message||(sharedLocal?'请选择自己电脑上的工程文件夹':'请连接服务器后重试'))+'。当前编辑仍在页面中，可导出工程文件。');
  function sameDoc(a,b){if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;if(Array.isArray(a)!==Array.isArray(b))return false;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&sameDoc(a[k],b[k]))}
- async function restoreSaved(){if(localWeb&&legacyLoaded)return;try{for(const p of await ShijieSession.legacySaved()){if(!persisted.has(p.id)&&!retired.has(p.id))persisted.set(p.id,clone(p));if(!hidden.has(p.id)&&!memory.has(p.id)){const entry=clone(p);if(localWeb)entry.source='browser-legacy';if(entry.doc)entry.doc._projectId=entry.id;memory.set(entry.id,entry)}}legacyLoaded=true;ShijieSession.legacyLibraryError=null}catch(e){if(!localWeb)throw e;ShijieSession.legacyLibraryError=e.message}}
+ async function restoreSaved(){if(manualFiles()||localWeb&&legacyLoaded)return;try{for(const p of await ShijieSession.legacySaved()){if(!persisted.has(p.id)&&!retired.has(p.id))persisted.set(p.id,clone(p));if(!hidden.has(p.id)&&!memory.has(p.id)){const entry=clone(p);if(localWeb)entry.source='browser-legacy';if(entry.doc)entry.doc._projectId=entry.id;memory.set(entry.id,entry)}}legacyLoaded=true;ShijieSession.legacyLibraryError=null}catch(e){if(!localWeb)throw e;ShijieSession.legacyLibraryError=e.message}}
  async function localProjects(refresh=false){
-  if(!localWeb||localLoaded&&!refresh&&!sharedLocal)return;
+  if(manualFiles()){ShijieSession.localLibraryError=null;return}if(!localWeb||localLoaded&&!refresh&&!sharedLocal)return;
   try{
    if(!window.ShijieSmartSplit?.savedProjects)throw Error('服务器需要更新');
    const epoch=directoryEpoch,observed=new Map(memory),data=await ShijieSmartSplit.savedProjects();
@@ -35,10 +37,25 @@ window.StudioBase=(()=>{
    localLoaded=true;ShijieSession.localLibraryError=data.unreadable?'所选目录中有 '+data.unreadable+' 个工程文件无法读取，原文件已保留。':null;
   }catch(e){ShijieSession.localLibraryError=e.message;throw localError(e)}
  }
- async function deliveries(){if(!window.ShijieSmartSplit?.projects)return;try{const data=await ShijieSmartSplit.projects();ShijieSession.libraryError=null;for(const p of data.items||[])if(!hidden.has(p.id)&&!memory.has(p.id))memory.set(p.id,{...p,kind:p.kind||'image',saveMode:'saved',source:'delivery',revision:p.revision||String(p.updated||0)})}catch(e){ShijieSession.libraryError=e.message}}
+ async function deliveries(){if(manualFiles()||!window.ShijieSmartSplit?.projects)return;try{const data=await ShijieSmartSplit.projects();ShijieSession.libraryError=null;for(const p of data.items||[])if(!hidden.has(p.id)&&!memory.has(p.id))memory.set(p.id,{...p,kind:p.kind||'image',saveMode:'saved',source:'delivery',revision:p.revision||String(p.updated||0)})}catch(e){ShijieSession.libraryError=e.message}}
  function expectedVersion(key){const old=retired.get(key);return old?{version:old.version,allowMissing:old.version===old.removedVersion}:persisted.get(key)?.persistedVersion||persisted.get(key)?.revision||null}
  function retire(removed){if(!removed)return;const known=persisted.get(removed.id),old=retired.get(removed.id),version=known?.persistedVersion||known?.revision||old?.version||null;retired.set(removed.id,{version,removedVersion:removed.version});persisted.delete(removed.id)}
+ function memoryEntry(doc,kind){
+  if(!doc._projectId)doc._projectId=id();
+  const snapshot=clone(doc),entry={id:doc._projectId,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,source:'manual-export',saveMode:'unsaved',manualExportRequired:true};
+  hidden.delete(entry.id);memory.set(entry.id,entry);return entry;
+ }
  const library={
+  get requiresManualExport(){return manualFiles()},
+  matchesExport(doc,entry){return !!entry&&sameDoc(doc,entry.doc)},
+  stageExport(doc,kind){if(!manualFiles())throw Error('当前入口使用工程库保存');return clone(memoryEntry(doc,kind))},
+  confirmExport(entry){
+   if(!manualFiles()||entry?.source!=='manual-export'||!entry.doc||entry.doc._projectId!==entry.id)throw Error('导出确认无效');
+   const previous=persisted.get(entry.id);if(previous?.sequence>entry.sequence)return;
+   const saved={...clone(entry),saveMode:'saved',manualExportRequired:false,savedAt:Date.now(),userConfirmed:true};persisted.set(entry.id,saved);
+   if(memory.get(entry.id)?.sequence===entry.sequence)memory.set(entry.id,saved);
+  },
+  hasPendingExports(){return manualFiles()&&[...memory.values()].some(entry=>entry.source==='manual-export'&&library.isDirty(entry.doc))},
   get canConnectDirectory(){return sharedLocal&&!!window.ShijieBrowserProjects?.supported()},
   directory:()=>activeDirectory,
   directoryName:()=>sharedLocal?window.ShijieBrowserProjects?.directoryName()||'':activeDirectory,
@@ -69,6 +86,8 @@ window.StudioBase=(()=>{
   put(doc,kind,options={}){
    // Only explicit saves and named checkpoints may write.
    if(options.manual!==true&&options.checkpoint!==true)return Promise.resolve(undefined);
+   // HTTP cannot grant directory writes. Retain complete results in RAM without claiming persistence.
+   if(manualFiles())return Promise.resolve(clone(memoryEntry(doc,kind)));
    if(!doc._projectId)doc._projectId=id();const requestedDirectory=activeDirectory,snapshot=clone(doc),key=doc._projectId,entry={id:key,kind,title:snapshot.title||'未命名工程',updated:Date.now(),sequence:++sequence,revision:id(),doc:snapshot,saveMode:'saved',savedAt:Date.now()};
    const task=writeQueue.catch(()=>{}).then(async()=>{
     if(window.ProjectThumbnail?.render){try{entry.thumbnail=await ProjectThumbnail.render({kind,doc:snapshot});entry.thumbnailRevision=entry.revision}catch(error){entry.coverWarning='封面未生成：'+String(error.message||error).slice(0,160)}}
@@ -78,7 +97,7 @@ window.StudioBase=(()=>{
   },
   remove(key){
    const entry=memory.get(key),requestedDirectory=activeDirectory,seq=++sequence;const task=writeQueue.catch(()=>{}).then(async()=>{
-    await restoreSaved();if(entry?.source==='local-disk'){try{if(requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请刷新后重试');await ShijieSmartSplit.deleteSavedProject(key,entry.persistedVersion,requestedDirectory);persisted.delete(key)}catch(e){throw localError(e)}}else if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
+    await restoreSaved();if(manualFiles()||entry?.source==='manual-export'){persisted.delete(key)}else if(entry?.source==='local-disk'){try{if(requestedDirectory!==activeDirectory)throw Error('工程目录已切换，请刷新后重试');await ShijieSmartSplit.deleteSavedProject(key,entry.persistedVersion,requestedDirectory);persisted.delete(key)}catch(e){throw localError(e)}}else if(entry?.source!=='delivery'){const removed=await ShijieSession.removeManual(key,expectedVersion(key));retire(removed)}
     const current=memory.get(key);if(!current||!Number.isFinite(current.sequence)||current.sequence<=seq){hidden.add(key);memory.delete(key)}
    });writeQueue=task;return task;
   },
@@ -100,5 +119,5 @@ window.StudioBase=(()=>{
   function layer(n){if(n.hidden)return '';let body;if(n.children)body=n.children.map(layer).join('');else if(n.text){const t=n.text,st=t.style||{};function attributes(style){const font=style.font?.name||'Arial',family=/NotoSerifCJKsc/i.test(font)?'Noto Serif CJK SC':/NotoSansCJKsc/i.test(font)?'Noto Sans CJK SC':/LiberationSerif/i.test(font)?'Liberation Serif':/LiberationSans/i.test(font)?'Liberation Sans':/MicrosoftYaHei/.test(font)?'Microsoft YaHei':/ArialNarrow/i.test(font)?'Arial Narrow':/Impact/i.test(font)?'Impact':/Haettenschweiler/i.test(font)?'Haettenschweiler':/Arial/.test(font)?'Arial':/TimesNewRoman/.test(font)?'Times New Roman':/SegoeUIEmoji/.test(font)?'Segoe UI Emoji':/SegoeUISymbol/.test(font)?'Segoe UI Symbol':/SegoeUI/.test(font)?'Segoe UI':font;return 'font-family="'+escape(family)+'" font-size="'+(style.fontSize||14)+'" font-weight="'+(/Bold/.test(font)||style.fauxBold?700:400)+'" font-style="'+(/Italic/.test(font)||style.fauxItalic?'italic':'normal')+'" letter-spacing="'+(style.tracking||0)*(style.fontSize||14)/1000+'"';}let content=escape(t.text);if(t.styleRuns?.length){let offset=0;content=t.styleRuns.map(r=>{const text=t.text.slice(offset,offset+r.length);offset+=r.length;return '<tspan '+attributes({...st,...r.style})+'>'+escape(text)+'</tspan>'}).join('');}body='<text transform="matrix('+(t.transform||[1,0,0,1,n.left,n.top]).join(' ')+')" '+attributes(st)+' text-decoration="'+[st.underline?'underline':'',st.strikethrough?'line-through':''].filter(Boolean).join(' ')+'" fill="'+rgb(st.fillColor)+'" xml:space="preserve">'+content+'</text>';body=clips(body,n.vectorMask?.paths||[])} else if(n.vectorFill||n.vectorStroke){const paths=n.vectorMask?.paths||[],base=paths.filter(p=>p.operation!=='intersect'),inter=paths.filter(p=>p.operation==='intersect');if(n.vectorStroke?.strokeEnabled){const s=n.vectorStroke;body=`<path d="${base.map(path).join(' ')}" fill="none" stroke="${rgb(s.content?.color)}" stroke-width="${s.lineWidth?.value||1}" stroke-linecap="${s.lineCapType||'butt'}" stroke-linejoin="${s.lineJoinType||'miter'}"/>`}else{const key='mask-'+(++seq);defs.push(`<mask id="${key}" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="black"/>${base.map(p=>`<path d="${path(p)}" fill="${p.operation==='subtract'?'black':'white'}" fill-rule="${p.fillRule==='even-odd'?'evenodd':'nonzero'}"/>`).join('')}</mask>`);body=`<rect width="${w}" height="${h}" fill="${fill(n)}" mask="url(#${key})"/>`}body=clips(body,inter)}else if(n.canvas)body=`<image x="${n.left||0}" y="${n.top||0}" width="${n.canvas.width}" height="${n.canvas.height}" href="${n.canvas.toDataURL('image/png')}"/>`;else body='';if(n.effects||n._displayMask||n.blendMode&&n.blendMode!=='normal'){const runtime=window.ShijieLayerStyle;if(!runtime)throw Error('样式渲染尚未加载，请重试');body=runtime.styleSvg(body,{id:'export-'+(++seq),layerStyle:runtime.nativeToStyle(n.effects,n.blendMode)||{blendMode:n.blendMode||'normal'},displayMask:n._displayMask},layerBounds(n));}return `<g opacity="${n.opacity??1}" data-name="${escape(n.name)}">${body}</g>`}
   const body=render.psd.children.map(layer).join('');return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${defs.join('')}</defs>${body}</svg>`;
  }
- return {clone,id,bounds,overlap,escape,library,snap,renderedSVG,recoveryTime,splitBaseline};
+ return {clone,id,prepareImportedProject,bounds,overlap,escape,library,snap,renderedSVG,recoveryTime,splitBaseline};
 })();

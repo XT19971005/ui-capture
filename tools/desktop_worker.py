@@ -203,9 +203,27 @@ class DesktopWorker:
                 if response.status_code!=200 or not response.json().get('ack'):raise RuntimeError('PSD 尚未回传成功，已保存在本机等待重传')
         return True
     def recover_outbox(self):
-        for receipt in sorted((self.state/'jobs').glob('*/receipt.json')):
+        waiting=[]
+        for receipt in (self.state/'jobs').glob('*/receipt.json'):
             value=json.loads(receipt.read_text('utf8'))
+            waiting.append((value.get('retryAfter',0),str(receipt),receipt,value))
+        # One due result per cycle bounds recovery work. Oldest retry first also
+        # lets another user's results pass a repeatedly failing delivery.
+        for retry_at,_,receipt,value in sorted(waiting):
+            if retry_at>time.time():continue
             self.handle({'id':receipt.parent.name,'lease':value['lease']})
+            break
+    def defer_delivery(self,folder,job):
+        if not job.get('run'):
+            raise RuntimeError('旧待回传任务缺少执行许可，保留本机结果并暂停接单')
+        response=self.remote('update',{key:job[key] for key in ('id','lease','run')}|{'status':'delivery-pending'})
+        if response.get('ack'):
+            self.discard(folder)
+        elif response.get('deferred'):
+            receipt=folder/'receipt.json';saved=json.loads(receipt.read_text('utf8'))
+            atomic_json(receipt,{**saved,'retryAfter':time.time()+60})
+        else:
+            raise RuntimeError('服务器尚未确认待回传状态，保留本机结果并暂停接单')
     def handle(self,job):
         ident=str(UUID(job['id']))
         if ident!=job['id'] or not isinstance(job.get('lease'),str) or not 1<=len(job['lease'])<=64:raise ValueError('接单标识无效')
@@ -247,8 +265,14 @@ class DesktopWorker:
                         time.sleep(2)
                 finally:
                     if tree:tree.close()
-        self.upload_psd(folder,job)
-        response=self.remote('update',self.packet(folder,job,terminal=True))
+        try:
+            self.upload_psd(folder,job)
+            response=self.remote('update',self.packet(folder,job,terminal=True))
+        except (requests.RequestException,ValueError,RuntimeError,OSError):
+            # Defer must be confirmed before another job can start. The receipt
+            # always prevents another model execution, including after restart.
+            self.defer_delivery(folder,job)
+            return
         if response.get('ack'):self.discard(folder)
         else:raise RuntimeError('服务器尚未确认结果，已保存在本机等待回传')
     def run(self):
@@ -265,7 +289,8 @@ class DesktopWorker:
                     self.recover_outbox()
                     response=self.remote('claim',{})
                     if response.get('job'):self.handle(response['job'])
-                    atomic_json(self.state/'status.json',{'connected':True,'ready':self.capabilities['ready'],'heartbeat':time.time()})
+                    atomic_json(self.state/'status.json',{'connected':True,'ready':self.capabilities['ready'],'heartbeat':time.time(),
+                        'pendingDelivery':sum(1 for _ in (self.state/'jobs').glob('*/receipt.json'))})
                 except (requests.RequestException,ValueError,RuntimeError,OSError):
                     atomic_json(self.state/'status.json',{'connected':False,'ready':False,'heartbeat':time.time()})
                 time.sleep(3)
@@ -281,9 +306,9 @@ def login_cache():
     return Path.home()/'.codex/auth.json'
 
 
-def configure(state):
-    url=service_url(input('共享网站地址（例如 https://你的域名/shijie）：').strip())
-    token=getpass.getpass('管理员页面生成的配对码（输入不显示）：').strip()
+def configure(state, url=None, token=None):
+    url=service_url(url if url is not None else input('共享网站地址（例如 https://你的域名/shijie）：').strip())
+    token=token if token is not None else getpass.getpass('管理员页面生成的配对码（输入不显示）：').strip()
     if not 32<=len(token)<=256:raise ValueError('配对码格式无效')
     auth=login_cache()
     if not auth.is_file():raise ValueError('没有找到本机 Codex 文件登录缓存，请先在本机完成 Codex CLI 登录')

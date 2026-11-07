@@ -71,13 +71,26 @@
    candidate._projectId=live._projectId;candidate._assistantChat=clone(live._assistantChat);candidate._assistantCandidates=records(live).filter(r=>r.id!==record.id);
    ShijieScene.validate(candidate);
    const rollback=clone(live);try{await studio.adapter.restore(candidate);await studio.adapter.finish(rollback,'应用已保存候选')}catch(error){try{await studio.adapter.restore(rollback)}catch(rollbackError){throw Error(error.message+'；恢复当前工程失败：'+rollbackError.message+'；候选仍保留在保存工程中')}throw error}applied=true;if(record.completeSplit)studio.setInitial(studio.adapter.get(),{completedSplit:true});
-   try{await studio.saveCheckpoint('确认应用候选');studio.adapter.status('候选已应用并保存，可撤销')}catch(e){studio.adapter.status('候选已应用但保存失败：'+e.message+'；请重试保存')}
+   try{await studio.saveCheckpoint('确认应用候选');studio.adapter.status(window.StudioBase?.library?.requiresManualExport?'候选已应用，可撤销；请导出工程保存到本机。':'候选已应用并保存，可撤销')}catch(e){studio.adapter.status('候选已应用但保存失败：'+e.message+'；请重试保存')}
    ShijieCanvasComparison.close();render();
    }finally{applying=applyingRecord=false;setBusy(false);studio.sync(false)}
   },discard:()=>ShijieCanvasComparison.close()});
  }
+ // Generated rasters always become new root layers; the existing artwork is immutable.
+ function appendImages(current,generated,ids,uuid=()=>crypto.randomUUID()){
+  if(!current?.nodes||!generated?.nodes)throw Error('生成结果缺少完整图片工程');
+  const next=clone(current),chosen=new Set(ids),used=new Set([...current.nodes,...(current.groups||[])].map(n=>n.id)),added=[];
+  for(const n of generated.nodes){if(n.type!=='image'||!n.src||!chosen.has(n.id)||n.versionArchived)continue;const item=clone(n);let id=uuid();if(used.has(id))throw Error('新图片图层标识重复，未添加');used.add(id);Object.assign(item,{id,name:String(n.name||'图片')+' · 生成',provenance:'generated-image',locked:false,visible:true,hidden:false,review:true,assetReviewStatus:'NOT_REVIEWED'});for(const key of ['versionArchived','versionArchivedAt','versionOf','imageReplacement','_sourceAnnotations','pendingGeneration'])delete item[key];next.nodes.push(item);added.push(id)}
+  if(!added.length)throw Error('没有可添加的新图片');delete next._sessionId;delete next.delivery;return {scene:next,ids:added};
+ }
+ // Only the result of the current user-started task enters this path. Restored candidates remain passive.
+ async function applyFresh({isCurrent,apply,save,retain}){
+  try{if(!isCurrent())throw Error('操作已停止，或工程/选择已改变，生成结果未自动应用');await apply()}
+  catch(error){try{await retain?.()}catch(saveError){error.message+='；候选保存失败：'+saveError.message+'；结果仍在本页，请重试保存'}throw error}
+  try{await save();return {applied:true,saveError:''}}catch(error){return {applied:true,saveError:error.message}}
+ }
  async function retry(id){const blank=blankDrafts.get(id);if(blank){await StudioBase.library.put(blank,'image',{checkpoint:true});return records(blank).find(r=>r.id===id)}await window.studio.saveCheckpoint('重试保存候选');return records(window.studio.adapter.get()).find(r=>r.id===id)}
- window.ShijieCandidateStore={retain,records,signature,render,preview,remove,retry,savedBase:id=>clone(blankDrafts.get(id))};
+ window.ShijieCandidateStore={appendImages,applyFresh,retain,records,signature,render,preview,remove,retry,savedBase:id=>clone(blankDrafts.get(id))};
  if(typeof document==='undefined')return;
  document.addEventListener('DOMContentLoaded',()=>{const old=updateButtons;updateButtons=function(...args){const result=old.apply(this,args);render();return result};render()},{once:true});
 })();

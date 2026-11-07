@@ -8,3 +8,4 @@ package = false
 
 [dependency-groups]
 mcp = ["mcp==1.30.0"]
+desktop = ["waitress==3.0.2"]

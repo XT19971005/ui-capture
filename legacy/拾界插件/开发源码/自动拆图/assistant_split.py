@@ -1,5 +1,5 @@
 """User-directed transparent layers, generated once in explicit back-to-front order."""
-import copy,math,uuid,time
+import copy,math,re,uuid,time
 from datetime import datetime,timezone
 from engine import load_source
 

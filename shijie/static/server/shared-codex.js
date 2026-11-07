@@ -1,4 +1,8 @@
 'use strict';
+if(window.SHIJIE?.sharedCodex){
+ const useSharedEngine=()=>{const engine=document.getElementById('split-engine');if(!engine)return;engine.replaceChildren(new Option('Codex 共享服务','codex'));engine.value='codex';engine.hidden=true;engine.style.display='none';engine.setAttribute('aria-hidden','true')};
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',useSharedEngine,{once:true});else useSharedEngine();
+}
 window.ShijieSharedCodexSettings=button=>{
  const panel=document.createElement('dialog');panel.className='codex-dialog shared-ai-settings';panel.setAttribute('aria-label','共享模型');
  panel.innerHTML='<form method="dialog"><strong>共享模型</strong><button aria-label="关闭共享模型">×</button></form><section><h3>本机 Codex 共享服务</h3><p>由管理员的电脑统一处理任务，无需登录 Codex 或填写 Key。</p><p data-status role="status"></p><label>分析模型<select data-model></select></label><p data-images></p></section><footer><button type="button" data-refresh>检查服务</button><button type="button" data-apply class="primary">应用模型</button><span data-result role="status"></span></footer>';

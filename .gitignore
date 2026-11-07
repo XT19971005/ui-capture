@@ -12,3 +12,5 @@ runtime.local.json
 output/
 .playwright-cli/
 legacy/拾界插件/自检记录/
+# Distributable embeds the explicitly shared LAN access code; never publish it in Git.
+/同事启动器/

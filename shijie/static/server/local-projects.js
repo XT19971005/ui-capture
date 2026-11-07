@@ -2,11 +2,11 @@
 'use strict';
 (() => {
   if (!window.SHIJIE?.sharedCodex) return;
-  const owner = String(SHIJIE.user), store = 'directories', extension = '.shijie-project';
+  const owner = String(SHIJIE.user), store = 'directories', extension = '.aisplit-project', legacyExtension = '.shijie-project';
   // One origin-wide lock also covers two accounts explicitly choosing the same folder.
   const lockName = 'shijie-browser-project-files-v1', headerLimit = 65536, fileLimit = 276 * 1024 * 1024;
   let database, selection = null;
-  const unsupported = '本地工程目录需要 HTTPS 下的新版 Chrome 或 Edge；当前浏览器不可连接目录，请使用“导出工程”和“导入外部工程”手动保存与打开。';
+  const unsupported = '当前使用手动文件模式：点击“导出工程”下载到自己电脑，下次用“导入外部工程”打开。生成结果仅在本页保留，刷新或关闭前请完成下载。HTTPS 下的新版 Chrome / Edge 可连接本机文件夹。';
   const conflict = () => Error('工程已在另一个页面更新或删除；当前修改仍在页面中，请重新打开或导出工程副本。');
   const directoryChanged = () => Error('工程目录已切换，请刷新列表并确认保存位置；当前修改仍在页面中。');
   function supported() {
@@ -92,7 +92,7 @@
     let unreadable = 0;
     for await (const [name, fileHandle] of handle.entries()) {
       names.add(name.toLocaleLowerCase());
-      if (fileHandle.kind !== 'file' || !name.endsWith(extension)) continue;
+      if (fileHandle.kind !== 'file' || ![extension, legacyExtension].some(suffix => name.toLocaleLowerCase().endsWith(suffix))) continue;
       try {
         const {meta} = await readHeader(await fileHandle.getFile()), old = projects.get(meta.id);
         if (!old || meta.updated > old.meta.updated || meta.updated === old.meta.updated && name > old.name)
@@ -136,7 +136,9 @@
       return ShijieProjectCodec.decode({format: 'shijie-project', version: 1, doc: value.job, images: value.images});
     return value;
   }
-  function filename(title, names, previous) {
+  function filename(title, names, previous, renameLegacy = false) {
+    // Ordinary saves keep legacy paths. Only a user or AI title change migrates that one file.
+    if (previous?.name.toLocaleLowerCase().endsWith(legacyExtension) && !renameLegacy) return previous.name;
     let base = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/^[ .]+|[ .]+$/g, '').slice(0, 80).replace(/[ .]+$/g, '') || '未命名工程';
     if (/^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(base.split('.')[0].trim())) base = '工程_' + base;
     for (let i = 1; ; i++) {
@@ -176,7 +178,7 @@
     await current(folder.id);
     const latest = await entries(folder.handle);
     checkVersion(latest.projects.get(ident), record._expectedVersion);
-    const name = filename(record.title, latest.names, latest.projects.get(ident));
+    const name = filename(record.title, latest.names, latest.projects.get(ident), ['manual', 'ai'].includes(record.doc._titleSource) && record.title !== previous?.meta.title);
     const created = !latest.names.has(name.toLocaleLowerCase());
     const target = await folder.handle.getFileHandle(name, {create: true});
     let writer;

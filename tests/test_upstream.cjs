@@ -45,7 +45,7 @@ test('re-splitting archives only the chosen layer and preserves position, parent
  assert.throws(()=>a.mergeLayerSplit(original,{...node,width:120},{nodes:[]},100,80),/非等比/);
 });
 function autosave(){const source=fs.readFileSync(path.join(edge,'studio.js'),'utf8'),timers=new Map(),writes=[];let ident=0,doc={_projectId:'p',revision:0},saved=0,fail=false,blocked=false;
- const c={a:{get:()=>doc,status(){}},B:{id:()=> 'id',library:{isDirty:d=>d.revision!==saved,directory:()=>'/user/projects',put:async(d,o,opts)=>{writes.push({doc:d,opts});if(fail)throw Error('磁盘已满');saved=d.revision;return {}}}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(e){c.error=e.message},autoDirectories:new Map(),autoSaving:false,restoringProject:false,busy:()=>blocked,setTimeout:fn=>{timers.set(++ident,fn);return ident},clearTimeout:id=>timers.delete(id),saveTimer:null};
+ const c={reloadRecovery:null,a:{get:()=>doc,status(){}},B:{id:()=> 'id',library:{isDirty:d=>d.revision!==saved,directory:()=>'/user/projects',put:async(d,o,opts)=>{writes.push({doc:d,opts});if(fail)throw Error('磁盘已满');saved=d.revision;return {}}}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(e){c.error=e.message},autoDirectories:new Map(),autoSaving:false,restoringProject:false,busy:()=>blocked,setTimeout:fn=>{timers.set(++ident,fn);return ident},clearTimeout:id=>timers.delete(id),saveTimer:null};
  vm.runInNewContext(source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function sync('))+';this.save=save;',c);
  vm.runInNewContext(source.slice(source.indexOf(' async function saveCheckpoint('),source.indexOf(' async function saveCheckpoint(')+source.slice(source.indexOf(' async function saveCheckpoint(')).indexOf('\n }')+3)+';this.saveCheckpoint=saveCheckpoint;',c);
  return {c,writes,edit:()=>doc.revision++,switch:()=>doc={_projectId:'other',revision:2},fail:()=>fail=true,block:()=>blocked=true,async tick(){const queued=[...timers.values()];timers.clear();for(const fn of queued)await fn()},get pending(){return timers.size}};
@@ -63,7 +63,7 @@ function expansionHarness(){
  c.document={createElement:()=>canvas.createCanvas(1,1)};
  c.Image=class extends canvas.Image{constructor(){super();this.ready=new Promise((resolve,reject)=>{this.onload=resolve;this.onerror=reject});this.ready.catch(()=>{})}set src(v){super.src=v.startsWith('data:image/svg+xml;charset=utf-8,')?Buffer.from(decodeURIComponent(v.split(',').slice(1).join(','))):v}decode(){return this.ready}};
  c.ShijieLayerStyle=require('../legacy/技能包/game-ui-to-psd/scripts/style_runtime.cjs');
- return {api:c.ShijieImageReplacement,canvas};
+ return {api:c.ShijieImageReplacement,canvas,scope:c};
 }
 test('canvas expansion ignores transparent padding and hidden groups without altering any asset pixels',async()=>{
  const {api,canvas}=expansionHarness(),asset=canvas.createCanvas(400,400);asset.getContext('2d').fillRect(100,100,50,80);const src=asset.toDataURL('image/png');
@@ -136,4 +136,87 @@ test('expanded split preview puts the original at the same origin and scale as t
  const before=candidate.comparisonSource;
  const im=await canvas.loadImage(before);assert.deepEqual([im.width,im.height],[30,26]);
  const out=canvas.createCanvas(30,26),cx=out.getContext('2d');cx.drawImage(im,0,0);assert.deepEqual([...cx.getImageData(10,6,1,1).data],[51,102,153,255]);assert.equal(cx.getImageData(0,0,1,1).data[3],0);assert.deepEqual([candidate.nodes[0].x,candidate.nodes[0].y],[0,0]);assert.equal(doc.width,20);
+});
+
+
+test('background and outpaint append results without changing old layers, source, split state or baseline',async()=>{
+ for(const action of ['background','outpaint']){
+  const a=helpers().ShijieFreeAssistant,original={_projectId:'append',width:100,height:80,source:'old-ui',comparisonSource:'old-ui',_partial:true,_splitBaseline:{version:1,scene:{title:'first completed split'}},recognition:{extractionStatus:'INCOMPLETE',timing:{elapsedMs:123}},nodes:[{id:'old',type:'image',src:'old-ui',x:0,y:0,width:100,height:80,visible:true,locked:false}],groups:[],edges:[]};
+  let current=structuredClone(original),grows=0,completed=0,saved=0;
+  const receive=a.createLayerReceiver({get:()=>current,grow:async()=>grows++,commit:async(_,next)=>current=next,save:async()=>saved++,completed:()=>completed++},{base:structuredClone(original),scope:{node:null,width:100,height:80},appendOnly:true,action,seen:new Set(),groupId:'task'});
+  await receive({nodes:[{id:'new',type:'image',src:'clean-background',x:0,y:0,width:100,height:80}],recognition:{extractionStatus:'COMPLETED'}},true);
+  assert.deepEqual(plain(current.nodes.slice(0,1)),original.nodes);assert.equal(current.nodes.length,2);
+  for(const key of ['source','comparisonSource','_splitBaseline','_partial','recognition','width','height'])assert.deepEqual(plain(current[key]),original[key]);
+  assert.equal(completed,0);assert.equal(saved,1);
+ }
+});
+
+test('outpaint uses exactly the selected background pixels and verifies native dimensions and source hash',async()=>{
+ const a=helpers().ShijieFreeAssistant,hash=require('node:crypto').createHash('sha256').update('clean-background').digest('hex');
+ const doc={_projectId:'p',width:200,height:200,source:'old-ui',nodes:[{id:'clean',type:'image',src:'clean-background',x:20,y:30,width:80,height:60}]};
+ const plan={action:'outpaint',reference:'selection',targetIds:['clean'],layers:[{box:{x:0,y:0,width:80,height:100}}],outpaintSource:{id:'clean',sourceHash:hash,width:80,height:60}};
+ const source=await a.verifiedSplitSource(doc,['clean'],plan,async()=>({width:80,height:60}));
+ assert.equal(source.image,'clean-background');assert.equal(source.width,80);assert.equal(source.height,60);assert.equal(source.offsetY,20);
+ await assert.rejects(a.verifiedSplitSource(doc,[],plan,async()=>({width:80,height:60})),/选择.*背景/);
+ await assert.rejects(a.verifiedSplitSource(doc,['clean'],{...plan,reference:'original'},async()=>({width:80,height:60})),/选择.*背景/);
+ await assert.rejects(a.verifiedSplitSource(doc,['clean'],{...plan,outpaintSource:{...plan.outpaintSource,sourceHash:'0'.repeat(64)}},async()=>({width:80,height:60})),/改变|不符/);
+ await assert.rejects(a.verifiedSplitSource(doc,['clean'],plan,async()=>({width:80,height:61})),/尺寸|不符/);
+});
+
+
+test('outpaint rejects a resized or replaced selected background before appending late output',()=>{
+ const a=helpers().ShijieFreeAssistant,source={id:'background',type:'image',src:'clean',x:20,y:30,width:80,height:60},base={_projectId:'p',width:100,height:100,source:'old-ui',nodes:[source]},task={base:structuredClone(base),scope:{node:structuredClone(source),width:80,height:60,offsetX:0,offsetY:20},appendOnly:true,action:'outpaint',seen:new Set(),groupId:'outpaint'};
+ const result={nodes:[{id:'expanded',type:'image',src:'new',x:0,y:0,width:80,height:100}]};
+ const next=a.mergeGeneratedLayers(base,task,result);assert.deepEqual(plain(next.nodes[0]),source);assert.equal(next.nodes[1].y,10);
+ for(const change of [{width:81},{src:'edited'}]){const edited=structuredClone(base);Object.assign(edited.nodes[0],change);assert.throws(()=>a.mergeGeneratedLayers(edited,task,result),/背景.*改变/);assert.equal(edited.nodes.length,1);}
+});
+
+
+async function runAssistantBackground(action,{resizeDuringInspect=false}={}){
+ const a=helpers().ShijieFreeAssistant,old={_projectId:'background-project',title:'荷塘主题',width:100,height:80,source:'old-ui',comparisonSource:'old-ui',_splitBaseline:{version:1,scene:{title:'initial'}},recognition:{extractionStatus:'COMPLETED',timing:{elapsedMs:12}},nodes:[{id:'background',name:'干净荷塘背景',type:'image',src:'clean-background',x:0,y:0,width:100,height:80,visible:true,locked:false}],groups:[],edges:[]};
+ let current=structuredClone(old),requests=0,completed=0,grows=0;
+ const hash=require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),plan={action,name:'荷塘扩建',reference:action==='outpaint'?'selection':'original',targetIds:action==='outpaint'?['background']:[],layers:[{name:'荷塘背景',box:{x:0,y:0,width:100,height:100}}],outpaintSource:{id:'background',sourceHash:hash,width:100,height:80}};
+ const result={nodes:[{id:'fresh',name:'荷塘背景',type:'image',src:'new-background',x:0,y:0,width:100,height:100}],recognition:{extractionStatus:'COMPLETED'}};
+ const c={clone:structuredClone,equal:(left,right)=>JSON.stringify(left)===JSON.stringify(right),...Object.fromEntries(['targetCurrent','splitSource','createLayerReceiver','growGeneratedScene'].map(k=>[k,a[k]])),verifiedSplitSource:(d,ids,p)=>a.verifiedSplitSource(d,ids,p,async()=>{if(resizeDuringInspect)current.nodes[0].width=101;return {width:100,height:80}}),
+  timing:{split(){},stop:()=>({elapsedMs:5,understandingMs:1,totalMs:6})},notice:{},renderTiming(){},compactGenerated:async r=>r,flow:{recordOutcome(){}},splitTimingHistory:()=>[],
+  StudioBase:{id:()=> 'task'},window:{StudioBase:{library:{}}},ShijieImageReplacement:{growToFit:async()=>grows++},
+  studio:{ids:new Set(['background']),adapter:{get:()=>current,commit:async fn=>fn()},sync(){},saveCheckpoint:async()=>{},setInitial:()=>completed++},
+  ShijieSmartSplit:{assistantSplit:async(body,onProgress)=>{requests++;assert.equal(body.image,action==='outpaint'?'clean-background':'old-ui');assert.equal(body.width,100);assert.equal(body.height,80);await onProgress(.5,'已完成',null,{...structuredClone(result),_partial:true});return result}}};
+ const text=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8'),start=text.indexOf('execute:async(plan'),end=text.indexOf('\n }});',start);assert.ok(start>0&&end>start);const execute=vm.runInNewContext('({'+text.slice(start,end+3)+'})',c).execute;
+ let error;try{await execute(plan,structuredClone(old),['background'],[],()=>true)}catch(e){error=e}
+ return {old,current,requests,completed,grows,error};
+}
+test('actual assistant background routes append without changing old state while explicit split retains its lifecycle',async()=>{
+ for(const action of ['background','outpaint']){const r=await runAssistantBackground(action);assert.equal(r.error,undefined,r.error?.message);assert.equal(r.requests,1);assert.equal(r.current.nodes.length,2);assert.deepEqual(plain(r.current.nodes[0]),r.old.nodes[0]);for(const key of ['source','comparisonSource','_splitBaseline','recognition'])assert.deepEqual(plain(r.current[key]),r.old[key]);assert.equal(r.completed,0);}
+ const split=await runAssistantBackground('split');assert.equal(split.error,undefined,split.error?.message);assert.equal(split.current.nodes[0].hidden,true);assert.equal(split.completed,1);assert.ok(split.grows>0);
+});
+test('outpaint stops before generation if the selected background changes dimensions during source inspection',async()=>{
+ const r=await runAssistantBackground('outpaint',{resizeDuringInspect:true});assert.match(r.error?.message||'',/背景.*改变/);assert.equal(r.requests,0);assert.equal(r.current.nodes.length,1);
+});
+
+
+test('expanded generated replacement adds full new pixels with transparent canvas padding and one undo restores the intact project',async()=>{
+ const {api,canvas,scope}=expansionHarness();const savedDocument=scope.document;delete scope.document;vm.runInNewContext(fs.readFileSync(path.join(edge,'candidate-store.js'),'utf8'),scope);scope.document=savedDocument;
+ const original=canvas.createCanvas(100,100),expanded=canvas.createCanvas(120,120);original.getContext('2d').fillStyle='#336699';original.getContext('2d').fillRect(0,0,100,100);expanded.getContext('2d').fillStyle='#ff2200';expanded.getContext('2d').fillRect(0,0,120,120);
+ const src=original.toDataURL('image/png'),newSrc=expanded.toDataURL('image/png'),before={_projectId:'expanded',format:'shijie-scene',version:2,width:100,height:100,source:src,comparisonSource:src,originalSource:src,provenance:'user-image',_splitBaseline:{version:1,scene:{width:100,height:100,source:src}},nodes:[{id:'old',name:'原图',type:'image',src,x:0,y:0,width:100,height:100,visible:true,locked:true}],groups:[],edges:[]};
+ let current=structuredClone(before),locked=false;const history=[],result=structuredClone(before);Object.assign(result.nodes[0],{src:newSrc,x:-10,y:-10,width:120,height:120,imageReplacement:{expansion:{left:10,top:10,inputWidth:100,inputHeight:100,outputWidth:120,outputHeight:120}}});
+ const flow=api.createFlow({get:()=>current,ids:()=>['old'],busy:()=>locked,lock:value=>locked=value,request:async()=>result,release(){},commit:async(previous,next)=>{history.push(structuredClone(previous));current=next}});flow.open();await flow.generate({prompt:'删除标注并补齐完整边缘',task:'remove',annotations:{allowExpand:true,width:100,height:100}});await flow.add();
+ assert.deepEqual([current.width,current.height],[120,120]);assert.deepEqual([current.nodes[0].x,current.nodes[0].y],[10,10]);assert.equal(current.nodes[0].src,src);assert.equal(current.nodes[0].visible,true);assert.equal(current.nodes[0].locked,true);assert.equal(current.originalSource,src);assert.deepEqual(plain(current._splitBaseline),before._splitBaseline);
+ assert.deepEqual([current.nodes[1].x,current.nodes[1].y,current.nodes[1].width,current.nodes[1].height],[0,0,120,120]);assert.equal(current.nodes[1].src,newSrc);
+ const padded=await canvas.loadImage(current.source),pixels=canvas.createCanvas(120,120);pixels.getContext('2d').drawImage(padded,0,0);assert.equal(pixels.getContext('2d').getImageData(0,0,1,1).data[3],0);assert.deepEqual([...pixels.getContext('2d').getImageData(10,10,1,1).data],[51,102,153,255]);
+ assert.equal(history.length,1);current=history.pop();assert.deepEqual(current,before);
+});
+test('append-only outpaint expands transparently and accepts its own padding during final delivery without resetting baseline',async()=>{
+ const {api,canvas}=expansionHarness(),a=helpers().ShijieFreeAssistant,old=canvas.createCanvas(100,100),asset=canvas.createCanvas(120,120);old.getContext('2d').fillRect(0,0,100,100);asset.getContext('2d').fillRect(0,0,120,120);const src=old.toDataURL('image/png');
+ let current={_projectId:'p',format:'shijie-scene',version:2,width:100,height:100,source:src,originalSource:src,_splitBaseline:{version:1,scene:{width:100}},nodes:[{id:'old',type:'image',src,x:0,y:0,width:100,height:100,visible:true,locked:true}],groups:[],edges:[]};const before=structuredClone(current),task={base:structuredClone(current),scope:{node:structuredClone(current.nodes[0]),width:100,height:100,offsetX:10,offsetY:10},appendOnly:true,action:'outpaint',seen:new Set(),groupId:'task'};let completed=0;
+ const receive=a.createLayerReceiver({get:()=>current,grow:(next,ids)=>a.growGeneratedScene(next,ids,d=>api.growToFit(d)),commit:async(_,next)=>current=next,save:async()=>{},completed:()=>completed++},task),result={nodes:[{id:'expanded',type:'image',src:asset.toDataURL('image/png'),x:0,y:0,width:120,height:120}]};
+ await receive({...result,_partial:true});await receive(result,true);assert.deepEqual([current.width,current.height],[120,120]);assert.deepEqual([current.nodes[0].x,current.nodes[0].y],[10,10]);assert.deepEqual([current.nodes[1].x,current.nodes[1].y],[0,0]);assert.equal(current.nodes[0].src,src);assert.equal(current.nodes[0].visible,true);assert.equal(current.nodes[0].locked,true);assert.equal(current.originalSource,src);assert.deepEqual(plain(current._splitBaseline),before._splitBaseline);assert.equal(completed,0);
+});
+
+
+test('shared recovery opens task records even with a writable local folder instead of scanning its project library',async()=>{
+ const script=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8'),start=script.indexOf(' recoveryButton.onclick='),end=script.indexOf(' const choiceButtons=',start);assert.ok(start>0&&end>start);
+ for(const shared of [true,false]){let scanned=0;const opened=[],button={},notice={},c={busy:false,recoveryButton:button,notice,SHIJIE:{prefix:'/shijie',sharedCodex:shared},window:{SHIJIE:{prefix:'/shijie',sharedCodex:shared},StudioBase:{library:{requiresManualExport:false}},open:(...args)=>opened.push(args)},studio:{isBusy:()=>false,adapter:{get:()=>({_projectId:'p',nodes:[]})}},ShijieSmartSplit:{savedProjects:async()=>{scanned++;return {projects:[]}}}};
+  vm.runInNewContext(script.slice(start,end),c);await button.onclick();assert.equal(scanned,shared?0:1);assert.equal(opened.length,shared?1:0);if(shared)assert.deepEqual(opened[0],['/shijie/tasks/','_blank','noopener']);
+ }
 });

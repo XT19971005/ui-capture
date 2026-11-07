@@ -52,6 +52,7 @@
     return markup.replace(/<svg\b[^>]*>/, opening => opening + '<style>' + rules.join('') + '</style>');
   }
   window.ShijieService = {headers, request, portableArtwork,
+    holdPendingDelivery: doc => { const source = typeof doc === 'string' ? doc : doc?.comparisonSource || doc?.source; if (source) runningSnapshotSource = source; },
     // ponytail: hold this snapshot guard until its task is reopened, without
     // background polling. Source equality survives edits; new imports still work.
     isRunningSnapshot: doc => !!runningSnapshotSource && (doc?.comparisonSource || doc?.source) === runningSnapshotSource};
@@ -89,20 +90,20 @@
         const scene = state.result || state.partial || state.input;
         if (!scene) throw Error('任务暂未生成图层，请在任务记录中查看进度');
         if (scene.nodes?.some(node => node.generationRecord?.expandedCanvas)) await ShijieImageReplacement.growToFit(scene);
-        const active = ['queued', 'running'].includes(state.status);
-        runningSnapshotSource = active ? scene.comparisonSource || scene.source : null;
+        const active = ['queued', 'running'].includes(state.status), pending = state.deliveryPending === true;
+        runningSnapshotSource = active || pending ? scene.comparisonSource || scene.source : null;
         await studio.adapter.load(scene);
         studio.setInitial(scene);
         studio.sync(true);
-        document.getElementById('status').textContent = active
+        document.getElementById('status').textContent = pending ? state.message || '已有结果保存在共享电脑等待回传，请稍后刷新任务记录，无需重新生成。' : active
           ? '后台任务仍在运行：' + (state.message || '等待处理') + '。当前是已完成图层的快照；请在任务记录中打开完成结果。'
           : state.input ? '已找回任务原图，尚未产生拆分结果；重新拆分将发起新任务。' : '已找回任务图层，编辑后请保存工程。';
-        if (active) {
+        if (active || pending) {
           const start = document.getElementById('recognize');
-          if (start) { start.textContent = '后台任务处理中'; start.disabled = true; }
-          window.splitFeedback?.('running', '后台任务处理中：' + (state.message || '等待处理') + '。当前显示已完成图层的快照。');
+          if (start) { start.textContent = pending ? '等待回传' : '后台任务处理中'; start.disabled = true; }
+          window.splitFeedback?.('running', pending ? document.getElementById('status').textContent : '后台任务处理中：' + (state.message || '等待处理') + '。当前显示已完成图层的快照。');
           const badge = document.querySelector('.document-bar .doc-tag');
-          if (badge) badge.textContent = '后台拆分中';
+          if (badge) badge.textContent = pending ? '等待回传' : '后台拆分中';
         }
       } catch (e) { document.getElementById('status').textContent = e.message; }
     }

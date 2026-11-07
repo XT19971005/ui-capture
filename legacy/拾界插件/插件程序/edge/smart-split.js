@@ -40,6 +40,7 @@ window.ShijieSmartSplit=(()=>{
   return JSON.stringify(wrapper);
  }
  const abortError=()=>new DOMException('已取消','AbortError');
+ function taskError(state,id){const error=Error(state.message);if(state.deliveryPending===true){error.deliveryPending=true;error.jobId=id}return error}
  function releaseCancelledOrderResult(run,state){
   if(!['repair-order','replace-image'].includes(run.mode)||state?.status!=='completed')return;
   for(const id of new Set([state.result?._sessionId,state.result?.delivery?.sessionId]))if(typeof id==='string'&&id&&!run.keptSessions.has(id)&&!run.releasedSessions.has(id)){run.releasedSessions.add(id);try{releaseSession({_sessionId:id})}catch(_){}}
@@ -68,7 +69,7 @@ window.ShijieSmartSplit=(()=>{
   }
  }
  async function run(image,title,onProgress=()=>{},original=image,resumeScene=null,options={}){
-  const mode=options?.mode||'codex';if(!['codex','local-layered','refine-ui','refine-selected','repair-order','replace-image'].includes(mode))throw Error('处理方式无效');if(active)throw Error('已有图片正在处理');const run={mode,cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set([resumeScene?._sessionId,resumeScene?.delivery?.sessionId]),releasedSessions:new Set()};active=run;
+  const mode=window.SHIJIE?.sharedCodex&&options?.mode==='local-layered'?'codex':options?.mode||'codex';if(!['codex','local-layered','refine-ui','refine-selected','repair-order','replace-image'].includes(mode))throw Error('处理方式无效');if(active)throw Error('已有图片正在处理');const run={mode,cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set([resumeScene?._sessionId,resumeScene?.delivery?.sessionId]),releasedSessions:new Set()};active=run;
   try{
    onProgress(.01,'正在连接服务器智能引擎…');const engine=await connect();if(run.cancelled)throw abortError();
    if(Array.isArray(engine.jobModes)&&!engine.jobModes.includes(mode))throw Error('服务器后端尚不支持当前操作，请更新并重新连接后重试；原工程已保留。');
@@ -90,7 +91,7 @@ window.ShijieSmartSplit=(()=>{
     if(run.cancelled){releaseCancelledOrderResult(run,state);throw abortError()}
     onProgress(state.progress,state.message,mode==='codex'?state.partial||null:null);
     if(state.status==='completed')return {...state.result,...(resumeScene?._splitBaseline?{_splitBaseline:resumeScene._splitBaseline}:{}),...(resumeScene?._splitDraftCore?{_splitDraftCore:resumeScene._splitDraftCore}:{})};
-    if(['failed','expired'].includes(state.status))throw Error(state.message);
+    if(['failed','expired'].includes(state.status))throw taskError(state,run.id);
     if(state.status==='cancelled')throw abortError();
     await new Promise(resolve=>setTimeout(resolve,700));
    }
@@ -103,7 +104,7 @@ window.ShijieSmartSplit=(()=>{
  async function assistant(body,onProgress=()=>{},split=false){
   if(active)throw Error('已有任务正在处理');const run={mode:'assistant',cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set(),releasedSessions:new Set()};active=run;
   try{connection=await nativeConnect();const capabilities=await request('/health');if(body.annotations&&capabilities.sourceAnnotationsVersion!==1)throw Error('当前引擎尚未加载原画标注更新，请等待任务结束后重启AI拆图助手');if(capabilities.freeAssistantVersion!==1||split&&capabilities.assistantSplitVersion!==1)throw Error('当前引擎尚未加载自由对话更新，请在正在运行的任务结束后重启AI拆图助手；工程没有修改');await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();const job=await request(split?'/assistant/split':'/assistant/jobs',{method:'POST',body:serializeJob(body,true)});run.id=job.id;
-   while(true){if(run.cancelled)throw abortError();const state=await request('/jobs/'+run.id+'?afterRevision='+(run.partialRevision||0));if(state.partial){run.partial=state.partial;run.partialRevision=state.partialRevision||run.partialRevision||0}if(run.cancelled){const error=abortError();if(run.partial)error.partial=run.partial;throw error}await onProgress(state.progress,state.message,state.previewText,state.partial);if(state.status==='completed')return state.result;if(state.status==='cancelled'){const error=abortError();if(run.partial)error.partial=run.partial;throw error}if(['failed','expired'].includes(state.status)){const error=Error(state.message);if(run.partial)error.partial=run.partial;throw error}await new Promise(r=>setTimeout(r,400))}
+   while(true){if(run.cancelled)throw abortError();const state=await request('/jobs/'+run.id+'?afterRevision='+(run.partialRevision||0));if(state.partial){run.partial=state.partial;run.partialRevision=state.partialRevision||run.partialRevision||0}if(run.cancelled){const error=abortError();if(run.partial)error.partial=run.partial;throw error}await onProgress(state.progress,state.message,state.previewText,state.partial);if(state.status==='completed')return state.result;if(state.status==='cancelled'){const error=abortError();if(run.partial)error.partial=run.partial;throw error}if(['failed','expired'].includes(state.status)){const error=taskError(state,run.id);if(run.partial)error.partial=run.partial;throw error}await new Promise(r=>setTimeout(r,400))}
   }finally{if(run.id&&!run.cancelled)await request('/jobs/'+run.id,{method:'DELETE'}).catch(()=>{});run.finished=true;if(active===run)active=null}
  }
  async function assistantModels(provider){connection=await nativeConnect();return request('/assistant/models?provider='+encodeURIComponent(provider))}

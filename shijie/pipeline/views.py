@@ -101,7 +101,7 @@ def engine(request, route):
     directory = '/users/' + str(owner.pk) + '/projects'
     from . import desktop_service
     desktop=desktop_service.current()
-    if desktop and desktop.enabled:
+    if getattr(settings,'LAN_SHARED',False) or desktop and desktop.enabled:
         state=desktop_service.model_state(desktop)
         if route=='saved-projects' or route.startswith('saved-projects/'):
             return error('共享模式的工程保存在使用者本地，请刷新网页并选择本地文件夹；当前编辑保留',409)
@@ -244,7 +244,9 @@ def engine(request, route):
             DesktopService.objects.get_or_create(pk=1)
             service=DesktopService.objects.select_for_update().get(pk=1)
             User.objects.select_for_update().get(pk=owner.pk)
-            if service.enabled and validated['mode']!='local-layered':
+            if getattr(settings,'LAN_SHARED',False) and validated['mode']=='local-layered':
+                return error('局域网共享使用本机 Codex，请选择共享拆分引擎',400)
+            if (service.enabled or getattr(settings,'LAN_SHARED',False)) and validated['mode']!='local-layered':
                 return desktop_service.enqueue(owner,value,validated,root,len(request.body),service)
             from . import ai, company, providers
             provider = 'local' if validated['mode'] == 'local-layered' else ai.selected_provider(owner)
@@ -310,6 +312,11 @@ def engine(request, route):
         if method == 'GET':
             return JsonResponse(job_data(job, include_result=True, include_input='afterRevision' not in request.GET))
         if method == 'DELETE':
+            if job.status=='delivery-pending':
+                # The browser also sends DELETE when a polling request ends.
+                # Preserve paid results; only the explicit purge action removes them.
+                return JsonResponse({'ok':True,'deliveryPending':True,
+                    'message':'生成已结束，结果保存在共享电脑等待回传；如需移除请删除任务'})
             Job.objects.filter(pk=job.pk, status__in=['queued', 'running']).update(cancel_requested=True)
             Job.objects.filter(pk=job.pk, status='queued').update(status='cancelled', message='已取消', finished_at=timezone.now())
             return JsonResponse({'ok': True})
@@ -332,9 +339,11 @@ def engine(request, route):
 
 
 def job_data(job, include_result=False, include_input=True):
-    value = {'id': str(job.pk), 'title': job.title, 'mode': job.mode, 'status': job.status,
+    pending=job.status=='delivery-pending'
+    value = {'id': str(job.pk), 'title': job.title, 'mode': job.mode, 'status': 'failed' if pending else job.status,
              'progress': job.progress, 'message': job.message, 'partialRevision': job.partial_revision,
              'created': job.created_at.isoformat()}
+    if pending:value['deliveryPending']=True
     if include_result:
         folder = job_root(job)
         try:
@@ -367,7 +376,7 @@ def page(request, page):
         return redirect(settings.PREFIX + '/image-editor.html')
     if page=='desktop-service/':
         if not is_admin(request.user):return error('只有管理员可以配置共享服务',403)
-        return render(request,'desktop-service.html',{'prefix':settings.PREFIX})
+        return render(request,'desktop-service.html',{'prefix':settings.PREFIX,'lan_shared':getattr(settings,'LAN_SHARED',False)})
     if page in ('users/', 'tasks/'):
         if page == 'users/' and not is_admin(request.user):
             return error('无权管理账号', 403)
@@ -380,7 +389,7 @@ def page(request, page):
     if path.suffix == '.html':
         html = path.read_text()
         from .desktop_service import public
-        shared='true' if public()['enabled'] else 'false'
+        shared='true' if getattr(settings,'LAN_SHARED',False) or public()['enabled'] else 'false'
         tag = '<script src="' + escape(settings.PREFIX) + '/static/server/bootstrap.js" data-prefix="' + escape(settings.PREFIX) + '" data-user="' + str(request.user.pk) + '" data-shared-codex="'+shared+'" data-csrf="' + get_token(request) + '"></script>'
         tag += '<link rel="stylesheet" href="' + escape(settings.PREFIX) + '/static/server/fonts.css">'
         if shared=='true':tag+='<script src="'+escape(settings.PREFIX)+'/static/server/shared-codex.js"></script><script src="'+escape(settings.PREFIX)+'/static/server/local-projects.js"></script>'

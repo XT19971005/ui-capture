@@ -161,3 +161,28 @@ class DiscussionChoiceTests(FreeAssistantTests):
    prompt=analyze.call_args.args[0]
    self.assertIn('nextStep=choose',prompt);self.assertIn('仅选择方案不代表授权生图',prompt)
    self.assertIn('角色参考',prompt)
+
+
+class SelectedBackgroundOutpaintTests(FreeAssistantTests):
+ def test_outpaint_binds_only_the_selected_background_and_its_native_size_and_hash(self):
+  import free_assistant as f,hashlib
+  body=self.body();src=png(Image.new('RGB',(12,10),'blue'));body['selectedIds']=['a'];body['scene']['nodes'][0]['src']=src
+  plan={**self.plan(),'action':'outpaint','reference':'selection','targetIds':['a'],'name':'荷塘扩建','layers':[{'name':'荷塘背景','instruction':'保持中间背景，只扩上下','assetKind':'background','box':{'x':0,'y':0,'width':12,'height':14}}]}
+  result=f.validate_plan(plan,body)
+  self.assertEqual(result['outpaintSource'],{'id':'a','sourceHash':hashlib.sha256(src.encode()).hexdigest(),'width':12,'height':10})
+  for changes in ({'reference':'original','targetIds':[]},{'targetIds':[]}):
+   with self.subTest(changes=changes),self.assertRaisesRegex(ValueError,'选择.*背景'):f.validate_plan({**plan,**changes},body)
+ def test_prompt_never_uses_original_screenshot_for_followup_outpaint(self):
+  import free_assistant as f
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.plan()) as analyze:
+   f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   prompt=analyze.call_args.args[0]
+   self.assertIn('outpaint必须使用当前明确选中的干净背景图层',prompt)
+   self.assertNotIn('action=outpaint，reference=original',prompt)
+
+ def test_selected_image_manifest_exposes_native_pixel_size_for_outpaint_planning(self):
+  import free_assistant as f
+  body=self.body();src=png(Image.new('RGB',(12,10),'blue'));body['selectedIds']=['a'];body['scene']['nodes'][0]['src']=src
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.plan()) as analyze:
+   f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertIn('"nativeSize": {"width": 12, "height": 10}',analyze.call_args.args[0])

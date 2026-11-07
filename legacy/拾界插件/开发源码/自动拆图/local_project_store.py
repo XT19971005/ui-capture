@@ -4,6 +4,8 @@ from pathlib import Path
 from image_wire import decode_job, measure, IMAGE_FIELDS, MAX_HTTP_BYTES, MAX_IMAGES
 
 HEADER_LIMIT=65536
+PROJECT_EXTENSION='.aisplit-project'
+LEGACY_PROJECT_EXTENSION='.shijie-project'
 _STORE_LOCKS={}
 _STORE_LOCKS_GUARD=threading.Lock()
 class ProjectConflict(ValueError):pass
@@ -34,7 +36,8 @@ class LocalProjectStore:
   return path
  def _entries(self):
   if not self.root.exists():return
-  for path in self.root.glob('*.shijie-project'):
+  for path in self.root.iterdir():
+   if path.suffix.lower() not in (PROJECT_EXTENSION,LEGACY_PROJECT_EXTENSION):continue
    if path.is_symlink() or path.resolve().parent!=self.root.resolve():continue
    try:
     with path.open('rb') as stream:meta=self._header(stream)
@@ -45,12 +48,13 @@ class LocalProjectStore:
   legacy=self._legacy_path(ident)
   matches=[(p,m) for p,m in self._entries() if m['id']==ident]
   return max(matches,key=lambda pair:(pair[1]['updated'],pair[0].name))[0] if matches else legacy
- def _destination(self,title,current):
+ def _destination(self,title,current,rename_legacy=False):
+  if current.exists() and current.suffix.lower()==LEGACY_PROJECT_EXTENSION and not rename_legacy:return current
   name=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',title).strip(' .')[:80].rstrip(' .') or '未命名工程'
   if re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])',name.split('.')[0].rstrip(' ')):name='工程_'+name
   index=1
   while True:
-   path=self.root/(name+('' if index==1 else f'（{index}）')+'.shijie-project')
+   path=self.root/(name+('' if index==1 else f'（{index}）')+PROJECT_EXTENSION)
    if path.resolve().parent!=self.root.resolve():raise ValueError('工程路径无效')
    if not path.exists() or os.path.normcase(str(path))==os.path.normcase(str(current)):return path
    index+=1
@@ -86,6 +90,7 @@ class LocalProjectStore:
    with path.open('rb') as stream:previous=self._header(stream)
   actual=previous.get('persistedVersion') if previous else None
   if actual!=expected:raise ProjectConflict('工程已在另一个页面更新或删除；当前修改仍在页面中，请重新打开或导出工程副本。')
+  return previous
  def save(self,ident,record,expected):
   self._legacy_path(ident)
   if not isinstance(record,dict) or record.get('id')!=ident or record.get('saveMode')!='saved' or record.get('kind') not in ('image','web') or not isinstance(record.get('doc'),dict):raise ValueError('保存工程参数无效')
@@ -116,8 +121,8 @@ class LocalProjectStore:
   if len(header)>HEADER_LIMIT:raise ValueError('工程索引过大，原工程已保留')
   compressed=gzip.compress(raw,compresslevel=1,mtime=0)
   with self.lock:
-   path=self.path(ident);self._check_version(path,expected);self.root.mkdir(parents=True,exist_ok=True)
-   destination=self._destination(title,path)
+   path=self.path(ident);previous=self._check_version(path,expected);self.root.mkdir(parents=True,exist_ok=True)
+   destination=self._destination(title,path,record['doc'].get('_titleSource') in ('manual','ai') and title!=(previous or {}).get('title'))
    temp=None
    try:
     with tempfile.NamedTemporaryFile(dir=self.root,prefix='.saving-',suffix='.tmp',delete=False) as stream:
