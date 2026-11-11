@@ -164,3 +164,62 @@ class AssistantSplitTests(unittest.TestCase):
   with _image(result['nodes'][0]['src']) as im:
    self.assertEqual(im.getpixel((30,40)),(0,128,0,255));self.assertEqual(im.getpixel((29,40)),(0,0,255,255));self.assertEqual(im.getpixel((129,139)),(0,128,0,255))
   self.assertNotIn('file',result['nodes'][0]['generationRecord'])
+
+class RepairResumeRegressions(unittest.TestCase):
+ def test_repair_prefix_keeps_completed_native_ids_and_rejects_changed_prefix(self):
+  import assistant_split as s
+  source=png(Image.new('RGBA',(100,100),'white'))
+  layer={'name':'1 原有文字','instruction':'保留文字','layerType':'text','box':{'x':0,'y':0,'width':30,'height':20},'native':{'text':'原有文字','fontFamily':'Arial','fontSize':12,'fontWeight':400,'fill':'#111111'}}
+  body={'image':source,'width':100,'height':100,'title':'补齐文字','layers':[layer]}
+  with tempfile.TemporaryDirectory() as folder:
+   first=Path(folder)/'first';first.mkdir();result=s.generate(body,first,lambda:False,lambda *_:None)
+   next_body=copy.deepcopy(body);extra=copy.deepcopy(layer);extra.update(name='2 缺少文字',box={'x':50,'y':40,'width':30,'height':20});next_body['layers'].append(extra);next_body['previousPlan']={'layers':copy.deepcopy(body['layers']),'completed':result['nodes']}
+   second=Path(folder)/'second';second.mkdir();repaired=s.generate(next_body,second,lambda:False,lambda *_:None)
+   self.assertEqual(len(repaired['nodes']),2);self.assertEqual(repaired['nodes'][0]['id'],result['nodes'][0]['id']);self.assertEqual(repaired['nodes'][0]['text'],'原有文字')
+   next_body['layers'][0]['name']='别的对象'
+   with self.assertRaisesRegex(ValueError,'旧方案'):s.validate(next_body)
+ def test_existing_rotated_image_uses_relative_rotation(self):
+  from annotation_plan import reuse_node
+  src=png(Image.new('RGBA',(10,20),'purple'));node={'id':'old','type':'image','src':src,'x':0,'y':0,'width':10,'height':20,'assetReviewStatus':'PASS'}
+  master={'box':{'x':0,'y':0,'width':10,'height':20},'rotation':90};target={'name':'复制位置','box':{'x':30,'y':0,'width':10,'height':20},'rotation':90}
+  out=reuse_node(target,node,master,'copy');self.assertEqual((out['width'],out['height']),(10,20));self.assertEqual(out['src'],src)
+
+
+class StrictIconRegressionTests(unittest.TestCase):
+ def test_material_coin_is_not_published_as_ellipse_or_fragments(self):
+  import assistant_split as s
+  body={'image':png(Image.new('RGBA',(80,80),'white')),'width':80,'height':80,'title':'材质图标','stage':'vector','layers':[{'name':'12 紫金代币','instruction':'金色圆边和紫蓝底，完整代币图标','layerType':'ellipse','box':{'x':10,'y':10,'width':30,'height':30},'native':{'fill':'#ffdd00'}}]}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=AssertionError('must not generate')):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(result['nodes'],[])
+  self.assertIn('分类冲突',result['recognition']['vectorReviewWarnings'][0]['reason'])
+  self.assertTrue(result['_partial'])
+ def test_detection_corrects_material_icon_without_changing_flat_panels(self):
+  from auto_annotations import classification
+  self.assertEqual(classification({'name':'紫金代币','layerType':'vector','planNote':'金色圆边、紫蓝底和内部星形'})['layerType'],'image')
+  self.assertEqual(classification({'name':'纯色金币图标','layerType':'vector','planNote':'纯色剪影'})['layerType'],'vector')
+  self.assertEqual(classification({'name':'钻石选项底板','layerType':'vector','planNote':'浅黄渐变圆角矩形'})['layerType'],'vector')
+
+
+class LiveModuleCompatibilityTests(unittest.TestCase):
+ def test_auto_annotations_load_with_cached_old_native_plan(self):
+  import annotation_plan,auto_annotations,importlib
+  original=getattr(annotation_plan,'material_icon',None)
+  try:
+   if original is not None:del annotation_plan.material_icon
+   module=importlib.reload(auto_annotations)
+   self.assertEqual(module.classification({'name':'紫金代币','layerType':'vector','planNote':'金边紫蓝底'})['layerType'],'image')
+  finally:
+   if original is not None:annotation_plan.material_icon=original
+
+
+class ManualMarkedScopeTests(unittest.TestCase):
+ def test_one_mark_rejects_whole_image_layers_but_keeps_complete_image(self):
+  import marked_scope
+  marks={'items':[{'color':'#ffdf24','label':'凤凰','purpose':'keep','layerType':'auto','strokes':[[[0,0],[10,0],[10,10],[0,0]]]}]}
+  body={'annotations':marks,'messages':[{'role':'user','content':'只处理本次标注的1个对象，默认补全遮挡和画外缺失'}]}
+  layer={'name':'01 凤凰','layerType':'image'}
+  result=marked_scope.validate({'reply':'全图13层'*30,'layers':[layer]},body)
+  self.assertIn('仅准备本次标注',result['reply']);self.assertLess(len(result['reply']),200)
+  with self.assertRaisesRegex(ValueError,'未标注'):marked_scope.validate({'layers':[layer,{'name':'02 奖杯','layerType':'image'}]},body)
+  with self.assertRaisesRegex(ValueError,'单个完整图片主体'):marked_scope.validate({'layers':[layer,{'name':'01 奖杯','layerType':'image'}]},body)

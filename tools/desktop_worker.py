@@ -19,6 +19,7 @@ import requests
 BASE=Path(__file__).resolve().parents[1]
 ENGINE=BASE/'legacy/拾界插件/开发源码/自动拆图'
 sys.path.insert(0,str(ENGINE))
+from local_project_store import atomic_replace, read_json_atomic
 DEFAULT_STATE=Path(os.environ.get('LOCALAPPDATA',Path.home()))/'AI拆图助手/共享服务'
 MAX_BYTES=276*1024**2
 
@@ -39,7 +40,7 @@ def atomic_json(path,value):
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent,delete=False) as output:
             temp=Path(output.name);output.write(json.dumps(value,ensure_ascii=False,allow_nan=False).encode());output.flush();os.fsync(output.fileno())
-        os.replace(temp,path)
+        atomic_replace(temp,path)
     finally:
         if temp:temp.unlink(missing_ok=True)
 
@@ -148,7 +149,7 @@ class DesktopWorker:
             if process.returncode:raise ValueError('本机 Codex 连接检查失败，请在本机重新登录后重新配置共享服务')
             self.capabilities=json.loads(output)
             # Transport only the explicit public fields; no account email, plan, paths or auth file.
-            self.capabilities={key:self.capabilities[key] for key in ('ready','models','model','imageGeneration')}
+            self.capabilities={key:self.capabilities[key] for key in ('ready','models','model','imageGeneration','analysisProvider','imageProvider','imageModel') if key in self.capabilities}
             self.last_probe=time.monotonic()
         finally:
             if tree:tree.close()
@@ -164,9 +165,10 @@ class DesktopWorker:
     def launch(self,folder,job):
         modes=('codex','refine-ui','refine-selected','repair-order','replace-image','assistant-plan','assistant-split')
         if job.get('mode') not in modes or not isinstance(job.get('model'),str):raise ValueError('不支持的远程任务')
+        from desktop_connections import credentials as desktop_credentials
+        credentials=desktop_credentials(BASE,job.get('analysisProvider','codex'),{'provider':job.get('imageProvider','codex'),'model':job.get('imageModel','gpt-image-2')},job['mode'])
         process=subprocess.Popen([sys.executable,str(BASE/'tools/run_job.py'),job['id'],job['model']],cwd=folder,env=self.environment(folder),stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         tree=ProcessTree(process)
-        credentials={'mode':job['mode'],'company':{},'analysisProvider':'codex','image':{'provider':'codex','model':'gpt-image-2'},'needsCodex':True}
         try:process.stdin.write(json.dumps(credentials).encode());process.stdin.close()
         except BaseException:tree.close();raise
         return process,tree
@@ -175,16 +177,21 @@ class DesktopWorker:
         data={'id':job['id'],'lease':job['lease'],'status':'running',**({'run':job['run']} if job.get('run') else {})}
         progress=folder/'progress.json'
         if progress.exists():
-            value=json.loads(progress.read_text('utf8'));data['progress']=value.get('progress',0)
+            value=read_json_atomic(progress);data['progress']=value.get('progress',0)
         for name in ('partial','result'):
             path=folder/(name+'.json')
-            if path.exists() and (name=='partial' or terminal):data[name]=decode_job(json.loads(path.read_text('utf8')))
+            if path.exists() and (name=='partial' or terminal):data[name]=decode_job(read_json_atomic(path))
         reply=folder/'reply.json'
-        if reply.exists():data['previewText']=json.loads(reply.read_text('utf8')).get('text','')[:4000]
+        if reply.exists():data['previewText']=read_json_atomic(reply).get('text','')[:4000]
         if terminal:
             finished=folder/'finished.json'
-            outcome=json.loads(finished.read_text('utf8')) if finished.exists() else {'status':'failed'}
+            outcome=read_json_atomic(finished) if finished.exists() else {'status':'failed'}
             data['status']=outcome['status']
+            if data['status']=='failed' and (folder/'failure.json').exists():
+                from shijie.pipeline.diagnostics import sanitize_failure
+                try:diagnostic=sanitize_failure(json.loads((folder/'failure.json').read_text('utf8')))
+                except (OSError,ValueError):diagnostic=None
+                if diagnostic:data['diagnostic']=diagnostic
             if 'elapsedSeconds' in outcome:data['elapsedSeconds']=outcome['elapsedSeconds']
         return data
     def discard(self,folder):

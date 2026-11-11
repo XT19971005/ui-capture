@@ -65,7 +65,8 @@ def main():
                 value['body']['provider'] = connection.get('analysisProvider', raw['provider'])
             elif mode=='assistant-split':
                 from assistant_split import validate
-                value = {'mode':mode, 'body':validate(raw)}
+                validate(raw)
+                value = {'mode':mode, 'body':raw}
             else:
                 value = validate_job(raw)
             if cancelled():

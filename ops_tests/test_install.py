@@ -1,3 +1,4 @@
+import os,unittest
 import hashlib
 import json
 from pathlib import Path
@@ -6,6 +7,7 @@ import unittest
 from shijie_ops.install import issue_token
 
 
+@unittest.skipIf(os.name=='nt', 'Linux deployment lifecycle requires Linux host')
 class CredentialTest(unittest.TestCase):
     def test_private_token_rotation_and_revocation(self):
         with tempfile.TemporaryDirectory() as tmp:

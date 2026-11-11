@@ -289,6 +289,17 @@ def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on
  return {'provider':'aimake','model':'pixelcut-background-removal','genId':gid,'sourceGeneratedSHA256':record['sourceSHA256'],'size':size}
 
 
+def opaque_stage_prompt(prompt):
+ # This is an intermediate RGB image. Alpha instructions belong to Pixelcut,
+ # never to this paid generation request.
+ text=re.sub(r'RGBA\s*(?:透明)?\s*PNG','RGB PNG',prompt,flags=re.I)
+ text=re.sub(r'(?:真正)?RGBA','RGB',text,flags=re.I)
+ text=re.sub(r'(?:背景)?Alpha\s*(?:为|=|是)\s*0','背景为纯白色',text,flags=re.I)
+ for old in ('透明背景','透明底','透明PNG','透明素材','透明区','背景全部透明','背景透明','其余透明','其它实体及背景透明','其他实体和背景全部透明'):
+  text=text.replace(old,{'透明素材':'独立素材','透明PNG':'白底PNG','透明区':'纯白留白区'}.get(old,'纯白背景'))
+ return '本阶段只输出不透明RGB图片，本阶段背景使用纯白(#FFFFFF)，避免与最终透明通道要求冲突。灰白棋盘格、网格、格纹不是透明效果，绝对不要绘制。参考图的透明区域统一视为纯白留白；主体外、内部空洞和新增留白区也用纯白色，不添加阴影。后续另由去背景工具生成透明通道，本阶段不要模拟透明。\n'+text+'\n最终核对：交付的是纯白底中间图；不得出现棋盘格、灰格、网格或透明效果示意。保留主体原有白色实体、纹理、细线、镂空与柔和边缘，不改变主体造型、颜色、大小、方向及落位。'
+
+
 def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwargs):
  notice=on_status or (lambda _:None)
  if cancelled():raise InterruptedError('已取消')
@@ -297,7 +308,7 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
  target=Path(target)
  with tempfile.TemporaryDirectory(prefix='pixelcut-stage-',dir=target.parent) as folder:
   rgb=Path(folder)/'generated.png'
-  instruction=prompt+'\n阶段输出说明：前文的透明要求描述最终成品；为交给Pixelcut去背景，本阶段背景使用纯白，该阶段说明仅覆盖背景输出要求，避免与RGBA指令冲突，其他主体要求全部不变。不得添加阴影、底座、棋盘格、描边或彩色标线，不增加参考中不存在的对象。保留原有白色实体、细线、镂空和柔和边缘，不因换底改变造型、大小、方向、光照、颜色或在画布上的位置。'
+  instruction=opaque_stage_prompt(prompt)
   record=generate(instruction,images,rgb,transparent=False,cancelled=cancelled,timeout=timeout,on_status=on_status,**kwargs)
   post=remove_background(rgb,target,secret,cancelled,timeout,on_status)
   record.update(file=str(target),transparent=True,size=post['size'],postprocessing=post)

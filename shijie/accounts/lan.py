@@ -20,6 +20,9 @@ _lock = threading.Lock()
 
 
 def loopback(request):
+    # The HTTPS listener is always a colleague entrance, including on the host PC.
+    if getattr(settings, 'LAN_HTTPS', False):
+        return False
     try:
         return ipaddress.ip_address(request.META.get('REMOTE_ADDR', '')).is_loopback
     except ValueError:
@@ -38,7 +41,7 @@ class NetworkBoundary:
         except ValueError:
             return HttpResponseForbidden('访问来源无效。')
         # Relay bearer credentials and service control stay on this PC's loopback.
-        if request.path.startswith('/desktop-relay/') and not address.is_loopback:
+        if request.path.startswith('/desktop-relay/') and (getattr(settings, 'LAN_HTTPS', False) or not address.is_loopback):
             return HttpResponseForbidden('本机接单通道不接受局域网请求。')
         return self.get_response(request)
 
@@ -74,9 +77,10 @@ def _identity(request):
 @require_http_methods(['GET', 'POST'])
 def login_page(request):
     nxt = safe_next(request.POST.get('next', request.GET.get('next', '')))
-    if allowed(request.user):
+    admitted = allowed(request.user)
+    if admitted and not (request.method == 'GET' and request.GET.get('entry') == '1'):
         return redirect(nxt)
-    context = {'next': nxt}
+    context = {'next': nxt, 'already_allowed': admitted}
     status = 200
     if request.method == 'POST':
         peer = request.META.get('REMOTE_ADDR', '')
@@ -103,9 +107,11 @@ def login_page(request):
             if not allowed(user):
                 return HttpResponseForbidden('此浏览器的使用权限已被停用。')
             login(request, user, backend=settings.AUTHENTICATION_BACKENDS[0])
+            if getattr(settings, 'LAN_HTTPS', False):
+                request.session.set_expiry(90*86400)
             response = redirect(nxt)
             if not user.is_superuser:
                 response.set_signed_cookie('shijie_lan_identity', user.username, salt='lan-browser',
-                    max_age=90*86400, httponly=True, samesite='Lax')
+                    max_age=90*86400, httponly=True, samesite='Lax', secure=request.is_secure())
             return response
     return render(request, 'lan-login.html', context, status=status)

@@ -419,6 +419,43 @@ class CompleteEntity(SimpleTestCase):
 import copy,hashlib
 from engine import png
 import image_replace
+class FreshGenerationGeometry(SimpleTestCase):
+ def fixture(self,size=(1024,1024),transparent=True):
+  src=png(Image.new('RGBA',size,(0,0,0,0) if transparent else (240,230,220,255)))
+  scene={'format':'shijie-scene','version':2,'title':'独立素材','provenance':'user-image','width':size[0],'height':size[1],'source':src,'originalSource':src,'comparisonSource':src,'nodes':[{'id':'generated-image','type':'image','name':'新图片','src':src,'x':0,'y':0,'width':size[0],'height':size[1],'locked':True,'provenance':'imported-source'}],'groups':[],'edges':[]}
+  return scene,{'targetId':'generated-image','intent':'generate','prompt':'完整独立素材','region':None,'selection':None,'reference':None}
+ def process(self,scene,request,generated,**options):
+  def generate(prompt,images,target,**kw):generated.save(target);return {'actualImageGeneration':True,'provider':'codex'}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):
+   return image_replace._process(scene['source'],'独立素材',lambda *_:None,lambda:False,scene['source'],Path(folder),scene,request,**options)
+ def test_fresh_creation_and_extraction_fit_complete_pixels_without_stretch_or_crop(self):
+  generated=Image.new('RGBA',(512,1024),(30,80,140,255));generated.putpixel((0,0),(255,0,0,255));generated.putpixel((511,1023),(0,255,0,255))
+  for extract in (False,True):
+   scene,request=self.fixture();before=copy.deepcopy(scene)
+   if extract:request.update(task='extract',reference={'src':png(generated),'region':None})
+   result=self.process(scene,request,generated);node=result['nodes'][0];actual=image_replace._image(node['src'])
+   self.assertEqual(actual.size,(1024,1024));self.assertEqual(actual.getchannel('A').getbbox(),(256,0,768,1024))
+   self.assertEqual(actual.crop((256,0,768,1024)).tobytes(),generated.tobytes());self.assertEqual(scene,before)
+   geometry=node['generationRecord']['replacementGeometry'];self.assertEqual(geometry['generatedSize'],[512,1024]);self.assertEqual(geometry['canvasFit']['contentSize'],[512,1024]);self.assertEqual(geometry['canvasFit']['offset'],[256,0])
+ def test_fresh_opaque_padding_and_noncanonical_canvas_keep_complete_generated_frame(self):
+  for size,transparent,generated_size,offset in [((1024,1024),False,(1024,512),(0,256)),((2048,1024),True,(1024,1024),(512,0))]:
+   scene,request=self.fixture(size,transparent);generated=Image.new('RGBA',generated_size,(30,80,140,255));generated.putpixel((0,0),(255,0,0,255));generated.putpixel((generated.width-1,generated.height-1),(0,255,0,255))
+   result=self.process(scene,request,generated);actual=image_replace._image(result['nodes'][0]['src'])
+   self.assertEqual(actual.size,size);self.assertEqual(actual.crop((*offset,offset[0]+generated.width,offset[1]+generated.height)).tobytes(),generated.tobytes())
+   self.assertEqual(actual.getpixel((0,0)),(0,0,0,0) if transparent else (240,230,220,255))
+ def test_fresh_smaller_generation_scales_both_axes_together_and_keeps_alpha(self):
+  scene,request=self.fixture();generated=Image.new('RGBA',(256,512),(30,80,140,128))
+  result=self.process(scene,request,generated);node=result['nodes'][0];actual=image_replace._image(node['src'])
+  self.assertEqual(actual.size,(1024,1024));self.assertEqual(actual.getchannel('A').getbbox(),(256,0,768,1024));self.assertEqual(actual.getpixel((512,512))[3],128)
+  geometry=node['generationRecord']['replacementGeometry'];self.assertEqual(geometry['generatedSize'],[256,512]);self.assertEqual(geometry['canvasFit']['scale'],2);self.assertEqual(geometry['canvasFit']['contentSize'],[512,1024])
+ def test_existing_replacement_and_identity_repair_still_reject_wrong_aspect(self):
+  generated=Image.new('RGBA',(512,1024),(30,80,140,255))
+  for repair in (False,True):
+   scene,request=self.fixture()
+   if not repair:request.pop('intent')
+   with self.subTest(repair=repair),self.assertRaisesRegex(ValueError,'比例不符合'):
+    self.process(scene,request,generated,preserve_identity=repair)
+
 class RemovalTests(SimpleTestCase):
  def fixture(self):
   im=Image.new('RGBA',(80,100));im.paste((100,150,80,255),(5,5,75,95));src=png(im)
@@ -509,3 +546,45 @@ class RemovalTests(SimpleTestCase):
     im=Image.new('RGBA',(150,150));im.paste((100,150,80,255),(25,10,125,140));im.putpixel((0,0),(20,30,40,edge_alpha));im.save(target);return {'actualImageGeneration':True}
    with self.subTest(alpha=edge_alpha),tempfile.TemporaryDirectory() as folder,patch('image_provider.CLIENT.generate',side_effect=generate):result=image_replace._process(scene['source'],'测试',lambda *_:None,lambda:False,scene['source'],Path(folder),scene,request)
    n=result['nodes'][0];self.assertEqual(image_replace._image(n['src']).getpixel((0,0)),(20,30,40,edge_alpha));self.assertTrue(n['review']);self.assertTrue(n['imageReplacement']['boundaryRisk'])
+
+
+class FirstPassLocalParity(SimpleTestCase):
+    def test_first_pass_extracts_once_without_automatic_visual_review_or_retry(self):
+        import engine, codex_pipeline
+        from copy import deepcopy
+        raw = engine.png(Image.new('RGB', (24, 24), 'gray'))
+        plan = {'project_name': '首遍提取', 'assets': [], 'texts': [], 'art_text_ids': [],
+                'text_corrections': [], 'groups': [], 'warnings': [], 'vectors': []}
+        scene = {'format': 'shijie-scene', 'version': 2, 'title': '首遍提取',
+                 'source': raw, 'width': 24, 'height': 24, 'edges': [],
+                 'recognition': {'warnings': []}, 'nodes': [
+                     {'id': 'bg', 'name': '背景', 'type': 'image', 'x': 0, 'y': 0,
+                      'width': 24, 'height': 24, 'src': raw, 'assetKind': 'background'},
+                     {'id': 'asset', 'name': '独立素材', 'type': 'image', 'x': 0, 'y': 0,
+                      'width': 24, 'height': 24, 'src': raw, 'assetKind': 'icon'}]}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(codex_pipeline.CLIENT, 'model', return_value='test-model'), \
+             patch.object(codex_pipeline.CLIENT, 'analyze', return_value=plan) as analysis, \
+             patch('engine.build_scene', return_value=deepcopy(scene)), \
+             patch('workflow_assets.complete_background'), \
+             patch('image_provider.CLIENT.generate', side_effect=AssertionError('测试不得调用图像接口')), \
+             patch('workflow_assets.complete_asset', side_effect=lambda source, node, *a, **kw: dict(node)) as generated, \
+             patch('acceptance.review_asset', side_effect=AssertionError('首遍不得自动复核')):
+            result = codex_pipeline._process(raw, '首遍提取', lambda *a: None, lambda: False, raw, Path(temporary))
+        self.assertEqual(analysis.call_count, 1)
+        self.assertEqual(generated.call_count, 1)
+        self.assertEqual(result['recognition']['reviewStatus'], 'NOT_REVIEWED')
+        self.assertNotIn('delivery', result)
+
+
+class PlannedVectorOpacity(SimpleTestCase):
+ def test_translucent_vector_opacity_survives_plan_and_rejects_invalid_values(self):
+  from design_properties import design_fields
+  from plan_contract import vector
+  from codex_pipeline import PLAN
+  row=dict(id="panel",name="半透明底板",type="rect",x=1,y=1,width=12,height=8,radius=2,fill="#334455",d="",opacity=.35)
+  self.assertEqual(vector(row,24,24,0)["opacity"],.35)
+  self.assertEqual(design_fields({"opacity":None}),{})
+  self.assertIn("opacity",PLAN["properties"]["vectors"]["items"]["required"])
+  for bad in [True,"0.5",float("nan"),10**400,-.1,1.1]:
+   with self.subTest(value=bad),self.assertRaises(ValueError):design_fields({"opacity":bad})

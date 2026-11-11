@@ -126,6 +126,52 @@ test('混合后缀中的同ID按最新版本检查冲突，旧版本及同名他
  await assert.rejects(h.save(h.record('same'),folder,'v1'),/另一个页面/);await assert.rejects(h.save(h.record('same'),folder,null),/另一个页面/);
  await h.save(h.record('same','新版'),folder,'v2');assert.equal(h.files.size,3);assert.equal(h.files.get('旧版.shijie-project'),old);assert.equal(h.files.get('中文标题.aisplit-project'),other);
 });
+test('refresh cache restores the original save version while real concurrent changes and directory changes stay protected',async()=>{
+ const h=setup();h.fixture('旧工程.shijie-project',h.record('old'));await h.connect();
+ const makeLibrary=()=>{const c={...h.c,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),savedProject:(id,directory)=>h.api.request('/saved-projects/'+id+'?directory='+encodeURIComponent(directory)),projects:async()=>({items:[]}),saveProject:record=>h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}};c.window=c;vm.runInNewContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);return c.StudioBase.library};
+ let library=makeLibrary();const entry=await library.get('old'),doc=entry.doc;doc.title='未保存编辑';
+ const data=new Map(),sessionMap=new Map(),session={getItem:k=>sessionMap.get(k),setItem:(k,v)=>sessionMap.set(k,v)},storage=async(k,v,write)=>{if(write){if(v)data.set(k,structuredClone(v));else data.delete(k)}return structuredClone(data.get(k))};
+ const scope={window:{},structuredClone,crypto,setTimeout,clearTimeout,Date};vm.runInNewContext(source.slice(0,source.indexOf('/* One interaction model')),scope);
+ const cache=scope.window.ShijieReloadRecovery.create({key:'audit',session,storage,delay:5000,snapshotOrigin:doc=>library.snapshotOrigin?.(doc)});
+ cache.schedule(doc);await library.put(doc,'image',{checkpoint:true});await library.put(doc,'image',{checkpoint:true});await cache.flush();
+ const restored=await cache.read(),origin=cache.origin?.();assert.equal(Object.hasOwn(doc,'origin'),false);
+ library=makeLibrary();library.restoreOrigin?.(restored,origin);
+ await library.put(restored,'image',{checkpoint:true});
+ const stale=makeLibrary();stale.restoreOrigin?.(restored,origin);await assert.rejects(stale.put(restored,'image',{manual:true}),/另一个页面/);
+ const legacy=makeLibrary();legacy.restoreOrigin?.(restored);await assert.rejects(legacy.put(restored,'image',{manual:true}),/另存副本|保存版本/);
+ const moved=makeLibrary();moved.restoreOrigin?.(restored,{...origin,directory:'different-folder'});await assert.rejects(moved.put(restored,'image',{checkpoint:true}),/目录已切换/);
+ const fresh={...doc,_projectId:'new-copy'};await legacy.put(fresh,'image',{manual:true});
+});
+
+test('successful persistence schedules refresh cache even when no further edit follows',async()=>{
+ const body=source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function save(){'));
+ const doc={_projectId:'p'},scheduled=[];
+ const c={a:{get:()=>doc,kind:'image',status(){}},B:{library:{put:async()=>({}),isDirty:()=>false}},reloadRecovery:{schedule:value=>scheduled.push(value)},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(){},save(){},window:{SHIJIE:{sharedCodex:true}}};
+ vm.runInNewContext(body+';this.persist=persistRecovery',c);await c.persist(doc,{checkpoint:true});assert.deepEqual(scheduled,[doc]);
+});
+
+test('unknown-origin manual recovery creates a same-title disk version and failures leave the original untouched',async()=>{
+ const h=setup(),original=h.fixture('准确中文标题.aisplit-project',h.record('old'));await h.connect();
+ let fail=false;const c={...h.c,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),projects:async()=>({items:[]}),saveProject:record=>{if(fail)throw Error('disk full');return h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}}};c.window=c;
+ vm.runInNewContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);const lib=c.StudioBase.library,doc=h.record('old').doc,before=structuredClone(doc);lib.restoreOrigin(doc);
+ assert.equal(lib.unknownOrigin(doc),true);await assert.rejects(lib.put(doc,'image',{checkpoint:true}),/保存版本/);assert.equal(h.files.size,1);
+ fail=true;await assert.rejects(lib.saveRecoveredCopy(doc,'image'),/disk full/);assert.deepEqual(doc,before);assert.equal(h.files.size,1);
+ fail=false;const saved=await lib.saveRecoveredCopy(doc,'image');assert.notEqual(saved.id,'old');assert.equal(saved.title,'准确中文标题');assert.deepEqual(doc,before);assert.equal(h.files.get('准确中文标题.aisplit-project'),original);assert(h.files.has('准确中文标题（2）.aisplit-project'));assert.equal(lib.snapshotOrigin(saved.doc).version,saved.persistedVersion);
+});
+
+test('main save recovers an unknown cache only after acknowledgement and preserves edits made during the save',async()=>{
+ const body=source.slice(source.indexOf(' async function saveProject(){'),source.indexOf(' async function saveCheckpoint('));
+ for(const outcome of ['success','failure','switched']){
+  const original={_projectId:'old',title:'准确中文标题',nodes:[{id:'layer',x:1}],_assistantChat:{messages:['聊天']},_splitBaseline:{scene:{title:'initial'}}},snapshot=structuredClone(original);let current=original,resolve,reject,requests=0,saved;
+  const c={busy:()=>false,saveTimer:null,clearTimeout(){},recoveredCopySaving:false,a:{get:()=>current,kind:'image',status(){}},B:{library:{requiresManualExport:false,unknownOrigin:()=>true,directory:()=> 'folder',saveRecoveredCopy:()=>{requests++;return new Promise((ok,no)=>{resolve=ok;reject=no})},isDirty:doc=>JSON.stringify(doc)!==JSON.stringify(saved?.doc)}},autoDirectories:new Map(),reloadRecovery:{schedule(){}},rememberTabProject(){},recoverySaved(){},recoveryError(){},sync(){},save(){},persistRecovery:()=>assert.fail('unknown must not overwrite old ID')};
+  vm.runInNewContext(body+';this.saveProject=saveProject',c);const running=c.saveProject();await c.saveProject();assert.equal(requests,1);assert.equal(original._projectId,'old');original.nodes[0].x=9;
+  if(outcome==='failure'){reject(Error('disk full'));await assert.rejects(running,/disk full/);assert.equal(original._projectId,'old')}
+  else {if(outcome==='switched')current={_projectId:'other'};saved={id:'new',doc:{...snapshot,_projectId:'new'}};resolve(saved);await running;assert.equal(original._projectId,outcome==='success'?'new':'old')}
+  assert.equal(original.nodes[0].x,9);assert.deepEqual(original._assistantChat,snapshot._assistantChat);assert.deepEqual(original._splitBaseline,snapshot._splitBaseline);
+  if(outcome==='success')assert.equal(c.B.library.isDirty(original),true);
+ }
+});
+
 test('网页下载名称只取工程内容标题，空标题使用未命名工程，不加产品前缀',()=>{
  const source=fs.readFileSync(path.join(edge,'export.js'),'utf8'),snippet=source.split(/\r?\n/).find(line=>line.startsWith('function filename('));
  const c={current:{title:'春日麻将活动'}};vm.runInNewContext(snippet+';this.filename=filename',c);
@@ -133,8 +179,25 @@ test('网页下载名称只取工程内容标题，空标题使用未命名工�
 });
 test('工程库明确改名记录manual来源，后续AI不得覆盖用户标题',async()=>{
  const source=fs.readFileSync(path.join(edge,'studio.js'),'utf8'),start=source.indexOf('const apply=async()=>{const name=input.value.trim();'),end=source.indexOf(";edit.querySelector('#project-name-save').onclick=apply;",start),doc={_projectId:'p',title:'旧标题'},writes=[];
- const c={input:{value:'用户准确中文标题'},edit:{querySelector:()=>({}),close(){}},a:{get:()=>doc,kind:'image',flush:async()=>{},status(){}},p:{id:'p'},clearTimeout(){},saveTimer:null,commit:async(_label,fn)=>fn(),B:{library:{put:async value=>writes.push(structuredClone(value))}},show(){}};
+ const c={input:{value:'用户准确中文标题'},edit:{querySelector:()=>({}),close(){}},a:{get:()=>doc,kind:'image',flush:async()=>{},status(){}},p:{id:'p'},clearTimeout(){},saveTimer:null,commit:async(_label,fn)=>fn(),B:{library:{put:async value=>writes.push(structuredClone(value))}},persistRecovery:async value=>writes.push(structuredClone(value)),show(){}};
  vm.runInNewContext(source.slice(start,end)+';this.apply=apply',c);await c.apply();assert.equal(writes[0].title,'用户准确中文标题');assert.equal(writes[0]._titleSource,'manual');
+});
+
+test('active rename refresh cache follows the acknowledged disk version after a slow save',async()=>{
+ const h=setup();h.fixture('旧工程.shijie-project',h.record('old'));await h.connect();
+ const c={...h.c,setTimeout,clearTimeout,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),savedProject:(id,directory)=>h.api.request('/saved-projects/'+id+'?directory='+encodeURIComponent(directory)),saveProject:record=>h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}};c.window=c;
+ vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);vm.runInContext(source.slice(0,source.indexOf('/* One interaction model')),c);
+ const doc=(await c.StudioBase.library.get('old')).doc;let cached,release,closed=false,failed=false;
+ const cache=c.ShijieReloadRecovery.create({key:'rename',session:{getItem:()=> 'tab',setItem(){}},storage:async(k,value,write)=>write?(cached=structuredClone(value)):cached,delay:60000,snapshotOrigin:d=>c.StudioBase.library.snapshotOrigin(d)});
+ Object.assign(c,{B:c.StudioBase,input:{value:'用户新名称'},edit:{querySelector:()=>({}),close(){closed=true}},a:{get:()=>doc,kind:'image',flush:async()=>{},status(){}},p:{id:'old'},saveTimer:null,commit:async(_label,fn)=>{fn();cache.schedule(doc)},show(){},rememberTabProject(){},reloadRecovery:cache,recoveryState:{style:{}},recoverySaved(){},recoveryError(){failed=true},save(){}});
+ vm.runInContext(source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function save(){')),c);
+ const start=source.indexOf('const apply=async()=>{const name=input.value.trim();'),end=source.indexOf(";edit.querySelector('#project-name-save').onclick=apply;",start);vm.runInContext(source.slice(start,end)+';this.rename=apply',c);
+ c.ProjectThumbnail={render:()=>new Promise(resolve=>release=resolve)};const saving=c.rename();while(!release)await new Promise(resolve=>setImmediate(resolve));await cache.flush();assert.equal(cached.origin.version,'disk-v1');release(undefined);await saving;await cache.flush();
+ const disk=await h.api.request('/saved-projects/old');assert.equal(closed,true);assert.equal(cached.origin.version,disk.project.persistedVersion);assert.equal(cached.doc._titleSource,'manual');
+ c.ProjectThumbnail=undefined;c.StudioBase.library.restoreOrigin(doc,cached.origin);await c.StudioBase.library.put(doc,'image',{manual:true});
+ // A genuine external update must still fail and keep the rename dialog retryable.
+ closed=false;await c.rename();assert.equal(failed,false);const stale=c.StudioBase.library.snapshotOrigin(doc);await c.StudioBase.library.put(doc,'image',{manual:true});const externalVersion=c.StudioBase.library.snapshotOrigin(doc).version;c.StudioBase.library.restoreOrigin(doc,stale);closed=false;await c.rename();assert.equal(failed,true);assert.equal(closed,false);assert.equal((await h.api.request('/saved-projects/old')).project.persistedVersion,externalVersion);
+ await cache.flush();
 });
 test('图片导入标题记录import来源，允许已有AI回复按内容识别替换英文文件名',()=>{
  const source=fs.readFileSync(path.join(edge,'image-editor.js'),'utf8'),start=source.indexOf("scene={format:'shijie-scene'"),end=source.indexOf(';selected=',start);
@@ -163,7 +226,26 @@ test('refresh loads current cached edits without generating, new navigation stay
  const body=source.slice(source.indexOf(' async function restoreTabProject('),source.indexOf(' function setInitial('));
  for(const [nav,requested,cached,expected] of [['reload',null,{_projectId:'draft'},'draft'],['reload',null,null,'saved'],['navigate',null,{_projectId:'draft'},null],['reload','explicit',{_projectId:'draft'},'explicit']]){
   let doc=null;const loads=[];
-  const c={window:{performance:{getEntriesByType:()=>[{type:nav}]},history:{replaceState(){}}},location:{pathname:'/image-editor.html'},a:{kind:'image',get:()=>doc,load:async d=>{doc=d;loads.push(d)},status(){}},B:{library:{get:async id=>({id,kind:'image',doc:{_projectId:id}})}},tabProjectRevision:0,restoringProject:true,reloadRecovery:{read:async()=>cached,schedule(){}},readTabProject:()=>({id:'saved'}),rememberTabProject(){},sync(){}};
+  const c={window:{performance:{getEntriesByType:()=>[{type:nav}]},history:{replaceState(){}}},location:{pathname:'/image-editor.html'},a:{kind:'image',get:()=>doc,load:async d=>{doc=d;loads.push(d)},status(){}},B:{library:{get:async id=>({id,kind:'image',doc:{_projectId:id}})}},tabProjectRevision:0,restoringProject:true,reloadRecovery:{read:async()=>cached,schedule(){}},readTabProject:()=>({id:cached?._projectId||'saved'}),rememberTabProject(){},sync(){}};
   vm.runInNewContext(body+';this.restore=restoreTabProject',c);await c.restore(requested);assert.equal(doc?._projectId||null,expected);assert.equal(loads.length,expected?1:0);
  }
+});
+
+test('refresh rejects another project cache and resolves the current tab pointer exactly once',async()=>{
+ const body=source.slice(source.indexOf(' async function restoreTabProject('),source.indexOf(' function setInitial('));
+ for(const [pointer,exists,expected] of [[{id:'B',kind:'image'},true,'B'],[{id:'B',kind:'image'},false,null],[{id:null,kind:'image'},true,null],[{invalid:true},true,null],[null,true,null]]){
+  let doc=null,reads=0;const lookups=[],messages=[];
+  const c={window:{performance:{getEntriesByType:()=>[{type:'reload'}]}},a:{kind:'image',get:()=>doc,load:async value=>{doc=value},status:text=>messages.push(text)},B:{library:{get:async id=>{lookups.push(id);return exists?{id,kind:'image',doc:{_projectId:id}}:undefined}}},tabProjectRevision:0,restoringProject:true,reloadRecovery:{read:async()=>({_projectId:'A',title:'旧缓存工程'}),schedule(){}},readTabProject:()=>{reads++;return pointer},rememberTabProject(){},sync(){}};
+  vm.runInNewContext(body+';this.restore=restoreTabProject',c);await c.restore(null);
+  assert.equal(doc?._projectId||null,expected);assert.equal(reads,1);
+  assert.deepEqual(lookups,pointer?.id?['B']:[]);
+  if(pointer?.id&&!exists)assert(messages.some(text=>/工程|恢复/.test(text)));
+ }
+});
+
+test('refresh restores cached origin before loading edits and retains the checkpoint directory guard',async()=>{
+ const body=source.slice(source.indexOf(' async function restoreTabProject('),source.indexOf(' function setInitial('));
+ const draft={_projectId:'p',title:'未保存编辑'},origin={projectId:'p',directory:'original-folder',version:'original-version'},events=[];let doc=null;
+ const c={window:{performance:{getEntriesByType:()=>[{type:'reload'}]}},a:{get:()=>doc,load:async value=>{events.push('load');doc=value},status(){}},B:{library:{restoreOrigin:(value,credential)=>{assert.equal(value,draft);assert.equal(credential,origin);events.push('origin');return credential},get:async()=>assert.fail('must not substitute latest disk version')}},tabProjectRevision:0,restoringProject:true,autoDirectories:new Map(),reloadRecovery:{read:async()=>draft,origin:()=>origin},readTabProject:()=>({id:'p'}),rememberTabProject(){},sync(){}};
+ vm.runInNewContext(body+';this.restore=restoreTabProject',c);await c.restore(null);assert.deepEqual(events,['origin','load']);assert.equal(doc,draft);assert.equal(c.autoDirectories.get('p'),'original-folder');
 });

@@ -98,9 +98,16 @@
    if(chosen.region)regionSelection(chosen.region,result.recognition?.selectedRefine?.effectiveSelectedIds||chosen.ids,result);
    const selectedRecord=result.recognition?.selectedRefine||{status:'NEEDS_REVIEW',selectedIds:chosen.ids,warnings:['本次检查尚未得到确认结论']};
    if(chosen.region){if(selectedRecord.region&&!equal(selectedRecord.region,chosen.region))throw Error('返回结果的检查区域与本次框选不一致');selectedRecord.region={...chosen.region}}
-   const rasterIds=result.nodes.filter(n=>chosen.ids.includes(n.id)&&n.type==='image'&&n.src!==transaction.before.nodes.find(old=>old.id===n.id)?.src).map(n=>n.id),added=rasterIds.length?ShijieCandidateStore.appendImages(transaction.before,result,rasterIds):null;
-   const versioned=added?{scene:added.scene,changedIds:added.ids,archivedIds:[]}:window.ShijieRefinementVersions.archiveChanges(transaction.before,result,chosen.ids);
-   if(added)selectedRecord.resultSelectedIds=added.ids;
+   const rasterIds=result.nodes.filter(n=>chosen.ids.includes(n.id)&&n.type==='image'&&n.src!==transaction.before.nodes.find(old=>old.id===n.id)?.src).map(n=>n.id);
+   let versioned,added=null;
+   if(rasterIds.length){
+    // Keep generated pixels additive, while retaining validated editable-layer and group repairs.
+    const editable=clone(result),oldNodes=new Map(transaction.before.nodes.map(n=>[n.id,n])),editableIds=chosen.ids.filter(id=>oldNodes.get(id)?.type!=='image');
+    editable.nodes=editable.nodes.map(n=>oldNodes.get(n.id)?.type==='image'?clone(oldNodes.get(n.id)):n);
+    versioned=window.ShijieRefinementVersions.archiveChanges(transaction.before,editable,editableIds);
+    added=ShijieCandidateStore.appendImages(versioned.scene,result,rasterIds);versioned.scene=added.scene;versioned.changedIds.push(...added.ids);
+    const replaced=new Set(rasterIds);selectedRecord.resultSelectedIds=[...added.ids,...(selectedRecord.resultSelectedIds||transaction.roots).filter(id=>!replaced.has(id))];
+   }else versioned=window.ShijieRefinementVersions.archiveChanges(transaction.before,result,chosen.ids);
    const next={...transaction.before,...versioned.scene,_projectId:transaction.before._projectId,recognition:{...transaction.before.recognition,selectedRefine:clone(selectedRecord)}};
    const changedPixels=versioned.changedIds.length>0||selectedRecord.entityChanges?.length>0,pending=selectedRecord.status==='NEEDS_REVIEW'||pendingRepair(selectedRecord);
    if(changedPixels||pending)for(const key of ['status','reviewStatus'])if(['PASS','MANUAL_CONFIRMED'].includes(transaction.before.recognition?.[key]))next.recognition[key]=result.recognition?.[key]==='NEEDS_REVIEW'||pending?'NEEDS_REVIEW':'NOT_REVIEWED';
@@ -110,13 +117,13 @@
    if(!newSession||newSession===oldSession){delete next._sessionId;delete next.delivery}
    S.validate(next);
    if(options.preview){
-    const before=clone(transaction.before),candidate=clone(next),roots=added?added.ids:selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots;
+    const before=clone(transaction.before),candidate=clone(next),roots=added?selectedRecord.resultSelectedIds:selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots;
     releaseOther(result,before);delete candidate._sessionId;delete candidate.delivery;
     stopSplitClock();feedback('preview',changedPixels?'所选修正已生成，正在加入画布。':'本次检查没有可应用修改，原工程保持。');
     return {before,candidate,roots,generatedIds:added?.ids||[],record:clone(selectedRecord),hasChanges:!!changedPixels};
    }
    scene=clone(transaction.before);checkpoint(label);scene={...next,_studioStep:{label,time:Date.now()}};refresh();
-   window.studio.select(added?added.ids:selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots,true);try{await durable()}catch(saveError){stopSplitClock();feedback('failure',(added?'新图片已自动添加为独立图层':'修正已应用')+'，可撤销；保存失败：'+saveError.message+'；结果仍在本页，请重试保存。');return true}if(active!==transaction||task!==transaction.id)return;
+   window.studio.select(added?selectedRecord.resultSelectedIds:selectedRecord.entityChanges?.length?selectedRecord.resultSelectedIds:transaction.roots,true);try{await durable()}catch(saveError){stopSplitClock();feedback('failure',(added?'新图片已自动添加为独立图层':'修正已应用')+'，可撤销；保存失败：'+saveError.message+'；结果仍在本页，请重试保存。');return true}if(active!==transaction||task!==transaction.id)return;
    ShijieSmartSplit.releaseSession(transaction.before);stopSplitClock();
    feedback(completed(selectedRecord)?'success':'review',completed(selectedRecord)?scope+'图层检查并修正完成，其他图层保持。':scope+'图层处理完成，仍有项目需要校对。');return true;
   }catch(e){

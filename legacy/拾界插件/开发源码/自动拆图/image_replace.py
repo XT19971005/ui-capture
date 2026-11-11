@@ -266,7 +266,19 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   if transparent_removal and (generated.mode!='RGBA' or generated.getchannel('A').getextrema()[0]!=0 or not generated.getchannel('A').getbbox()):raise ValueError('删除候选必须有真实透明通道且保留有效对象，原图未修改')
   candidate=generated.convert('RGBA')
  generated_size=candidate.size
- if candidate.size!=model_image.size:
+ canvas_fit=None
+ if fresh and region is None and selection is None and not preserve_identity and (candidate.size!=model_image.size or context_size!=model_image.size):
+  # Fresh assets have no source registration to preserve. Fit the entire
+  # generated frame into the final content area, including for 2:1 canvases
+  # whose model input was padded square; the later crop must remove padding only.
+  scale=min(context_size[0]/candidate.width,context_size[1]/candidate.height)
+  fitted_size=(max(1,round(candidate.width*scale)),max(1,round(candidate.height*scale)))
+  offset=((context_size[0]-fitted_size[0])//2,(context_size[1]-fitted_size[1])//2)
+  fitted=candidate.resize(fitted_size,Image.Resampling.LANCZOS) if candidate.size!=fitted_size else candidate
+  canvas=Image.new('RGBA',model_image.size,(0,0,0,0) if transparent else before.getpixel((0,0)))
+  canvas.paste(fitted,(pad_x+offset[0],pad_y+offset[1]));candidate=canvas
+  canvas_fit={'mode':'contain','scale':scale,'contentSize':list(fitted_size),'offset':list(offset),'canvasSize':list(context_size)}
+ elif candidate.size!=model_image.size:
   # Require the requested aspect ratio. At most one generated pixel (and
   # 0.1% relative ratio error) is permitted for integer-size rounding. Even
   # there, use one shared scale and trim only the fractional outer margin.
@@ -334,6 +346,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  node['generationRecord']={'actualImageGeneration':True,'provider':record.get('provider','codex'),'transparent':candidate.getchannel('A').getextrema()[0]<255,'sourceOriginalSHA256':original_sha,'generatedAssetSHA256':digest}
  node['generationRecord'].update({k:record[k] for k in ('model','genId') if k in record})
  node['generationRecord']['replacementGeometry']={'contextBox':[left,top,right,bottom],'modelCanvasSize':list(model_image.size),'modelContentBox':list(content_box),'requestedSize':list(requested_size),'generatedSize':list(generated_size)}
+ if canvas_fit:node['generationRecord']['replacementGeometry']['canvasFit']=canvas_fit
  if patch_alignment:node['generationRecord']['replacementGeometry']['alignment']=patch_alignment
  if full_context_index is not None:node['generationRecord']['replacementGeometry']['fullAssetContextSize']=list(before.size)
  node['imageReplacement']={'version':1,'region':copy.deepcopy(region),'selection':copy.deepcopy(selection),'inputAssetSHA256':hashlib.sha256(base64.b64decode(spec['node']['src'].split(',',1)[1])).hexdigest(),'importedSource':spec['importedSource']}

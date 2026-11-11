@@ -1,3 +1,4 @@
+import os,unittest
 """Official MCP client over real HTTP and a private Unix executor."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ async def connection(url, token):
             yield streams
 
 
+@unittest.skipIf(os.name=='nt', 'Linux deployment lifecycle requires Linux host')
 class MCPTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         from shijie_ops.mcp import create_app

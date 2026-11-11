@@ -1,9 +1,11 @@
+import os,unittest
 import json
 import time
 import unittest
 from . import test_release as fixtures
 
 
+@unittest.skipIf(os.name=='nt', 'Linux deployment lifecycle requires Linux host')
 class RuntimeTest(unittest.TestCase):
     def setUp(self):
         self.host = fixtures.ReleaseTest(); self.host.setUp(); self.addCleanup(self.host.doCleanups)

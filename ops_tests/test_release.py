@@ -1,3 +1,4 @@
+import os,unittest
 """Real Git and a process-level Docker substitute; no production resources."""
 import json
 import os
@@ -7,6 +8,7 @@ import tempfile
 import unittest
 
 
+@unittest.skipIf(os.name=='nt', 'Linux deployment lifecycle requires Linux host')
 class ReleaseTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='shijie-ops-', dir='/tmp')

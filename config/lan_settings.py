@@ -12,6 +12,7 @@ os.environ['SHIJIE_PRODUCTION'] = '0'
 from .settings import *
 
 LAN_SHARED = True
+LAN_HTTPS = os.environ.get('SHIJIE_LAN_HTTPS') == '1'
 host = ipaddress.IPv4Address(LAN_CONFIG['host'])
 if not host.is_private or host.is_loopback or host.is_link_local:
     raise ValueError('局域网共享只接受公司内网 IPv4 地址')
@@ -25,15 +26,18 @@ SECRET_KEY = LAN_CONFIG['secret_key']
 if len(SECRET_KEY) < 50 or len(LAN_CONFIG['access_digest']) != 64:
     raise ValueError('局域网访问配置无效')
 PREFIX = ''
-PUBLIC_URL = f'http://{host}:{port}'
+PUBLIC_URL = f'https://{host}:{port}' if LAN_HTTPS else f'http://{host}:{port}'
 ALLOWED_HOSTS = [str(host), '127.0.0.1', 'localhost', 'testserver']
 ROOT_URLCONF = 'config.lan_urls'
 DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': LAN_STATE / 'lan.sqlite3',
     'OPTIONS': {'timeout': 30, 'transaction_mode': 'IMMEDIATE'}}}
 SESSION_COOKIE_NAME = 'shijie_lan_sessionid'
 CSRF_COOKIE_NAME = 'shijie_lan_csrftoken'
+if LAN_HTTPS:
+    SESSION_COOKIE_NAME = 'shijie_lan_https_sessionid'
+    CSRF_COOKIE_NAME = 'shijie_lan_https_csrftoken'
 SESSION_COOKIE_PATH = CSRF_COOKIE_PATH = '/'
-SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = LAN_HTTPS
 CSRF_TRUSTED_ORIGINS = [PUBLIC_URL, f'http://127.0.0.1:{port}', f'http://localhost:{port}']
 SECURE_PROXY_SSL_HEADER = None
 SECURE_SSL_REDIRECT = False

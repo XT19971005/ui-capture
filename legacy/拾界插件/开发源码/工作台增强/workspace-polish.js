@@ -51,7 +51,7 @@
  $('viewport').addEventListener('dblclick',e=>{if(busy||tool!=='select')return;const id=e.target.closest('[data-id]')?.dataset.id,n=scene?.nodes.find(n=>n.id===id);if(!n||n.type!=='text'||n.locked)return;closeInline();window.studio.select([id]);editing={id,value:n.text};inline.value=n.text;inline.hidden=false;Object.assign(inline.style,{left:imageOrigin.x+n.x*scale+'px',top:imageOrigin.y+n.y*scale+'px',width:Math.max(100,n.width*scale)+'px',height:Math.max(42,n.height*scale+8)+'px',fontFamily:n.fontFamily||'Microsoft YaHei',fontSize:Math.max(10,n.fontSize*scale)+'px',fontWeight:n.fontWeight||400,fontStyle:n.fontStyle||'normal'});inline.focus();inline.select()});
  inline.onblur=()=>closeInline();inline.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();closeInline(false)}if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();closeInline()}};
  $('reset-initial').addEventListener('pointerdown',()=>closeInline(false));
- const originalRefresh=refresh;refresh=function(){originalRefresh();$('recognize').hidden=false;reviewButton.hidden=!scene?.recognition;if(scene){$('image-source-title').textContent=scene.title||'图片工程';$('image-source-size').textContent=scene.width+' × '+scene.height+' px';$('stat-text').textContent=scene.nodes.filter(n=>n.type==='text').length;$('stat-vector').textContent=scene.nodes.filter(n=>['rect','ellipse','path'].includes(n.type)).length;$('stat-raster').textContent=scene.nodes.filter(n=>n.type==='image').length}box.disabled=clear.disabled=!scene||busy};
+ const originalRefresh=refresh;refresh=function(){originalRefresh();$('recognize').hidden=!!scene?._generationStages||!splitIncomplete();reviewButton.hidden=!scene?.recognition;if(scene){$('image-source-title').textContent=scene.title||'图片工程';$('image-source-size').textContent=scene.width+' × '+scene.height+' px';$('stat-text').textContent=scene.nodes.filter(n=>n.type==='text').length;$('stat-vector').textContent=scene.nodes.filter(n=>['rect','ellipse','path'].includes(n.type)).length;$('stat-raster').textContent=scene.nodes.filter(n=>n.type==='image').length}box.disabled=clear.disabled=!scene||busy};
  viewSettings();if(scene)refresh();
 })();
 
@@ -169,6 +169,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  q('[data-apply]').onclick=async e=>{
   if(operationBusy)return;
   const applyText=!checking&&modelReady&&readyProvider===provider.value&&!!model.value&&!q('[data-text-key]').value.trim();
+  if(!applyText){q('[data-result]').textContent='文字模型尚未就绪或有未保存的 Key，请先连接文字模型后再整体应用。';return}
   const requested={provider:provider.value,model:model.value,image:image.value,imageModel:image.value==='aimake'?q('[data-image-model]').value:'gpt-image-2',key:q('[data-image-key]').value.trim()};
   operationBusy=true;connectionControls();let imageSaved=false,imageSubmitted=false,textSaved=false,textBackendSaved=false;q('[data-result]').textContent='正在验证并保存图片设置…';
   try{

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from django.conf import settings
 from image_wire import decode_job
-from local_project_store import pack_record
+from local_project_store import pack_record, atomic_replace, read_json_atomic
 
 
 def user_root(user_id):
@@ -41,7 +41,7 @@ def write_json(path, value):
             f.write(raw)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temporary, path)
+        atomic_replace(temporary, path)
         # Persist the rename as well as the bytes across host power failure.
         if os.name != 'nt':
             fd = os.open(path.parent, os.O_RDONLY)
@@ -58,8 +58,12 @@ def write_scene(path, value):
     write_json(path, pack_record(value))
 
 
+def read_json(path):
+    return read_json_atomic(path)
+
+
 def read_scene(path):
-    return decode_job(json.loads(Path(path).read_text(encoding='utf8')))
+    return decode_job(read_json(path))
 
 
 def connection_version(path):

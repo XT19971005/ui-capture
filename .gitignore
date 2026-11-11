@@ -14,3 +14,4 @@ output/
 legacy/拾界插件/自检记录/
 # Distributable embeds the explicitly shared LAN access code; never publish it in Git.
 /同事启动器/
+/同事网页入口/

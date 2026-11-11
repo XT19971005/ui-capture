@@ -9,11 +9,15 @@ from django.contrib.auth.models import Group
 from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 from shijie.accounts.models import User
-from shijie.pipeline import ai
+if os.name!='nt':
+    from shijie.pipeline import ai
+else:
+    ai=None
 from shijie.pipeline.models import Job
 from shijie.pipeline.processes import environment
 from shijie.pipeline.storage import job_root, read_scene, write_scene
-from shijie.pipeline.worker import claim, recover, run
+if os.name!='nt':
+    from shijie.pipeline.worker import claim, recover, run
 from .test_service import png
 
 

@@ -214,7 +214,7 @@ class NewCapabilities(TestCase):
             ImageDraw.Draw(image).point((0,8),fill=(1,2,3,255));image.save(path)
             self.assertTrue(register_asset(path,64,(0,0))['boundaryReviewRequired'])
             square=Image.new('RGBA',(16,16));ImageDraw.Draw(square).rectangle((4,4,12,12),fill=(90,60,30,255));square.save(path)
-            self.assertTrue(register_asset(path,32,(0,0))['positionReviewRequired'])
+            self.assertFalse(register_asset(path,32,(0,0))['positionReviewRequired'])
 
     def test_chat_attachment_is_separate_from_project_and_cannot_target_edits(self):
         from free_assistant import validate_request, validate_plan

@@ -8,4 +8,9 @@ package = false
 
 [dependency-groups]
 mcp = ["mcp==1.30.0"]
-desktop = ["waitress==3.0.2"]
+desktop = [
+    "cheroot==11.1.2",
+    "cryptography>=46,<51",
+    "pyopenssl>=26,<27",
+    "waitress==3.0.2",
+]

@@ -15,6 +15,18 @@
   let p=parents.get(n.id);const seen=new Set();while(p){if(seen.has(p))return null;seen.add(p);const g=groups.get(p);if(!g||g.locked||g.visible===false||g.hidden===true&&g.visible===undefined)return null;p=parents.get(p)}
   return n.locked&&!imported(doc,n)?null:n;
  }
+ function targetError(doc,ids){
+  if(target(doc,ids))return null;
+  const chosen=[...ids],n=chosen.length===1?doc?.nodes?.find(v=>v.id===chosen[0]):null;
+  if(chosen.length>1)return '当前选中了多个图层，请指定一个需要修改的图片层';
+  if(chosen.length===1&&!n)return '生成前目标图层已不存在，未提交修改';
+  if(n?.versionArchived)return '当前选中的是修正前历史版本，未覆盖历史；请选择当前版本后修改';
+  if(n?.pendingGeneration)return '所选图片仍待生成，暂时没有可修改的图片内容';
+  if(n&&n.type!=='image')return '当前选中的是非图片图层，不能执行图片替换';
+  if(n&&!n.src)return '所选图片缺少图片数据，未提交修改';
+  if(n)return '所选图片或父组已隐藏或锁定，未提交修改；请核对图层状态';
+  return '请选择一个可替换的图片层';
+ }
  function rectFromPoints(a,b,box,width,height){
   if(!(box.width>0&&box.height>0&&width>0&&height>0))return null;
   const point=v=>({x:Math.max(0,Math.min(width,(v.x-box.left)*width/box.width)),y:Math.max(0,Math.min(height,(v.y-box.top)*height/box.height))}),p=point(a),q=point(b);
@@ -86,7 +98,7 @@
   function release(result,s){if(result&&(result._sessionId||result.delivery?.sessionId)!==(s.before._sessionId||s.before.delivery?.sessionId))env.release(result)}
   function invalidate(){if(!state)return;sequence++;release(state.result,state);state.result=null}
   function assertCurrent(s){const live=env.get();if(!s||state!==s||!sameProject(live,s.owner)||target(live,[s.id])?.id!==s.id||!equal(live.nodes.find(n=>n.id===s.id),s.before.nodes.find(n=>n.id===s.id))||['width','height','source','comparisonSource','_projectId'].some(k=>!equal(live[k],s.before[k]))||!equal((live.groups||[]).filter(g=>g.children?.includes(s.id)),(s.before.groups||[]).filter(g=>g.children?.includes(s.id))))throw Error('工程或选择已改变，候选已失效，请重新打开替换图片')}
-  function open(){if(state||env.busy())throw Error('请先完成当前操作');const owner=env.get(),n=target(owner,env.ids());if(!n)throw Error('请选择一个可替换的图片层');state={owner,before:clone(owner),ids:[...env.ids()],id:n.id,result:null,running:false};return clone(n)}
+  function open(){if(state||env.busy())throw Error('请先完成当前操作');const owner=env.get(),n=target(owner,env.ids());if(!n)throw Error(targetError(owner,env.ids()));state={owner,before:clone(owner),ids:[...env.ids()],id:n.id,result:null,running:false};return clone(n)}
   async function generate(config,onProgress=()=>{}){
    const s=state;if(!s||s.running||env.busy())throw Error('请先完成当前操作');assertCurrent(s);
    const prompt=String(config.prompt||'').trim();if(!prompt&&!config.reference?.src)throw Error('请填写替换描述或上传参考图');const selection=config.selection==null?null:clone(config.selection),region=selection!==null?polygonBounds(selection):config.region?clone(config.region):null;if(selection!==null&&!region)throw Error('圈选区域无效，请重新圈选');invalidate();s.expansionAllowed=config.task==='remove'&&config.annotations?.allowExpand?{width:config.annotations.width,height:config.annotations.height}:null;const token=sequence;s.running=true;env.lock(true);
@@ -107,7 +119,7 @@
  }
  function pointFromMatrix(point,m,width,height){const det=m.a*m.d-m.b*m.c;if(!Number.isFinite(det)||Math.abs(det)<1e-12)return null;const x=point.x-m.e,y=point.y-m.f;return [Math.max(0,Math.min(width,Math.round((m.d*x-m.c*y)/det))),Math.max(0,Math.min(height,Math.round((m.a*y-m.b*x)/det)))];}
  function createSelectionHistory(initial){let items=[clone(initial)],index=0;return {push(value){if(equal(items[index],value))return;items=items.slice(0,index+1);items.push(clone(value));if(items.length>100)items.shift();index=items.length-1},undo(){if(index>0)index--;return clone(items[index])},redo(){if(index<items.length-1)index++;return clone(items[index])},current:()=>clone(items[index]),canUndo:()=>index>0,canRedo:()=>index<items.length-1};}
- const api=window.ShijieImageReplacement={growToFit,paddedImage,target,rectFromPoints,pointFromClient,pointFromMatrix,createSelectionHistory,selectionPolygons,combineSelections,cropSelectionReference,polygonBounds,previewBounds,validateCandidate,createFlow};
+ const api=window.ShijieImageReplacement={growToFit,paddedImage,target,targetError,rectFromPoints,pointFromClient,pointFromMatrix,createSelectionHistory,selectionPolygons,combineSelections,cropSelectionReference,polygonBounds,previewBounds,validateCandidate,createFlow};
  if(typeof document==='undefined'||window.studio?.adapter.kind!=='image')return;
  const studio=window.studio,button=document.getElementById('replace-image');if(!button)return;let dialog=null;
  function sync(){const chosen=target(studio.adapter.get(),studio.ids);button.hidden=!chosen;button.disabled=!chosen||studio.isBusy()||!!dialog||!!window.ShijieImageGeneration?.active?.()||typeof window.ShijieSmartSplit?.replaceImage!=='function';if(dialog&&!dialog.flow.current())dialog.stale()}

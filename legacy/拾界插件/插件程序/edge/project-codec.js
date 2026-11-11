@@ -1,7 +1,7 @@
 /* Portable project files share image bytes without changing document metadata. */
 (()=>{
  'use strict';
- const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:200000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource']);
+ const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:200000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource','bindingSource']);
  const utf8=value=>/^[\x00-\x7f]*$/.test(value)?value.length:new TextEncoder().encode(value).byteLength;
  const jsonBytes=value=>utf8(JSON.stringify(value));
  const fail=message=>{throw Error(message)};
@@ -17,10 +17,10 @@
    index=images.length;images.push(value);indexes.set(value,index);sizes.push(jsonBytes(value));return index;
   }
   if(table!==null){if(!Array.isArray(table)||table.length>LIMITS.imageCount)fail('工程图片表格式无效。');for(const value of table){if(indexes.has(value))fail('工程图片表包含重复图片。');register(value)}}
-  function reference(index,key){if(!IMAGE_KEYS.has(key)||!Number.isSafeInteger(index)||index<0||index>=images.length)fail('工程图片引用无效。');used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return table===null?{$image:index}:images[index]}
+  function reference(index,key){if(!IMAGE_KEYS.has(key)||!Number.isSafeInteger(index)||index<0||index>=(table===null?images.length:table.length))fail('工程图片引用无效。');used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return table===null?{$image:index}:images[index]}
   function walk(value,key=null,depth=0){
    if(++items>LIMITS.items)fail('工程结构条目过多。');if(depth>LIMITS.depth)fail('工程结构层级超过40层限制。');
-   if(typeof value==='string'&&IMAGE_KEYS.has(key)&&value.startsWith('data:image/')){if(table!==null)fail('工程图片引用格式无效。');return reference(register(value),key)}
+   if(typeof value==='string'&&IMAGE_KEYS.has(key)&&value.startsWith('data:image/')){if(table!==null){if(key!=='bindingSource')fail('工程图片引用格式无效。');const index=register(value);used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return value}return reference(register(value),key)}
    if(value&&typeof value==='object'){
     if(Object.hasOwn(value,'$image')){if(table===null)fail('工程包含保留的图片引用字段。');if(Array.isArray(value)||Object.keys(value).length!==1)fail('工程图片引用无效。');return reference(value.$image,key)}
     if(stack.has(value))fail('工程结构存在循环引用。');if(!['[object Object]','[object Array]'].includes(Object.prototype.toString.call(value)))fail('工程包含无法保存的数据类型。');stack.add(value);
@@ -48,10 +48,17 @@
   const prefix=new Uint8Array(await file.slice(0,65537).arrayBuffer()),newline=prefix.indexOf(10);let header;
   if(newline>=0&&newline<65536){try{header=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(prefix.subarray(0,newline)))}catch{}}
   if(header?.storageVersion!=='local-disk-v1')return parse(await file.text());
-  if(typeof DecompressionStream!=='function')fail('当前浏览器不支持本地工程解压，请使用新版浏览器。');
+  if(typeof DecompressionStream!=='function'){
+   if(typeof window.ShijieCompression?.readGzip!=='function')fail('工程兼容模块未加载，请刷新页面后重试。');
+   const text=await window.ShijieCompression.readGzip(file.slice(newline+1),LIMITS.fileBytes);
+   return unpackLocalProject(text,header);
+  }
   const reader=file.slice(newline+1).stream().pipeThrough(new DecompressionStream('gzip')).getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let bytes=0,text='';
   try{while(true){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>LIMITS.fileBytes){await reader.cancel();fileLimit()}text+=decoder.decode(chunk.value,{stream:true})}text+=decoder.decode()}
   catch(error){await reader.cancel().catch(()=>{});if(bytes>LIMITS.fileBytes)fileLimit();fail('本地工程压缩内容损坏或不完整，原文件已保留。')}
+  return unpackLocalProject(text,header);
+ }
+ function unpackLocalProject(text,header){
   let wire;try{wire=JSON.parse(text)}catch{fail('本地工程内容损坏，原文件已保留。')}
   if(wire?.wireFormat!=='shijie-image-table'||wire.wireVersion!==1)fail('本地工程格式或版本不支持。');
   const record=decode({format:'shijie-project',version:1,doc:wire.job,images:wire.images});

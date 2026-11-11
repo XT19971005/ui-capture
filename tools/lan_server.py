@@ -62,11 +62,12 @@ def info(show_code=True):
     status = json.loads((STATE / 'status.json').read_text('utf8')) if (STATE / 'status.json').exists() else {}
     online = status.get('running') and time.time() - status.get('heartbeat', 0) < 20
     print('局域网网页正在运行' if online else '局域网网页未启动或已停止')
-    print(f"同事访问：http://{value['host']}:{value['port']}/")
+    print(f"同事访问：https://{value['host']}:{value['port']}/")
     print(f"本机管理：http://127.0.0.1:{value['port']}/")
     if show_code:
         print('访问码：' + protect((STATE / 'access.dat').read_bytes(), decrypt=True).decode())
-    print('同事用本地启动器可选择自己的工程文件夹并直接保存；直接访问内网地址则使用导出。PSD 直接下载。不要关闭共享电脑。')
+    print('同事首次导入“同事网页入口”内的证书，然后使用网页快捷方式。')
+    print('新版 Chrome/Edge 可选择自己的工程文件夹并直接保存，无需同事端EXE。PSD直接下载。不要关闭共享电脑。')
 
 
 def run_worker():
@@ -104,7 +105,8 @@ def run():
         if service.token_digest != digest:
             raise ValueError('局域网配对已被更改，请在本机恢复正确配对；不会覆盖待回传任务')
         (STATE / 'stop').unlink(missing_ok=True)
-        server = create_server(get_wsgi_application(), listen=f"127.0.0.1:{PORT} {settings.LAN_CONFIG['host']}:{PORT}",
+        # Plain HTTP is owner/worker-only. Colleagues use direct TLS on the LAN IP.
+        server = create_server(get_wsgi_application(), listen=f"127.0.0.1:{PORT}",
             threads=8, connection_limit=100, max_request_body_size=276*1024**2, expose_tracebacks=False)
         thread = threading.Thread(target=server.run, daemon=True); thread.start()
         process = tree = None
@@ -147,7 +149,7 @@ def main():
     group.add_argument('--stop', action='store_true'); group.add_argument('--worker', action='store_true')
     args = parser.parse_args()
     if args.prepare: return prepare()
-    if args.status: return info()
+    if args.status: return info(show_code=False)
     if args.stop:
         STATE.mkdir(parents=True, exist_ok=True); (STATE / 'stop').touch()
         print('已请求停止，正在保留已有任务结果。'); return

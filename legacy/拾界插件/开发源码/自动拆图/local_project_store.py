@@ -10,6 +10,74 @@ _STORE_LOCKS={}
 _STORE_LOCKS_GUARD=threading.Lock()
 class ProjectConflict(ValueError):pass
 
+def _windows_replace_is_locked(source, destination):
+ # MoveFileEx may report access denied (5) for a reader denying DELETE sharing.
+ # Probe the required access to distinguish that from genuine ACL/read-only errors.
+ import ctypes
+ from ctypes import wintypes
+ kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+ kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+ kernel.CreateFileW.restype=wintypes.HANDLE
+ kernel.CloseHandle.argtypes=[wintypes.HANDLE];kernel.CloseHandle.restype=wintypes.BOOL
+ kernel.GetFileAttributesW.argtypes=[wintypes.LPCWSTR];kernel.GetFileAttributesW.restype=wintypes.DWORD
+ attributes=kernel.GetFileAttributesW(str(destination))
+ if attributes!=0xFFFFFFFF and attributes & (1|0x10):return False
+ locked=False;destination_accessible=False
+ for path in (source,destination):
+  handle=kernel.CreateFileW(str(path),0x00010000,1|2|4,None,3,0,None)
+  if handle==ctypes.c_void_p(-1).value:
+   code=ctypes.get_last_error()
+   if code in (32,33):locked=True
+   elif code!=2:return False
+  else:
+   kernel.CloseHandle(handle)
+   if path==destination:destination_accessible=True
+ # A short-lived reader may have closed between replace and this probe.
+ return locked or destination_accessible
+
+def atomic_replace(source, destination):
+ """Retry only transient Windows reader locks, keeping the same complete temp file."""
+ deadline=time.monotonic()+2.0
+ delay=0.01
+ while True:
+  try:
+   os.replace(source,destination)
+   return
+  except OSError as error:
+   if os.name!='nt':raise
+   code=getattr(error,'winerror',None)
+   if code not in (32,33) and not (code==5 and _windows_replace_is_locked(source,destination)):raise
+   remaining=deadline-time.monotonic()
+   if remaining<=0:raise
+   time.sleep(min(delay,remaining))
+   delay=min(delay*2,0.1)
+
+def _windows_read_is_transient(path):
+ import ctypes
+ from ctypes import wintypes
+ kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+ kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+ kernel.CreateFileW.restype=wintypes.HANDLE
+ kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+ handle=kernel.CreateFileW(str(path),0x80000000,1|2|4,None,3,0,None)
+ if handle==ctypes.c_void_p(-1).value:return ctypes.get_last_error() in (32,33)
+ kernel.CloseHandle(handle)
+ return True # The replace window ended before the access probe.
+
+def read_json_atomic(path):
+ """Read one complete snapshot, retrying only verified transient Windows access."""
+ deadline=time.monotonic()+2.0;delay=0.01
+ while True:
+  try:return json.loads(Path(path).read_text(encoding='utf8'))
+  except OSError as error:
+   if os.name!='nt':raise
+   code=getattr(error,'winerror',None)
+   denied=code==5 or (code is None and isinstance(error,PermissionError) and error.errno==13)
+   if code not in (32,33) and not (denied and _windows_read_is_transient(path)):raise
+   remaining=deadline-time.monotonic()
+   if remaining<=0:raise
+   time.sleep(min(delay,remaining));delay=min(delay*2,0.1)
+
 def pack_record(record):
  images=[];indexes={}
  def walk(value,key=None):
@@ -129,8 +197,8 @@ class LocalProjectStore:
      temp=Path(stream.name);stream.write(header);stream.write(compressed);stream.flush();os.fsync(stream.fileno())
     # Keep the previous complete bytes available if writing the new version
     # fails after a title change. IDs and CAS versions do not depend on names.
-    if path.exists() and os.path.normcase(str(path))!=os.path.normcase(str(destination)):os.replace(path,destination)
-    os.replace(temp,destination)
+    if path.exists() and os.path.normcase(str(path))!=os.path.normcase(str(destination)):atomic_replace(path,destination)
+    atomic_replace(temp,destination)
    finally:
     if temp is not None:temp.unlink(missing_ok=True)
   return meta

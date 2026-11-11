@@ -1,3 +1,4 @@
+import os
 import contextlib
 import io
 import json
@@ -67,6 +68,6 @@ class Controller(SimpleTestCase):
             self.assertEqual(config['oidc']['client_secret'], '')
             self.assertEqual(config['oidc']['login_url'], 'https://login.example.test/auth')
             self.assertGreater(len(config['site']['secret_key']), 50)
-            self.assertEqual((folder / 'config.toml').stat().st_mode & 0o777, 0o600)
+            if os.name!='nt':self.assertEqual((folder / 'config.toml').stat().st_mode & 0o777, 0o600)
             with self.assertRaises(ValueError):
                 controller['configuration'](folder, 'http://127.0.0.1:8093', data_dir=data)

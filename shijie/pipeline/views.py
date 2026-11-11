@@ -95,6 +95,9 @@ def api(request, route):
 
 
 def engine(request, route):
+    if route == 'calibrate-image' and request.method == 'POST':
+        from selected_registration import process
+        return JsonResponse(process(body(request)))
     method = request.method
     owner = request.user
     root = user_root(owner.pk)
@@ -114,9 +117,9 @@ def engine(request, route):
         if route=='image-provider' and method in ('GET','POST'):
             if method=='POST':
                 value=body(request)
-                if value!={'provider':'codex','model':'gpt-image-2'}:
+                if value!={'provider':state.get('imageProvider','codex'),'model':state.get('imageModel','gpt-image-2')}:
                     return error('图片模型由共享电脑统一提供，无需填写个人 Key',409)
-            return JsonResponse({'provider':'codex','model':'gpt-image-2','configured':state['ready'],'shared':True,'models':[]})
+            return JsonResponse({'provider':state.get('imageProvider','codex'),'model':state.get('imageModel','gpt-image-2'),'configured':state['ready'],'shared':True,'models':[]})
         if route=='codex/model' and method=='POST':
             value=body(request)
             if set(value)!={'model'} or value['model'] not in [m['id'] for m in state['models']]:raise ValueError('请选择共享服务提供的模型')
@@ -137,7 +140,7 @@ def engine(request, route):
                              'codexAvailable': True, 'imageWireVersion': 1, 'regionRefineVersion': 1,
                              'imageReplaceSelectionVersion': 1, 'imageGenerateVersion': 1,
                              'localProjectStoreVersion': 1, 'sourceAnnotationsVersion': 1, 'assistantVersion': 1,
-                             'freeAssistantVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
+                             'freeAssistantVersion': 1, 'annotationPlanVersion': 2, 'phaseGenerationVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
                              'jobModes': ['codex', 'local-layered', 'refine-ui', 'refine-selected', 'repair-order', 'replace-image']})
     if route=='image-provider/catalog' and method=='POST':
         if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
@@ -198,6 +201,11 @@ def engine(request, route):
             owner.codex_model = value['model']
             owner.save(update_fields=['codex_model'])
             return JsonResponse({'ok': True, 'model': value['model']})
+    if route == 'assistant/generation-recovery/ack' and method == 'POST':
+        # Shared jobs already persist every returned layer in the owner's task store.
+        # Main projects may be browser-local: the server cannot prove their disk state,
+        # so retain the durable task results and never trust a client-only ACK to delete.
+        return JsonResponse({'deleted': False, 'retained': True, 'storage': 'server-task'})
     if route == 'saved-projects/settings/location':
         return JsonResponse({'directory': directory}) if method == 'GET' else error('工程保存在个人服务器工作区，不能更改宿主路径', 403)
     if route == 'saved-projects' or re.fullmatch(r'saved-projects/[A-Za-z0-9_-]{1,160}', route):
@@ -393,6 +401,7 @@ def page(request, page):
         tag = '<script src="' + escape(settings.PREFIX) + '/static/server/bootstrap.js" data-prefix="' + escape(settings.PREFIX) + '" data-user="' + str(request.user.pk) + '" data-shared-codex="'+shared+'" data-csrf="' + get_token(request) + '"></script>'
         tag += '<link rel="stylesheet" href="' + escape(settings.PREFIX) + '/static/server/fonts.css">'
         if shared=='true':tag+='<script src="'+escape(settings.PREFIX)+'/static/server/shared-codex.js"></script><script src="'+escape(settings.PREFIX)+'/static/server/local-projects.js"></script>'
+        tag = '<script src="' + escape(settings.PREFIX) + '/static/server/browser-compat.js"></script><script src="' + escape(settings.PREFIX) + '/static/server/compression.js"></script>' + tag
         html = html.replace('<head>', '<head>' + tag, 1)
         return HttpResponse(html)
     raw = path.read_bytes()

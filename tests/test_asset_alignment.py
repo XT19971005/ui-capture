@@ -75,8 +75,8 @@ class AssetAlignment(SimpleTestCase):
                 # The full expanded canvas makes small objects hard to resolve.
                 # A separate unmarked, unscaled source crop must supply details.
                 with Image.open(references[-1]) as detail:
-                    self.assertEqual(detail.size, (180, 130))
-                    self.assertEqual(detail.convert('RGB').tobytes(), source.crop((145, 75, 325, 205)).tobytes())
+                    self.assertEqual(detail.size, (330, 280))
+                    self.assertEqual(detail.convert('RGB').tobytes(), source.crop((70, 0, 400, 280)).tobytes())
                 target.write_bytes(raw)
                 return dict(actualImageGeneration=True, provider='codex')
             with patch('image_provider.CLIENT.generate', side_effect=generate):
@@ -86,7 +86,7 @@ class AssetAlignment(SimpleTestCase):
         self.assertEqual(result['src'], node['src'])
         self.assertFalse(result['positionReviewRequired'])
         self.assertIn(result['assetReviewStatus'], ('NOT_REVIEWED', 'NEEDS_REVIEW'))
-        self.assertGreaterEqual(result['sourceAlignment']['inliers'], 12)
+        self.assertGreaterEqual(result['registration']['inliers'], 12)
 
     def test_expanded_extraction_without_evidence_does_not_claim_registration(self):
         from expanded_assets import extract
@@ -97,9 +97,10 @@ class AssetAlignment(SimpleTestCase):
             def generate(prompt, references, target, **kwargs):
                 target.write_bytes(base64.b64decode(node['src'].split(',', 1)[1]))
                 return dict(actualImageGeneration=True, provider='codex')
-            with patch('image_provider.CLIENT.generate', side_effect=generate):
+            with patch('image_provider.CLIENT.generate', side_effect=generate), patch('semantic_registration.calibrate_semantic', side_effect=ValueError('no matching source features')):
                 result = extract(original, node, root, lambda: False, lambda _: None)
-        self.assertTrue(result['positionReviewRequired'])
+        self.assertFalse(result['positionReviewRequired'])
+        self.assertEqual(result['registration']['status'], 'estimated')
         self.assertNotIn('sourceAlignment', result)
         self.assertEqual(result['src'], node['src'])
 

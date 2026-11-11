@@ -12,4 +12,4 @@ if (Get-NetFirewallRule -Name $taskRuleName -ErrorAction SilentlyContinue) {
 } else {
     New-NetFirewallRule -Name $taskRuleName -DisplayName 'AI拆图助手：办公局域网共享' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 19218 -LocalAddress $taskSite.host -RemoteAddress LocalSubnet -Profile Any | Out-Null
 }
-Write-Host '已仅允许本机19218端口接收同一局域网访问。'
+Write-Host '已仅允许本机19218端口接收同一局域网HTTPS访问。'

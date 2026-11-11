@@ -41,7 +41,7 @@ def repair_scope(plan,error,canvas_size=None):
    keys=geometry if field in geometry|{'box'} else ({'type','d'} if field=='type' else {field})
    if field=='style':
     keys=set()
-    for key in ('gradient','layerStyle','displayMask'):
+    for key in ('gradient','layerStyle','displayMask','opacity'):
      try:design_fields({key:row.get(key)})
      except ValueError:keys.add(key)
    scope[('vectors',row['id'])]=keys

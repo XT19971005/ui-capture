@@ -33,7 +33,8 @@ def public(service=None):
     return {'enabled': service.enabled, 'paired': bool(service.token_digest), 'online': online,
             'ready': online and capabilities.get('ready', False),
             'models': capabilities.get('models', []), 'model': capabilities.get('model', ''),
-            'imageGeneration': online and capabilities.get('imageGeneration', False)}
+            'imageGeneration': online and capabilities.get('imageGeneration', False),
+            'analysisProvider':capabilities.get('analysisProvider','codex'),'imageProvider':capabilities.get('imageProvider','codex'),'imageModel':capabilities.get('imageModel','gpt-image-2')}
 
 
 def secure(request):
@@ -79,10 +80,13 @@ def admin(request, data=None):
 
 
 def capabilities(data):
-    if not isinstance(data,dict) or set(data)!={'ready','models','model','imageGeneration'}:
+    if not isinstance(data,dict) or set(data)-{'ready','models','model','imageGeneration','analysisProvider','imageProvider','imageModel'} or not {'ready','models','model','imageGeneration'}<=set(data):
         raise ValueError('本机状态参数无效')
     if type(data['ready']) is not bool or type(data['imageGeneration']) is not bool:
         raise ValueError('本机状态无效')
+    if data.get('analysisProvider','codex') not in ('codex','tygpt') or data.get('imageProvider','codex') not in ('codex','aimake'):raise ValueError('共享模型来源无效')
+    from image_provider import valid_model
+    if not valid_model(data.get('imageModel','gpt-image-2')):raise ValueError('共享图片模型无效')
     models=data['models']
     if not isinstance(models,list) or len(models)>200:raise ValueError('本机模型目录无效')
     clean=[]
@@ -99,7 +103,7 @@ def capabilities(data):
 
 def model_state(service=None):
     value=public(service)
-    return {**value,'ok':True,'provider':'codex','configured':value['paired'],'shared':True,
+    return {**value,'ok':True,'provider':value.get('analysisProvider','codex'),'configured':value['paired'],'shared':True,
             'error':None if value['ready'] else '共享电脑离线或 Codex 未连接，请联系管理员'}
 
 
@@ -118,11 +122,11 @@ def enqueue(owner, value, validated, root, size, service):
     ids=[m['id'] for m in state['models']]
     requested=value.get('model') if validated['mode']=='assistant-plan' else owner.codex_model
     model=requested if requested in ids else state['model']
-    if validated['mode']=='assistant-plan':value={**value,'provider':'codex','model':model}
+    if validated['mode']=='assistant-plan':value={**value,'provider':state['analysisProvider'],'model':model}
     check_space(root,size)
     job=Job.objects.create(owner=owner,title=validated['title'],mode=validated['mode'],executor='desktop',message='等待共享电脑处理')
     write_scene(job_root(job)/'input.json',value)
-    write_json(job_root(job)/'connection.json',{'provider':'codex','analysisProvider':'codex','imageProvider':'codex','imageModel':'gpt-image-2','needsCodex':True,'codexModel':model})
+    write_json(job_root(job)/'connection.json',{'provider':state['analysisProvider'],'analysisProvider':state['analysisProvider'],'imageProvider':state['imageProvider'],'imageModel':state['imageModel'],'needsCodex':state['analysisProvider']=='codex' or state['imageProvider']=='codex','codexModel':model})
     if validated.get('resume'):
         write_scene(job_root(job)/'partial.json',validated['resume'])
         Job.objects.filter(pk=job.pk).update(partial_revision=1)
@@ -142,7 +146,7 @@ def claim(service):
     if job is None:return {'job':None}
     snapshot=json.loads((job_root(job)/'connection.json').read_text())
     return {'job':{'id':str(job.pk),'lease':job.relay_lease,'mode':job.mode,'model':snapshot['codexModel'],
-                   'input':read_scene(job_root(job)/'input.json'),'cancel':job.cancel_requested or not allowed(job.owner)}}
+                   'analysisProvider':snapshot.get('analysisProvider','codex'),'imageProvider':snapshot.get('imageProvider','codex'),'imageModel':snapshot.get('imageModel','gpt-image-2'),'input':read_scene(job_root(job)/'input.json'),'cancel':job.cancel_requested or not allowed(job.owner)}}
 
 
 def start(data):
@@ -159,7 +163,7 @@ def start(data):
 
 
 def update(data):
-    if not isinstance(data,dict) or set(data)-{'id','lease','run','status','progress','message','partial','result','previewText','elapsedSeconds'}:
+    if not isinstance(data,dict) or set(data)-{'id','lease','run','status','progress','message','partial','result','previewText','elapsedSeconds','diagnostic'}:
         raise ValueError('任务回传参数无效')
     ident=UUID(data['id']);job=Job.objects.select_for_update().select_related('owner').filter(pk=ident,executor='desktop').first()
     if job is None or not secrets.compare_digest(job.relay_lease,str(data.get('lease',''))):
@@ -210,6 +214,12 @@ def update(data):
     job.progress=max(job.progress,progress);job.heartbeat=timezone.now()
     # Messages from a remote process cannot leak local paths or provider diagnostics.
     job.message={'running':'共享电脑正在处理','completed':'处理完成，请核对结果','failed':'共享电脑处理未完成，已有结果保留；请联系管理员检查','cancelled':'已取消，已有结果保留'}[state]
+    if state=='failed':
+        from .diagnostics import sanitize_failure,failure_message
+        diagnostic=sanitize_failure(data.get('diagnostic'))
+        if diagnostic:
+            write_json(folder/'failure.json',diagnostic)
+            job.message=failure_message(diagnostic)
     if state!='running':
         if state=='completed' and 'result' not in data:raise ValueError('完成任务缺少结果')
         job.status='failed' if expired else 'cancelled' if cancel else state

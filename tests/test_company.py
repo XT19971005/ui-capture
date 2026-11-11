@@ -1,3 +1,4 @@
+import os
 import base64
 import json
 import io
@@ -215,7 +216,7 @@ class Connections(TestCase):
         self.assertFalse(response.json()['verified'])
         self.assertNotIn(CONFIG['api_key'], response.content.decode())
         self.assertNotIn(CONFIG['api_key'], company.path(self.user).read_text())
-        self.assertEqual(company.path(self.user).stat().st_mode & 0o777, 0o600)
+        if os.name!='nt':self.assertEqual(company.path(self.user).stat().st_mode & 0o777, 0o600)
         self.assertEqual(company.credentials(self.user)['api_key'], CONFIG['api_key'])
         self.assertIsNone(company.credentials(self.other))
         self.assertFalse(company.status(self.other)['configured'])

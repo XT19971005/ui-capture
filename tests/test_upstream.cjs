@@ -2,18 +2,12 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const edge=path.join(__dirname,'../legacy/拾界插件/插件程序/edge');
 function helpers(){const c={structuredClone,crypto:require('node:crypto').webcrypto,TextEncoder};c.window=c;for(const file of ['original-annotations.js','free-assistant.js'])vm.runInNewContext(fs.readFileSync(path.join(edge,file),'utf8'),c);return c;}
 const plain=v=>JSON.parse(JSON.stringify(v));
-test('connection settings open the selected company or Codex panel; only Taishi opens its own key form',()=>{
- const handler=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8').split('\n').find(line=>line.trim().startsWith("q('[data-connect]').onclick="));
- assert.ok(handler);
- for(const provider of ['auto','company','codex','taishi']){
-  const clicks=[],button={},dialog={querySelector:()=>({}),addEventListener(){}};
-  const c={q:()=>button,provider:{value:provider},modelSettingsDialog:{close:()=>clicks.push('close')},models(){},
-   document:{getElementById:id=>({click:()=>clicks.push(id)}),querySelector:()=>dialog,createElement:()=>dialog,body:{append(){}}},
-   window:{ShijieInlinePanels:{open:()=>clicks.push('taishi')}}};
-  vm.runInNewContext(handler,c);button.onclick();
-  assert.deepEqual(clicks,provider==='taishi'?['close','taishi']:['close','codex-settings',...(provider==='auto'?[]:['ai-provider-'+provider])]);
- }
+test('assistant connection settings use the unified AI settings entry',()=>{
+ const script=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8');
+ assert.match(script,/q\('\[data-connect\]'\)\.onclick=\(\)=>settingsButton\.click\(\)/);
+ assert.match(script,/settingsButton\.id='assistant-model-settings'/);
 });
+
 test('marks stay separate from source pixels, preserve chronology and reject stale source identity',async()=>{
  const c=helpers(),a=c.ShijieOriginalAnnotations,source='clean-source';const hash=require('node:crypto').createHash('sha256').update(source).digest('hex');
  const empty=a.empty({width:200,height:100},hash),one=a.addStroke(empty,'#ffdf24','角色',a.shapeStroke('rect',[[10,20],[50,60]]));
@@ -45,7 +39,7 @@ test('re-splitting archives only the chosen layer and preserves position, parent
  assert.throws(()=>a.mergeLayerSplit(original,{...node,width:120},{nodes:[]},100,80),/非等比/);
 });
 function autosave(){const source=fs.readFileSync(path.join(edge,'studio.js'),'utf8'),timers=new Map(),writes=[];let ident=0,doc={_projectId:'p',revision:0},saved=0,fail=false,blocked=false;
- const c={reloadRecovery:null,a:{get:()=>doc,status(){}},B:{id:()=> 'id',library:{isDirty:d=>d.revision!==saved,directory:()=>'/user/projects',put:async(d,o,opts)=>{writes.push({doc:d,opts});if(fail)throw Error('磁盘已满');saved=d.revision;return {}}}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(e){c.error=e.message},autoDirectories:new Map(),autoSaving:false,restoringProject:false,busy:()=>blocked,setTimeout:fn=>{timers.set(++ident,fn);return ident},clearTimeout:id=>timers.delete(id),saveTimer:null};
+ const c={saveProjectButton:null,reloadRecovery:null,a:{get:()=>doc,status(){}},B:{id:()=> 'id',library:{isDirty:d=>d.revision!==saved,directory:()=>'/user/projects',put:async(d,o,opts)=>{writes.push({doc:d,opts});if(fail)throw Error('磁盘已满');saved=d.revision;return {}}}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(e){c.error=e.message},autoDirectories:new Map(),autoSaving:false,restoringProject:false,busy:()=>blocked,setTimeout:fn=>{timers.set(++ident,fn);return ident},clearTimeout:id=>timers.delete(id),saveTimer:null};
  vm.runInNewContext(source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function sync('))+';this.save=save;',c);
  vm.runInNewContext(source.slice(source.indexOf(' async function saveCheckpoint('),source.indexOf(' async function saveCheckpoint(')+source.slice(source.indexOf(' async function saveCheckpoint(')).indexOf('\n }')+3)+';this.saveCheckpoint=saveCheckpoint;',c);
  return {c,writes,edit:()=>doc.revision++,switch:()=>doc={_projectId:'other',revision:2},fail:()=>fail=true,block:()=>blocked=true,async tick(){const queued=[...timers.values()];timers.clear();for(const fn of queued)await fn()},get pending(){return timers.size}};
@@ -172,23 +166,35 @@ test('outpaint rejects a resized or replaced selected background before appendin
 });
 
 
-async function runAssistantBackground(action,{resizeDuringInspect=false}={}){
+async function runAssistantBackground(action,{resizeDuringInspect=false,layerSplit=false,withoutBaseline=false}={}){
  const a=helpers().ShijieFreeAssistant,old={_projectId:'background-project',title:'荷塘主题',width:100,height:80,source:'old-ui',comparisonSource:'old-ui',_splitBaseline:{version:1,scene:{title:'initial'}},recognition:{extractionStatus:'COMPLETED',timing:{elapsedMs:12}},nodes:[{id:'background',name:'干净荷塘背景',type:'image',src:'clean-background',x:0,y:0,width:100,height:80,visible:true,locked:false}],groups:[],edges:[]};
+ if(withoutBaseline)delete old._splitBaseline;
+ if(layerSplit)old.nodes[0]._sourceAnnotations={version:1,width:100,height:80,sourceHash:require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),items:[{strokes:[[[1,1],[2,2]]]}]};
  let current=structuredClone(old),requests=0,completed=0,grows=0;
- const hash=require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),plan={action,name:'荷塘扩建',reference:action==='outpaint'?'selection':'original',targetIds:action==='outpaint'?['background']:[],layers:[{name:'荷塘背景',box:{x:0,y:0,width:100,height:100}}],outpaintSource:{id:'background',sourceHash:hash,width:100,height:80}};
+ const hash=require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),plan={action,name:'荷塘扩建',reference:action==='outpaint'||layerSplit?'selection':'original',targetIds:action==='outpaint'||layerSplit?['background']:[],layers:[{name:'荷塘背景',box:{x:0,y:0,width:100,height:100}}],outpaintSource:{id:'background',sourceHash:hash,width:100,height:80}};
  const result={nodes:[{id:'fresh',name:'荷塘背景',type:'image',src:'new-background',x:0,y:0,width:100,height:100}],recognition:{extractionStatus:'COMPLETED'}};
- const c={clone:structuredClone,equal:(left,right)=>JSON.stringify(left)===JSON.stringify(right),...Object.fromEntries(['targetCurrent','splitSource','createLayerReceiver','growGeneratedScene'].map(k=>[k,a[k]])),verifiedSplitSource:(d,ids,p)=>a.verifiedSplitSource(d,ids,p,async()=>{if(resizeDuringInspect)current.nodes[0].width=101;return {width:100,height:80}}),
-  timing:{split(){},stop:()=>({elapsedMs:5,understandingMs:1,totalMs:6})},notice:{},renderTiming(){},compactGenerated:async r=>r,flow:{recordOutcome(){}},splitTimingHistory:()=>[],
-  StudioBase:{id:()=> 'task'},window:{StudioBase:{library:{}}},ShijieImageReplacement:{growToFit:async()=>grows++},
+ const c={clone:structuredClone,equal:(left,right)=>JSON.stringify(left)===JSON.stringify(right),...Object.fromEntries(['targetCurrent','splitSource','createLayerReceiver','growGeneratedScene','stageCurrent','generationCounts','generationSummary','reconcileRetainedText','allAnnotatedStagesComplete','annotationEqual','imageBatchLimit'].map(k=>[k,a[k]])),verifiedSplitSource:(d,ids,p)=>a.verifiedSplitSource(d,ids,p,async()=>{if(resizeDuringInspect)current.nodes[0].width=101;return {width:100,height:80}}),
+  timing:{split(){},read:()=>({elapsedMs:5,understandingMs:1,totalMs:6}),stop:()=>({elapsedMs:5,understandingMs:1,totalMs:6})},notice:{},renderTiming(){},compactGenerated:async r=>r,flow:{recordOutcome(){}},splitTimingHistory:()=>[],
+  stageUI(){},stageSelect:{value:'image'},imageBatch:{value:'0'},status(){},StudioBase:{id:()=> 'task'},window:{StudioBase:{library:{}}},ShijieImageReplacement:{growToFit:async()=>grows++},
   studio:{ids:new Set(['background']),adapter:{get:()=>current,commit:async fn=>fn()},sync(){},saveCheckpoint:async()=>{},setInitial:()=>completed++},
-  ShijieSmartSplit:{assistantSplit:async(body,onProgress)=>{requests++;assert.equal(body.image,action==='outpaint'?'clean-background':'old-ui');assert.equal(body.width,100);assert.equal(body.height,80);await onProgress(.5,'已完成',null,{...structuredClone(result),_partial:true});return result}}};
- const text=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8'),start=text.indexOf('execute:async(plan'),end=text.indexOf('\n }});',start);assert.ok(start>0&&end>start);const execute=vm.runInNewContext('({'+text.slice(start,end+3)+'})',c).execute;
+  ShijieSmartSplit:{assistantSplit:async(body,onProgress)=>{requests++;assert.equal(body.image,action==='outpaint'||layerSplit?'clean-background':'old-ui');assert.equal(body.width,100);assert.equal(body.height,80);await onProgress(.5,'已完成',null,{...structuredClone(result),_partial:true});return result}}};
+ const text=fs.readFileSync(path.join(edge,'free-assistant.js'),'utf8'),start=text.indexOf('execute:executePlan=async(plan'),end=text.indexOf('\n }});',start);assert.ok(start>0&&end>start);const execute=vm.runInNewContext('({'+text.slice(start,end+3).replace('execute:executePlan=','execute:')+'})',c).execute;
  let error;try{await execute(plan,structuredClone(old),['background'],[],()=>true)}catch(e){error=e}
  return {old,current,requests,completed,grows,error};
 }
 test('actual assistant background routes append without changing old state while explicit split retains its lifecycle',async()=>{
  for(const action of ['background','outpaint']){const r=await runAssistantBackground(action);assert.equal(r.error,undefined,r.error?.message);assert.equal(r.requests,1);assert.equal(r.current.nodes.length,2);assert.deepEqual(plain(r.current.nodes[0]),r.old.nodes[0]);for(const key of ['source','comparisonSource','_splitBaseline','recognition'])assert.deepEqual(plain(r.current[key]),r.old[key]);assert.equal(r.completed,0);}
- const split=await runAssistantBackground('split');assert.equal(split.error,undefined,split.error?.message);assert.equal(split.current.nodes[0].hidden,true);assert.equal(split.completed,1);assert.ok(split.grows>0);
+ const split=await runAssistantBackground('split');assert.equal(split.error,undefined,split.error?.message);assert.deepEqual(plain(split.current.nodes[0]),split.old.nodes[0]);assert.equal(split.completed,1);assert.ok(split.grows>0);
+});
+
+test('actual selected-layer split preserves the whole-project baseline and never invents a missing baseline',async()=>{
+ for(const withoutBaseline of [false,true]){
+  const r=await runAssistantBackground('split',{layerSplit:true,withoutBaseline});
+  assert.equal(r.error,undefined,r.error?.message);assert.equal(r.requests,1);assert.equal(r.current.nodes.length,2);
+  assert.equal(r.current._partial,false);assert.equal(r.completed,0,'a selected-layer split must not capture a whole-project baseline');
+  if(withoutBaseline)assert.equal(Object.hasOwn(r.current,'_splitBaseline'),false);
+  else assert.deepEqual(plain(r.current._splitBaseline),r.old._splitBaseline);
+ }
 });
 test('outpaint stops before generation if the selected background changes dimensions during source inspection',async()=>{
  const r=await runAssistantBackground('outpaint',{resizeDuringInspect:true});assert.match(r.error?.message||'',/背景.*改变/);assert.equal(r.requests,0);assert.equal(r.current.nodes.length,1);

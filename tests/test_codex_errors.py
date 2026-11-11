@@ -34,7 +34,7 @@ class CodexErrors(SimpleTestCase):
                 return {**node,'provenance':'codex-image-generation','pendingGeneration':False}
             def background(src,holder,*args,**kwargs):
                 holder['nodes'][0]={**holder['nodes'][0],'provenance':'codex-image-generation','pendingGeneration':False}
-            with self.subTest(resume=resume),tempfile.TemporaryDirectory() as folder,patch('codex_pipeline.CLIENT',Mock(analyze=Mock(return_value=plan))),patch('codex_pipeline.assemble',side_effect=lambda p,build,*a,**kw:(p,build(p))),patch('engine.build_scene',side_effect=build),patch('incremental_assets.extract_checked',side_effect=extract),patch('workflow_assets.complete_background',side_effect=background):
+            with self.subTest(resume=resume),tempfile.TemporaryDirectory() as folder,patch('codex_pipeline.CLIENT',Mock(analyze=Mock(return_value=plan))),patch('codex_pipeline.assemble',side_effect=lambda p,build,*a,**kw:(p,build(p))),patch('engine.build_scene',side_effect=build),patch('incremental_assets.extract_once',side_effect=extract),patch('workflow_assets.complete_background',side_effect=background):
                 result=_process(source,'进度检查',lambda p,m:events.append((p,m)),lambda:False,source,folder,resume_scene=previous if resume else None)
             self.assertEqual(len(during),2)
             self.assertGreater(during[1][0],during[0][0])
