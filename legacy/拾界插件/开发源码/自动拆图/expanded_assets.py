@@ -94,15 +94,26 @@ def extract(source,layer,assets,cancelled,on_status,annotations=None):
     registered=calibrate_semantic(original_image.convert('RGB'),generated_image.convert('RGBA'),layer,registered,cancelled=cancelled,on_status=on_status)
   except Exception as exc:
    if isinstance(exc,InterruptedError) or cancelled():raise
-   from asset_registration import annotation_estimate
-   with Image.open(source) as check_source:
-    region=check_source.convert('RGBA').crop((round(layer['x']),round(layer['y']),round(layer['x']+layer['width']),round(layer['y']+layer['height'])))
-    has_reference=region.getchannel('A').getbbox() is not None
-   if has_reference:
-    with Image.open(target) as estimate_image:registered=annotation_estimate(estimate_image.convert('RGBA'),layer,registered)
-    registered['registration']['detail']=str(exc)[:240]
-    registered['reviewIssue']='大小位置已按对应标注等比估算'
-   else:registered['reviewIssue']='原图目标区域没有可见内容，保留完整素材及原参考落位'
+   # Keep the valid paid PNG even if optional placement estimation fails.
+   # Cancellation remains an explicit interruption, never a successful delivery.
+   try:
+    from asset_registration import annotation_estimate
+    with Image.open(source) as check_source:
+     region=check_source.convert('RGBA').crop((round(layer['x']),round(layer['y']),round(layer['x']+layer['width']),round(layer['y']+layer['height'])))
+     has_reference=region.getchannel('A').getbbox() is not None
+    if has_reference:
+     with Image.open(target) as estimate_image:registered=annotation_estimate(estimate_image.convert('RGBA'),layer,registered)
+     registered['registration']['detail']=str(exc)[:240]
+     note='大小位置已按对应标注等比估算；仍需校对，不代表精确匹配'
+    else:
+     registered['positionReviewRequired']=True
+     note='原图目标区域没有可见内容，保留完整素材及原参考落位'
+   except Exception as estimate_error:
+    if isinstance(estimate_error,InterruptedError) or cancelled():raise
+    registered['positionReviewRequired']=True
+    registered['registration']={**registered.get('registration',{}),'status':'needs-review','reason':'自动位置校对未完成','detail':str(estimate_error)[:240]}
+    note='自动位置校对未完成，保留已生成完整PNG及临时落位：'+str(estimate_error)[:240]
+   registered['reviewIssue']='；'.join(filter(None,[registered.get('reviewIssue'),note]))
 
  src=registered['src']
  return {'id':layer['id'],'name':layer['name'],'type':'image',**registered,'provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','assetKind':'complete-asset','assetReviewStatus':'NEEDS_REVIEW' if registered['reviewIssue'] else 'NOT_REVIEWED','review':True,'generationRecord':{'actualImageGeneration':True,'transparent':True,'sourceOriginalSHA256':hashlib.sha256(Path(source).read_bytes()).hexdigest(),'generatedAssetSHA256':hashlib.sha256(base64.b64decode(src.split(',',1)[1])).hexdigest(),'expandedCanvas':True,**{k:record[k] for k in ('provider','model','genId','postprocessing') if k in record}}}

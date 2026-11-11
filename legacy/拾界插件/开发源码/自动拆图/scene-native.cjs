@@ -18961,6 +18961,7 @@ __export(scene_export_exports, {
   allNodes: () => allNodes,
   assertExportCapacity: () => assertExportCapacity,
   assertRenderCapacity: () => assertRenderCapacity,
+  cleanPixelcutResidue: () => cleanPixelcutResidue,
   color: () => color,
   compactPsdImages: () => compactPsdImages,
   contourOperations: () => contourOperations,
@@ -19546,6 +19547,50 @@ function releaseDecodedImage(im) {
   if (typeof im.close === "function") im.close();
   else if (!globalThis.ShijieNodeCanvas && typeof Image !== "undefined" && im instanceof Image) im.src = "";
 }
+function cleanPixelcutResidue(pixels, w, h) {
+  let left = w, top = h, right = -1, bottom = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (pixels[(y * w + x) * 4 + 3] >= 16) {
+    left = Math.min(left, x);
+    right = Math.max(right, x);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y);
+  }
+  if (right < 0) return 0;
+  const visited = new Uint8Array(w * h), candidate = (i) => pixels[i * 4 + 3] === 1 && pixels[i * 4] === 0 && pixels[i * 4 + 1] === 0 && pixels[i * 4 + 2] === 0;
+  let removed = 0;
+  for (let seed = 0; seed < w * h; seed++) {
+    if (visited[seed] || !candidate(seed)) continue;
+    const queue = [seed];
+    visited[seed] = 1;
+    let isolated = true, l = w, t = h, r = -1, b = -1;
+    for (let at = 0; at < queue.length; at++) {
+      const i = queue[at], x = i % w, y = Math.floor(i / w);
+      l = Math.min(l, x);
+      r = Math.max(r, x);
+      t = Math.min(t, y);
+      b = Math.max(b, y);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const j = ny * w + nx;
+        if (!pixels[j * 4 + 3]) continue;
+        if (!candidate(j)) {
+          isolated = false;
+          continue;
+        }
+        if (!visited[j]) {
+          visited[j] = 1;
+          queue.push(j);
+        }
+      }
+    }
+    if (isolated && queue.length <= 8 && (r + 1 < left - 8 || l > right + 1 + 8 || b + 1 < top - 8 || t > bottom + 1 + 8)) {
+      for (const i of queue) pixels.fill(0, i * 4, i * 4 + 4);
+      removed += queue.length;
+    }
+  }
+  return removed;
+}
 async function compactPsdImages(scene) {
   validate(scene);
   decodeUsage(allNodes(scene, true));
@@ -19559,7 +19604,8 @@ async function compactPsdImages(scene) {
     try {
       const c = canvas.getContext("2d");
       c.drawImage(image, 0, 0);
-      const pixels = c.getImageData(0, 0, w, h).data;
+      const imageData = c.getImageData(0, 0, w, h), pixels = imageData.data;
+      if (n.generationRecord?.actualImageGeneration && cleanPixelcutResidue(pixels, w, h)) c.putImageData(imageData, 0, 0);
       let left = w, top = h, right = -1, bottom = -1;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (pixels[(y * w + x) * 4 + 3] !== 0) {
         left = Math.min(left, x);
@@ -19887,6 +19933,7 @@ function resizePath(n, width, height) {
   allNodes,
   assertExportCapacity,
   assertRenderCapacity,
+  cleanPixelcutResidue,
   color,
   compactPsdImages,
   contourOperations,

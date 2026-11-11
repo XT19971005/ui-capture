@@ -39,6 +39,7 @@ const groups={
     "workspace-actions.css",
     "free-assistant.js",
     "free-assistant.css",
+    "annotation-order.js",
     "original-annotations.js",
     "original-annotations.css",
     "canvas-compare.js",

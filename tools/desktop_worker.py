@@ -121,6 +121,7 @@ class DesktopWorker:
         from local_project_store import pack_record
         from image_wire import decode_job
         with self.session.post(self.url+'/desktop-relay/v1/'+action,json=pack_record(data),headers={'Authorization':'Bearer '+self.token},timeout=(10,45),allow_redirects=False,stream=True) as response:
+            if response.status_code==400 and action=='heartbeat':raise RuntimeError('共享后台拒收接单信息（HTTP 400），请检查两端版本并重载共享后台；原任务保留，不要重复提交')
             if response.status_code!=200:raise RuntimeError('共享网站暂未接受请求（HTTP '+str(response.status_code)+'），原任务不会自动重跑')
             buffer=bytearray()
             for part in response.iter_content(65536):

@@ -31,7 +31,7 @@ test('canvas and rotation native geometry scripts deploy with image editor and p
  assert.throws(()=>context.window.ShijieCanvasSize.validateRect({x:0,y:0,width:6001,height:10},{}),/上限/);
  assert.doesNotThrow(()=>context.window.ShijieManualRotate.validateRasterSize(3000,4000));
  assert.throws(()=>context.window.ShijieManualRotate.validateRasterSize(6001,2),/上限/);
- assert.ok(fs.readFileSync(path.join(edge,'original-annotations.js'),'utf8').includes('(window.ShijieSession||crypto.subtle).digest'));
+ assert.ok(fs.readFileSync(path.join(edge,'original-annotations.js'),'utf8').includes('(window.ShijieSession?.digest?window.ShijieSession:crypto.subtle).digest'));
 });
 
 function freshApplicationApi(){const c={window:{},structuredClone};vm.runInNewContext(fs.readFileSync(path.join(root,'开发源码/工作台增强/candidate-store.js'),'utf8'),c);return c.window.ShijieCandidateStore;}

@@ -588,3 +588,27 @@ class PlannedVectorOpacity(SimpleTestCase):
   self.assertIn("opacity",PLAN["properties"]["vectors"]["items"]["required"])
   for bad in [True,"0.5",float("nan"),10**400,-.1,1.1]:
    with self.subTest(value=bad),self.assertRaises(ValueError):design_fields({"opacity":bad})
+
+
+import image_provider as p
+
+class PixelcutResidueTests(SimpleTestCase):
+ def test_only_remote_tiny_black_one_alpha_islands_are_removed(self):
+  im=Image.new('RGBA',(100,80));im.paste((200,140,40,255),(30,25,70,60));im.putpixel((2,2),(0,0,0,1));im.putpixel((29,30),(0,0,0,1));im.putpixel((4,70),(20,80,200,1));im.putpixel((8,72),(0,0,0,2))
+  fixed,count=p.clean_pixelcut_residue(im)
+  self.assertEqual(count,1);self.assertEqual(fixed.getpixel((2,2))[3],0)
+  for xy in [(29,30),(4,70),(8,72),(40,40)]:self.assertEqual(fixed.getpixel(xy),im.getpixel(xy))
+  self.assertEqual(im.getpixel((2,2))[3],1)
+ def test_large_faint_shadow_and_all_low_alpha_material_are_preserved(self):
+  im=Image.new('RGBA',(100,80));im.paste((200,140,40,255),(30,25,70,60));im.paste((0,0,0,1),(2,2,12,3))
+  fixed,count=p.clean_pixelcut_residue(im);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())
+  faint=Image.new('RGBA',(30,30),(0,0,0,1));fixed,count=p.clean_pixelcut_residue(faint);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),faint.tobytes())
+
+class OpaqueInteriorTests(SimpleTestCase):
+ def test_explicit_opaque_repair_fixes_interior_but_preserves_rgb_edges_and_holes(self):
+  im=Image.new('RGBA',(50,50));im.paste((40,40,48,253),(5,5,45,45));im.putpixel((25,25),(0,0,0,0));im.putpixel((5,20),(220,220,220,100));im.putpixel((1,1),(40,40,50,80))
+  fixed,count=p.repair_opaque_interior(im,expected_opaque=True)
+  self.assertGreater(count,0);self.assertEqual(fixed.getpixel((15,15)),(40,40,48,255));self.assertEqual(fixed.getpixel((25,25)),im.getpixel((25,25)));self.assertEqual(fixed.getpixel((5,20)),im.getpixel((5,20)));self.assertEqual(fixed.getpixel((1,1)),im.getpixel((1,1)));self.assertEqual(fixed.getpixel((5,10)),im.getpixel((5,10)));self.assertEqual(im.getpixel((15,15))[3],253)
+ def test_no_material_confirmation_and_genuinely_translucent_regions_are_unchanged(self):
+  im=Image.new('RGBA',(20,20),(80,90,100,253));fixed,count=p.repair_opaque_interior(im);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())
+  im=Image.new('RGBA',(20,20),(80,90,100,180));fixed,count=p.repair_opaque_interior(im,expected_opaque=True);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())

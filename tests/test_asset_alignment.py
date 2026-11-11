@@ -99,8 +99,9 @@ class AssetAlignment(SimpleTestCase):
                 return dict(actualImageGeneration=True, provider='codex')
             with patch('image_provider.CLIENT.generate', side_effect=generate), patch('semantic_registration.calibrate_semantic', side_effect=ValueError('no matching source features')):
                 result = extract(original, node, root, lambda: False, lambda _: None)
-        self.assertFalse(result['positionReviewRequired'])
+        self.assertTrue(result['positionReviewRequired'])
         self.assertEqual(result['registration']['status'], 'estimated')
+        self.assertIn('仍需校对', result['reviewIssue'])
         self.assertNotIn('sourceAlignment', result)
         self.assertEqual(result['src'], node['src'])
 

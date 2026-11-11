@@ -272,9 +272,9 @@ def extract_once(source,node,assets,structure,cancelled,original,on_status):
    box=(max(0,int(node['x'])),max(0,int(node['y'])),min(im.width,int(node['x']+node['width'])),min(im.height,int(node['y']+node['height'])))
    crop=im.crop(box).convert('RGBA')
   return {**node,'src':png(crop),'x':box[0],'y':box[1],'width':crop.width,'height':crop.height,'provenance':'source-crop-fallback','inferred':False,'assetReviewStatus':'NEEDS_REVIEW','review':True,'reviewIssue':'未能提取，保留原图区域：'+str(error)[:200]}
- candidate.update(assetReviewStatus='NOT_REVIEWED',review=True)
+ needs_review=bool(candidate.get('positionReviewRequired') or candidate.get('boundaryReviewRequired') or candidate.get('reviewIssue') or candidate.get('registration',{}).get('status') in ('estimated','needs-review'))
+ candidate.update(assetReviewStatus='NEEDS_REVIEW' if needs_review else 'NOT_REVIEWED',review=True)
  candidate.pop('pendingGeneration',None)
- candidate.pop('reviewIssue',None)
  if structure is not None:remember_record(candidate,structure)
  return candidate
 

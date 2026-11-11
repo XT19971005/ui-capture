@@ -200,7 +200,7 @@ def annotation_estimate(generated,target,node):
  scale=min(w/(r-l),h/(b-t))
  if not math.isfinite(scale) or scale<=0:raise ValueError('标注大小无效')
  result=copy.deepcopy(node)
- result.update(x=x+(w-(r-l)*scale)/2-l*scale,y=y+(h-(b-t)*scale)/2-t*scale,width=generated.width*scale,height=generated.height*scale,positionReviewRequired=False)
+ result.update(x=x+(w-(r-l)*scale)/2-l*scale,y=y+(h-(b-t)*scale)/2-t*scale,width=generated.width*scale,height=generated.height*scale,positionReviewRequired=True)
  result['registration']={'method':'annotation-proportional-estimate','status':'estimated','scale':scale,'targetBox':dict(target),'subjectBox':[l,t,r-l,b-t],'reason':'按对应标注等比估算大小与位置；不是像素级匹配'}
  return result
 
@@ -210,6 +210,6 @@ def background_frame(generated,box,node):
  x,y,w,h=[float(v) for v in box]
  scale=max(w/generated.width,h/generated.height)
  result=copy.deepcopy(node);width=generated.width*scale;height=generated.height*scale
- result.update(x=x+(w-width)/2,y=y+(h-height)/2,width=width,height=height,positionReviewRequired=False)
+ result.update(x=x+(w-width)/2,y=y+(h-height)/2,width=width,height=height,positionReviewRequired=True)
  result['registration']={'method':'source-content-frame-cover','status':'estimated','sourceContentFrame':[x,y,w,h],'scale':scale,'reason':'按原图有效画幅等比覆盖；保留完整图片，不拉伸裁切，不代表构图逐点匹配'}
  return result

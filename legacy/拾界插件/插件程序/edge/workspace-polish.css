@@ -346,3 +346,5 @@ body.unified-workbench{--workflow-accent:#8c70d8;--workflow-border:#343746;--wor
 
 /* Keep annotation, generation and sizing actions visually separate. */
 .unified-workbench .document-actions #calibrate-split-size{margin-inline-start:20px}
+
+body.unified-workbench .app-header .project-controls>#clear-image{width:80px!important;min-width:80px!important;max-width:80px!important;flex:0 0 80px!important;height:34px!important;padding:6px 10px!important}

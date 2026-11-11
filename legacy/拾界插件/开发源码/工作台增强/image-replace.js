@@ -59,7 +59,16 @@
   if(selection){const mask=makeCanvas(w,h),mx=mask.getContext('2d');mx.fillStyle='#fff';for(const points of selectionPolygons(selection)){mx.beginPath();for(let i=0;i<points.length;i++){const x=(points[i][0]-box.x)*w/box.width,y=(points[i][1]-box.y)*h/box.height;if(i)mx.lineTo(x,y);else mx.moveTo(x,y)}mx.closePath();mx.fill('evenodd')}ctx.globalCompositeOperation='destination-in';ctx.drawImage(mask,0,0);ctx.globalCompositeOperation='source-over'}
   return {src:canvas.toDataURL('image/png'),width:w,height:h,sourceRegion:clone(box)};
  }
+ function restoreReplacementMetadata(before,result){
+  const next=clone(result);let restored=false;
+  function visit(a,b){if(!a||!b||typeof a!=='object'||typeof b!=='object')return;
+   if(!Array.isArray(a)&&!Array.isArray(b)&&Object.hasOwn(a,'strokeWidths')&&!Object.hasOwn(b,'strokeWidths')&&equal(a.strokes,b.strokes)&&a.color===b.color){b.strokeWidths=clone(a.strokeWidths);restored=true;}
+   if(Array.isArray(a)&&Array.isArray(b)){for(let i=0;i<Math.min(a.length,b.length);i++)visit(a[i],b[i])}else for(const key of Object.keys(a))if(Object.hasOwn(b,key))visit(a[key],b[key]);
+  }
+  visit(before,next);return restored?next:result;
+ }
  function validateCandidate(before,result,id,expansionAllowed=null){
+  result=restoreReplacementMetadata(before,result);
   if(!Array.isArray(result?.nodes)||result.nodes.length!==before.nodes.length)throw Error('返回结果改变了图层数量');
   const original=before.nodes.find(n=>n.id===id),changed=result.nodes.find(n=>n.id===id),exp=changed?.imageReplacement?.expansion;let expanded=false;
   if(exp){if(!expansionAllowed||exp.inputWidth!==expansionAllowed.width||exp.inputHeight!==expansionAllowed.height||!['left','top','inputWidth','inputHeight','outputWidth','outputHeight'].every(k=>Number.isSafeInteger(exp[k])&&exp[k]>=0)||exp.outputWidth!==exp.inputWidth+2*exp.left||exp.outputHeight!==exp.inputHeight+2*exp.top||exp.outputWidth*exp.outputHeight>36000000||Math.max(exp.outputWidth,exp.outputHeight)>6000)throw Error('返回扩展画布与授权尺寸不符');const sx=original.width/exp.inputWidth,sy=original.height/exp.inputHeight,want={x:original.x-exp.left*sx,y:original.y-exp.top*sy,width:exp.outputWidth*sx,height:exp.outputHeight*sy};if(Object.keys(want).some(k=>Math.abs(want[k]-changed[k])>1e-6))throw Error('扩展画布原位配准不符');expanded=true;}
@@ -102,7 +111,7 @@
   async function generate(config,onProgress=()=>{}){
    const s=state;if(!s||s.running||env.busy())throw Error('请先完成当前操作');assertCurrent(s);
    const prompt=String(config.prompt||'').trim();if(!prompt&&!config.reference?.src)throw Error('请填写替换描述或上传参考图');const selection=config.selection==null?null:clone(config.selection),region=selection!==null?polygonBounds(selection):config.region?clone(config.region):null;if(selection!==null&&!region)throw Error('圈选区域无效，请重新圈选');invalidate();s.expansionAllowed=config.task==='remove'&&config.annotations?.allowExpand?{width:config.annotations.width,height:config.annotations.height}:null;const token=sequence;s.running=true;env.lock(true);
-   try{const doc=clone(s.before);delete doc._splitBaseline;delete doc._splitDraftCore;const result=await env.request(doc,{targetId:s.id,region,selection,prompt,reference:config.reference?clone(config.reference):null,...(config.task?{task:config.task}:{}),...(config.annotations?{annotations:clone(config.annotations)}:{})},(v,m)=>{if(state===s&&sequence===token)onProgress(v,m)});if(state!==s||sequence!==token){release(result,s);return null}try{if(!sameProject(env.get(),s.owner))throw Error('已切换工程，候选不能应用到当前工程');validateCandidate(s.before,result,s.id,s.expansionAllowed)}catch(e){release(result,s);throw e}s.result=result;return result}
+   try{const doc=clone(s.before);delete doc._splitBaseline;delete doc._splitDraftCore;let result=await env.request(doc,{targetId:s.id,region,selection,prompt,reference:config.reference?clone(config.reference):null,...(config.task?{task:config.task}:{}),...(config.annotations?{annotations:clone(config.annotations)}:{})},(v,m)=>{if(state===s&&sequence===token)onProgress(v,m)});if(state!==s||sequence!==token){release(result,s);return null}try{if(!sameProject(env.get(),s.owner))throw Error('已切换工程，候选不能应用到当前工程');result=validateCandidate(s.before,result,s.id,s.expansionAllowed)}catch(e){release(result,s);throw e}s.result=result;return result}
    finally{if(state===s){s.running=false;env.lock(false)}}
   }
   async function prepared(){const s=state;if(!s?.result)throw Error('候选已失效，请先生成预览');if(s.running||env.busy())throw Error('请先完成当前操作');assertCurrent(s);validateCandidate(s.before,s.result,s.id,s.expansionAllowed);
@@ -119,7 +128,7 @@
  }
  function pointFromMatrix(point,m,width,height){const det=m.a*m.d-m.b*m.c;if(!Number.isFinite(det)||Math.abs(det)<1e-12)return null;const x=point.x-m.e,y=point.y-m.f;return [Math.max(0,Math.min(width,Math.round((m.d*x-m.c*y)/det))),Math.max(0,Math.min(height,Math.round((m.a*y-m.b*x)/det)))];}
  function createSelectionHistory(initial){let items=[clone(initial)],index=0;return {push(value){if(equal(items[index],value))return;items=items.slice(0,index+1);items.push(clone(value));if(items.length>100)items.shift();index=items.length-1},undo(){if(index>0)index--;return clone(items[index])},redo(){if(index<items.length-1)index++;return clone(items[index])},current:()=>clone(items[index]),canUndo:()=>index>0,canRedo:()=>index<items.length-1};}
- const api=window.ShijieImageReplacement={growToFit,paddedImage,target,targetError,rectFromPoints,pointFromClient,pointFromMatrix,createSelectionHistory,selectionPolygons,combineSelections,cropSelectionReference,polygonBounds,previewBounds,validateCandidate,createFlow};
+ const api=window.ShijieImageReplacement={growToFit,paddedImage,target,targetError,rectFromPoints,pointFromClient,pointFromMatrix,createSelectionHistory,selectionPolygons,combineSelections,cropSelectionReference,polygonBounds,previewBounds,restoreReplacementMetadata,validateCandidate,createFlow};
  if(typeof document==='undefined'||window.studio?.adapter.kind!=='image')return;
  const studio=window.studio,button=document.getElementById('replace-image');if(!button)return;let dialog=null;
  function sync(){const chosen=target(studio.adapter.get(),studio.ids);button.hidden=!chosen;button.disabled=!chosen||studio.isBusy()||!!dialog||!!window.ShijieImageGeneration?.active?.()||typeof window.ShijieSmartSplit?.replaceImage!=='function';if(dialog&&!dialog.flow.current())dialog.stale()}

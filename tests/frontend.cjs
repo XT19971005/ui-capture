@@ -21,3 +21,8 @@ require('../legacy/拾界插件/开发源码/图像重建/test-local-project-tra
 require('../legacy/拾界插件/开发源码/图像重建/test-psd-groups.cjs');
 
 require('./test_upstream.cjs');
+
+// Annotation identity, occlusion ordering and staged assistant safety.
+require('../legacy/拾界插件/开发源码/工作台增强/test-annotation-order.cjs');
+require('../legacy/拾界插件/开发源码/工作台增强/test-free-assistant.cjs');
+require('../legacy/拾界插件/开发源码/工作台增强/test-original-annotations.cjs');

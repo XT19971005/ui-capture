@@ -234,7 +234,48 @@ def generation_input(model,prompt,images,urls,schema=None):
  if abs(a/b-ratio)/ratio>.001:raise ValueError('所选Nano Banana模型不支持当前原图比例；未拉伸或提交生成，请改用GPT Image 2')
  return {'prompt':prompt,'ref_images':urls,'aspect_ratio':chosen,'resolution':'1K'}
 
-def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on_status=None):
+
+
+def repair_opaque_interior(image,*,expected_opaque=False):
+ """Restore a confirmed solid material's near-opaque interior only.
+ Keep RGB, canvas, holes, antialias edges and truly translucent pixels intact.
+ """
+ if expected_opaque is not True:return image,0
+ import numpy as np
+ import cv2
+ rgba=np.array(image.convert('RGBA'));alpha=rgba[:,:,3]
+ core=(alpha>=250).astype('uint8');distance=cv2.distanceTransform(core,cv2.DIST_L2,5)
+ fix=(alpha>=250)&(alpha<255)&(distance>=2)
+ count=int(fix.sum())
+ if not count:return image,0
+ rgba[:,:,3][fix]=255
+ return Image.fromarray(rgba,'RGBA'),count
+
+
+def clean_pixelcut_residue(image):
+ """Remove only tiny remote black alpha=1 islands introduced by Pixelcut.
+ Never threshold all low-alpha pixels: glows, shadows and connected edges survive.
+ """
+ import numpy as np
+ import cv2
+ rgba=np.array(image.convert('RGBA'));alpha=rgba[:,:,3];core=alpha>=16
+ ys,xs=np.nonzero(core)
+ if not len(xs):return image,0
+ count,labels,stats,_=cv2.connectedComponentsWithStats((alpha>0).astype('uint8'),connectivity=8)
+ if count<=1:return image,0
+ exact=(alpha==1)&np.all(rgba[:,:,:3]==0,axis=2)
+ invalid=np.bincount(labels[~exact].ravel(),minlength=count)
+ left,top,right,bottom=int(xs.min()),int(ys.min()),int(xs.max())+1,int(ys.max())+1
+ candidates=[]
+ for label in range(1,count):
+  x,y,w,h,area=map(int,stats[label])
+  if area<=8 and invalid[label]==0 and (x+w<left-8 or x>right+8 or y+h<top-8 or y>bottom+8):candidates.append(label)
+ if not candidates:return image,0
+ remove=np.isin(labels,candidates);removed=int(remove.sum());rgba[remove]=0
+ return Image.fromarray(rgba,'RGBA'),removed
+
+
+def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on_status=None,*,opaque_subject=False):
  """Pixelcut is a separate billed task. Never resubmit either upstream stage."""
  notice=on_status or (lambda _:None)
  if cancelled():raise InterruptedError('已取消；尚未提交Pixelcut抠图')
@@ -279,14 +320,18 @@ def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on
   im.load()
   if im.mode!='RGBA' or im.getchannel('A').getextrema()[0]!=0 or not im.getchannel('A').getbbox():raise ValueError('Pixelcut未返回有效透明RGBA，未应用结果')
   size=list(im.size)
+  cleaned,removed=clean_pixelcut_residue(im)
+  cleaned,opaque_repaired=repair_opaque_interior(cleaned,expected_opaque=opaque_subject)
+  if removed or opaque_repaired:
+   buffer=io.BytesIO();cleaned.save(buffer,format='PNG');raw=bytearray(buffer.getvalue())
  with Image.open(source) as original:
   if tuple(size)!=original.size:raise ValueError('Pixelcut改变了画幅，未自动缩放或应用')
  if cancelled():raise InterruptedError('已取消，未应用Pixelcut结果')
  target=Path(target);tmp=target.with_name(target.name+'.'+ident+'.tmp')
  try:tmp.write_bytes(raw);os.replace(tmp,target)
  finally:tmp.unlink(missing_ok=True)
- record.update(state='completed',outputSHA256=hashlib.sha256(raw).hexdigest());save()
- return {'provider':'aimake','model':'pixelcut-background-removal','genId':gid,'sourceGeneratedSHA256':record['sourceSHA256'],'size':size}
+ record.update(state='completed',outputSHA256=hashlib.sha256(raw).hexdigest(),removedRemoteAlphaIslandsPixels=removed,opaqueInteriorPixelsRepaired=opaque_repaired);save()
+ return {'provider':'aimake','model':'pixelcut-background-removal','genId':gid,'sourceGeneratedSHA256':record['sourceSHA256'],'size':size,'removedRemoteAlphaIslandsPixels':removed,'opaqueInteriorPixelsRepaired':opaque_repaired}
 
 
 def opaque_stage_prompt(prompt):
@@ -310,7 +355,7 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
   rgb=Path(folder)/'generated.png'
   instruction=opaque_stage_prompt(prompt)
   record=generate(instruction,images,rgb,transparent=False,cancelled=cancelled,timeout=timeout,on_status=on_status,**kwargs)
-  post=remove_background(rgb,target,secret,cancelled,timeout,on_status)
+  post=remove_background(rgb,target,secret,cancelled,timeout,on_status,opaque_subject=kwargs.get('opaque_subject') is True)
   record.update(file=str(target),transparent=True,size=post['size'],postprocessing=post)
   notice('Pixelcut透明化完成，正在准备素材校对…')
   return record

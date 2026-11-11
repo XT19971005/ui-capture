@@ -249,3 +249,9 @@ test('refresh restores cached origin before loading edits and retains the checkp
  const c={window:{performance:{getEntriesByType:()=>[{type:'reload'}]}},a:{get:()=>doc,load:async value=>{events.push('load');doc=value},status(){}},B:{library:{restoreOrigin:(value,credential)=>{assert.equal(value,draft);assert.equal(credential,origin);events.push('origin');return credential},get:async()=>assert.fail('must not substitute latest disk version')}},tabProjectRevision:0,restoringProject:true,autoDirectories:new Map(),reloadRecovery:{read:async()=>draft,origin:()=>origin},readTabProject:()=>({id:'p'}),rememberTabProject(){},sync(){}};
  vm.runInNewContext(body+';this.restore=restoreTabProject',c);await c.restore(null);assert.deepEqual(events,['origin','load']);assert.equal(doc,draft);assert.equal(c.autoDirectories.get('p'),'original-folder');
 });
+
+test('imported owned candidates rebind to the fresh project while unrelated candidates stay isolated',()=>{
+ const c={structuredClone,crypto:require('node:crypto').webcrypto,ShijieSession:{library:new Map()}};c.window=c;vm.runInNewContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);
+ const old={_projectId:'source',nodes:[],_assistantCandidates:[{version:1,id:'own',projectId:'source',base:{_projectId:'source',nodes:[]},candidate:{_projectId:'source',nodes:[]}},{version:1,id:'foreign',projectId:'other',base:{_projectId:'other'},candidate:{_projectId:'other'}}]};
+ const imported=c.StudioBase.prepareImportedProject(old),record=imported._assistantCandidates[0];assert.equal(record.projectId,imported._projectId);assert.equal(record.base._projectId,imported._projectId);assert.equal(record.candidate._projectId,imported._projectId);assert.equal(imported._assistantCandidates[1].projectId,'other');assert.equal(old._assistantCandidates[0].projectId,'source');
+});

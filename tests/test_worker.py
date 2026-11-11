@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 from django.contrib.auth.models import Group
 from django.conf import settings
-from django.test import TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TransactionTestCase, override_settings
 from shijie.accounts.models import User
 if os.name!='nt':
     from shijie.pipeline import ai
@@ -311,3 +311,14 @@ class DesktopDelivery(TransactionTestCase):
                 with self.assertRaisesMessage(ValueError, '本机接单程序已停止'):
                     lan_server.run()
                 self.assertEqual(DesktopService.objects.get(pk=1).enabled, True if existing is None else existing)
+
+class DesktopQueueHealthTests(SimpleTestCase):
+    def test_offline_queue_explains_wait_without_changing_job(self):
+        from types import SimpleNamespace
+        from django.utils import timezone
+        from shijie.pipeline.views import job_data
+        job=SimpleNamespace(pk='retained',title='test',mode='replace-image',executor='desktop',status='queued',progress=0,message='等待共享电脑处理',partial_revision=1,created_at=timezone.now())
+        with patch('shijie.pipeline.desktop_service.public',return_value={'enabled':True,'ready':False}):
+            value=job_data(job)
+        self.assertIn('暂未连接',value['message']);self.assertIn('无需重复提交',value['message'])
+        self.assertEqual(job.message,'等待共享电脑处理');self.assertEqual(value['status'],'queued')

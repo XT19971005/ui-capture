@@ -166,14 +166,14 @@ test('outpaint rejects a resized or replaced selected background before appendin
 });
 
 
-async function runAssistantBackground(action,{resizeDuringInspect=false,layerSplit=false,withoutBaseline=false}={}){
+async function runAssistantBackground(action,{resizeDuringInspect=false,layerSplit=false,withoutBaseline=false,pending=false}={}){
  const a=helpers().ShijieFreeAssistant,old={_projectId:'background-project',title:'荷塘主题',width:100,height:80,source:'old-ui',comparisonSource:'old-ui',_splitBaseline:{version:1,scene:{title:'initial'}},recognition:{extractionStatus:'COMPLETED',timing:{elapsedMs:12}},nodes:[{id:'background',name:'干净荷塘背景',type:'image',src:'clean-background',x:0,y:0,width:100,height:80,visible:true,locked:false}],groups:[],edges:[]};
  if(withoutBaseline)delete old._splitBaseline;
  if(layerSplit)old.nodes[0]._sourceAnnotations={version:1,width:100,height:80,sourceHash:require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),items:[{strokes:[[[1,1],[2,2]]]}]};
- let current=structuredClone(old),requests=0,completed=0,grows=0;
+ let current=structuredClone(old),requests=0,completed=0,grows=0;if(pending)current._generationStages={blocked:true,pendingJobId:'retained-job'};
  const hash=require('node:crypto').createHash('sha256').update('clean-background').digest('hex'),plan={action,name:'荷塘扩建',reference:action==='outpaint'||layerSplit?'selection':'original',targetIds:action==='outpaint'||layerSplit?['background']:[],layers:[{name:'荷塘背景',box:{x:0,y:0,width:100,height:100}}],outpaintSource:{id:'background',sourceHash:hash,width:100,height:80}};
  const result={nodes:[{id:'fresh',name:'荷塘背景',type:'image',src:'new-background',x:0,y:0,width:100,height:100}],recognition:{extractionStatus:'COMPLETED'}};
- const c={clone:structuredClone,equal:(left,right)=>JSON.stringify(left)===JSON.stringify(right),...Object.fromEntries(['targetCurrent','splitSource','createLayerReceiver','growGeneratedScene','stageCurrent','generationCounts','generationSummary','reconcileRetainedText','allAnnotatedStagesComplete','annotationEqual','imageBatchLimit'].map(k=>[k,a[k]])),verifiedSplitSource:(d,ids,p)=>a.verifiedSplitSource(d,ids,p,async()=>{if(resizeDuringInspect)current.nodes[0].width=101;return {width:100,height:80}}),
+ const c={clone:structuredClone,equal:(left,right)=>JSON.stringify(left)===JSON.stringify(right),...Object.fromEntries(['targetCurrent','splitSource','createLayerReceiver','growGeneratedScene','stageCurrent','generationCounts','generationSummary','reconcileRetainedText','allAnnotatedStagesComplete','annotationEqual','imageBatchLimit','unresolvedGeneration','storeGenerationStage','singleMarkedAnnotations'].map(k=>[k,a[k]])),verifiedSplitSource:(d,ids,p)=>a.verifiedSplitSource(d,ids,p,async()=>{if(resizeDuringInspect)current.nodes[0].width=101;return {width:100,height:80}}),
   timing:{split(){},read:()=>({elapsedMs:5,understandingMs:1,totalMs:6}),stop:()=>({elapsedMs:5,understandingMs:1,totalMs:6})},notice:{},renderTiming(){},compactGenerated:async r=>r,flow:{recordOutcome(){}},splitTimingHistory:()=>[],
   stageUI(){},stageSelect:{value:'image'},imageBatch:{value:'0'},status(){},StudioBase:{id:()=> 'task'},window:{StudioBase:{library:{}}},ShijieImageReplacement:{growToFit:async()=>grows++},
   studio:{ids:new Set(['background']),adapter:{get:()=>current,commit:async fn=>fn()},sync(){},saveCheckpoint:async()=>{},setInitial:()=>completed++},
@@ -226,3 +226,5 @@ test('shared recovery opens task records even with a writable local folder inste
   vm.runInNewContext(script.slice(start,end),c);await button.onclick();assert.equal(scanned,shared?0:1);assert.equal(opened.length,shared?1:0);if(shared)assert.deepEqual(opened[0],['/shijie/tasks/','_blank','noopener']);
  }
 });
+
+test('pending original generation prevents a different plan from sending another request',async()=>{const r=await runAssistantBackground('split',{pending:true});assert.match(r.error?.message||'',/待取回/);assert.equal(r.requests,0);assert.equal(r.current._generationStages.pendingJobId,'retained-job')});

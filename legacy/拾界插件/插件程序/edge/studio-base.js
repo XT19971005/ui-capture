@@ -1,7 +1,11 @@
 /* Shared geometry, local project library and selected-layer exports. */
 window.StudioBase=(()=>{
  const clone=v=>structuredClone(v),id=()=>crypto.randomUUID();
- function prepareImportedProject(doc){const copy=clone(doc);if(!copy||typeof copy!=='object'||Array.isArray(copy))throw Error('导入工程文档无效');copy._projectId=id();return copy}
+ function prepareImportedProject(doc){
+  const copy=clone(doc);if(!copy||typeof copy!=='object'||Array.isArray(copy))throw Error('导入工程文档无效');const previous=copy._projectId;copy._projectId=id();
+  for(const record of copy._assistantCandidates||[]){if(record?.version!==1||!previous||record.projectId!==previous||!record.base||record.base._projectId!==previous)continue;record.projectId=copy._projectId;record.base._projectId=copy._projectId;if(record.candidate?._projectId===previous)record.candidate._projectId=copy._projectId;}
+  return copy;
+ }
  const recoveryTime=entry=>{for(const key of ['persistedAt','updated','savedAt']){const value=entry?.[key];if(typeof value!=='number'&&typeof value!=='string')continue;if(value==='')continue;const time=typeof value==='number'?value:Date.parse(value);if(Number.isFinite(time)&&time>0&&Number.isFinite(new Date(time).getTime()))return time}return null};
  const bounds=items=>{if(!items.length)return null;const x=Math.min(...items.map(b=>b.x)),y=Math.min(...items.map(b=>b.y));return {x,y,width:Math.max(.01,Math.max(...items.map(b=>b.x+b.width))-x),height:Math.max(.01,Math.max(...items.map(b=>b.y+b.height))-y)}};
  const overlap=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;

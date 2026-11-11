@@ -351,6 +351,11 @@ def job_data(job, include_result=False, include_input=True):
     value = {'id': str(job.pk), 'title': job.title, 'mode': job.mode, 'status': 'failed' if pending else job.status,
              'progress': job.progress, 'message': job.message, 'partialRevision': job.partial_revision,
              'created': job.created_at.isoformat()}
+    if job.status=='queued' and job.executor=='desktop':
+        from .desktop_service import public
+        health=public()
+        if not health.get('enabled') or not health.get('ready'):
+            value['message']='共享电脑暂未连接，任务仍保留在队列；无需重复提交，请联系管理员恢复接单'
     if pending:value['deliveryPending']=True
     if include_result:
         folder = job_root(job)
