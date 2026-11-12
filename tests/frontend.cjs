@@ -26,3 +26,5 @@ require('./test_upstream.cjs');
 require('../legacy/拾界插件/开发源码/工作台增强/test-annotation-order.cjs');
 require('../legacy/拾界插件/开发源码/工作台增强/test-free-assistant.cjs');
 require('../legacy/拾界插件/开发源码/工作台增强/test-original-annotations.cjs');
+
+require('./test_save_conflict_resolution.cjs');

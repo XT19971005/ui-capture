@@ -68,7 +68,8 @@ class AssistantSplitTests(unittest.TestCase):
  def test_no_fallback_crop_or_fake_complete(self):
   import assistant_split as s
   with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=lambda source,node,*args:{**node,'provenance':'source-crop-fallback'}):
-   with self.assertRaises(ValueError):s.generate(self.body(),Path(folder),lambda:False,lambda *_:None)
+   result=s.generate(self.body(),Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(result['nodes'],[]);self.assertTrue(result['_partial']);self.assertEqual(len(result['recognition']['pendingLayers']),3);self.assertEqual(len(result['recognition']['vectorReviewWarnings']),3)
  def test_invalid_boxes_and_too_many_layers_never_submit(self):
   import assistant_split as s
   for change in ({'layers':[]},{'layers':self.body()['layers']*8},{'width':float('nan')}):
@@ -132,10 +133,12 @@ class AssistantSplitTests(unittest.TestCase):
    if len(calls)==2:raise ValueError('第二层失败')
    return {**node,'src':body['image'],'provenance':'codex-image-generation','generationRecord':{'actualImageGeneration':True}}
   with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):
-   with self.assertRaises(ValueError) as caught:s.generate(body,Path(folder),lambda:False,lambda *_:None,on_scene=snapshots.append)
-  self.assertEqual(len(calls),2);self.assertEqual(len(snapshots),1)
-  partial=caught.exception.partial;self.assertTrue(partial['_partial']);self.assertEqual([n['name'] for n in partial['nodes']],['勋章'])
-  self.assertEqual(partial['recognition']['pendingLayers'],body['layers'][1:]);self.assertEqual(partial['recognition']['extractionStatus'],'INCOMPLETE')
+   partial=s.generate(body,Path(folder),lambda:False,lambda *_:None,on_scene=snapshots.append)
+  self.assertEqual(len(calls),3);self.assertGreaterEqual(len(snapshots),2)
+  self.assertTrue(partial['_partial']);self.assertEqual([n['name'] for n in partial['nodes']],['勋章','特级大师'])
+  self.assertEqual([n['_generationPlanIndex'] for n in partial['nodes']],[0,2])
+  self.assertEqual(partial['recognition']['pendingLayers'],body['layers'][1:2]);self.assertEqual(partial['recognition']['extractionStatus'],'INCOMPLETE')
+  self.assertEqual(partial['recognition']['vectorReviewWarnings'][0]['name'],'鱼')
 
  def test_edge_risk_is_retained_as_incomplete_not_a_completed_split(self):
   import assistant_split as s

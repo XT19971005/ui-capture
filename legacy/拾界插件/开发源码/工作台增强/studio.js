@@ -39,7 +39,7 @@ window.ShijieStudio={
  }
  function setInitial(doc=a.get(),options={}){rememberTabProject(a.get());if(!doc){initialDoc=null;initialKey=null;initialBaseline=null;return}if(!doc._projectId)doc._projectId=B.id();if(a.kind==='image'){if(options.completedSplit===true||options.generatedResults===true)B.splitBaseline.capture(doc,options);if(initialKey===doc._projectId&&initialBaseline===doc._splitBaseline)return;initialKey=doc._projectId;initialBaseline=doc._splitBaseline;initialDoc=B.splitBaseline.read(doc)}else{initialKey=doc._projectId;initialBaseline=null;initialDoc=B.clone(doc)}}
 
- async function confirmDiscard(){if(B.library.requiresManualExport)return confirmManualLeave();const owner=a.get();try{await saveCheckpoint('离开工程');return a.get()===owner&&(!owner||!B.library.isDirty(owner))}catch(e){a.status('保存失败：'+e.message+'；当前工程保留，请重试保存');return false}}
+ async function confirmDiscard(){if(B.library.requiresManualExport)return confirmManualLeave();const owner=a.get();try{await saveBeforeLeaving();return a.get()===owner&&(!owner||!B.library.isDirty(owner))}catch(e){a.status('保存失败：'+e.message+'；当前工程保留，请重试保存');return false}}
 
  async function confirmManualLeave(){
   const owner=a.get(),pending=new Map();
@@ -69,11 +69,52 @@ window.ShijieStudio={
  const resetButton=document.createElement('button');resetButton.id='reset-initial';resetButton.textContent='↺ 回到初始';resetButton.title='恢复刚完成完整拆分的状态，可撤销';resetButton.disabled=true;document.getElementById('undo').after(resetButton);
  resetButton.onclick=async()=>{if(busy()||!initialDoc||!a.get())return;const before=B.clone(a.get());processing=true;try{ids.clear();a.select(null);await a.restore(B.clone(initialDoc));await a.finish(before,'回到初始')}catch(e){await a.restore(before);a.status(e.message)}finally{processing=false;sync();a.refreshControls?.()}};
  const saveProjectButton=document.getElementById('save-project');
- let recoveredCopySaving=false;
- async function saveProject(){if(recoveredCopySaving)return;if(a.get()&&B.library.unknownOrigin?.(a.get())){const owner=a.get();recoveredCopySaving=true;try{const entry=await B.library.saveRecoveredCopy(owner,a.kind);if(a.get()===owner){owner._projectId=entry.id;autoDirectories.set(entry.id,B.library.directory?.());rememberTabProject(owner);reloadRecovery?.schedule(owner);sync(false)}return entry}catch(e){recoveryError(e);throw e}finally{recoveredCopySaving=false}}if(busy()||!a.get())return;clearTimeout(saveTimer);const doc=a.get();if(B.library.requiresManualExport)return downloadProjectFile();autoDirectories.set(doc._projectId,B.library.directory?.());return persistRecovery(doc,{manual:true})}
+ let conflictSaving=null;
+ async function resolveProjectConflict(owner){
+  if(conflictSaving)return conflictSaving;
+  const task=(async()=>{
+   const latest=await B.library.readLatest(owner);
+   if(a.get()!==owner)throw Error('工程已切换，未处理保存冲突');
+   return new Promise((resolve,reject)=>{
+    const d=modal('处理保存冲突','<p>另一页面更新了这份工程。可将当前页面内容保存回原工程，或返回继续编辑。</p><p data-conflict-summary></p><p data-conflict-note role="status"></p><footer><button data-conflict-cancel>继续编辑</button><button class="primary" data-conflict-save>保存当前内容</button></footer>');
+    d.dataset.saveConflict='';const button=d.querySelector('[data-conflict-save]'),cancel=d.querySelector('[data-conflict-cancel]'),note=d.querySelector('[data-conflict-note]');let saving=false,settled=false;
+    const count=doc=>doc.nodes?.length??doc.root?.children?.length??0;
+    d.querySelector('[data-conflict-summary]').textContent='当前页面 '+count(owner)+' 层；已保存版本 '+count(latest.doc)+' 层。保存当前内容会覆盖已保存版本，原工程编号与原任务号保持。';
+    cancel.onclick=()=>d.close();d.addEventListener('cancel',e=>{if(saving)e.preventDefault()});
+    d.addEventListener('close',()=>{if(!settled){settled=true;reject(Error('保存冲突尚未处理，当前工程保留'))}});
+    button.onclick=async()=>{
+     if(saving)return;saving=true;button.disabled=cancel.disabled=true;d.querySelector('[data-close]').disabled=true;note.textContent='正在保存当前工程…';
+     try{if(a.get()!==owner)throw Error('工程已切换，未覆盖保存');const entry=await persistRecovery(owner,{manual:true,confirmedOrigin:latest});settled=true;d.close();resolve(entry)}
+     catch(e){note.textContent=e.code==='PROJECT_VERSION_CONFLICT'?'另一页面又更新了工程。请先关闭其它编辑页，返回后重新保存；当前修改保留。':e.message;button.disabled=true;cancel.disabled=false;d.querySelector('[data-close]').disabled=false}
+     finally{saving=false}
+    };
+   });
+  })();conflictSaving=task;
+  try{return await task}finally{if(conflictSaving===task)conflictSaving=null}
+ }
+ async function saveProject(){
+  if(conflictSaving)return conflictSaving;
+  const owner=a.get();if(!owner)return;
+  if(busy())throw Error('当前操作尚未结束，工程保留');clearTimeout(saveTimer);
+  if(B.library.requiresManualExport)return downloadProjectFile();
+  const directory=B.library.resolveDirectory?await B.library.resolveDirectory():B.library.directory?.();
+  if(a.get()!==owner)throw Error('当前工程已改变，请重新保存');
+  autoDirectories.set(owner._projectId,directory);
+  if(B.library.unknownOrigin?.(owner))return resolveProjectConflict(owner);
+  try{return await persistRecovery(owner,{manual:true})}
+  catch(e){if(e.code!=='PROJECT_VERSION_CONFLICT')throw e;if(a.get()!==owner)throw e;return resolveProjectConflict(owner)}
+ }
+ async function saveBeforeLeaving(){
+  const owner=a.get();if(!owner)return;
+  try{await saveCheckpoint('离开工程')}catch(e){if(e.code!=='PROJECT_VERSION_CONFLICT'&&!B.library.unknownOrigin?.(owner))throw e;await resolveProjectConflict(owner)}
+  if(a.get()!==owner||B.library.isDirty(owner))throw Error('当前工程还有未保存修改，工程保留');
+ }
+
  async function saveCheckpoint(reason='关键节点'){
   const doc=a.get();if(!doc)return;if(!doc._projectId)doc._projectId=B.id();
-  const directory=B.library.directory?.(),origin=autoDirectories.get(doc._projectId);
+  const projectId=doc._projectId,origin=autoDirectories.get(projectId);
+  const directory=B.library.resolveDirectory?await B.library.resolveDirectory():B.library.directory?.();
+  if(a.get()!==doc||doc._projectId!==projectId)throw Error('当前工程已改变，保存未执行；已有结果保留');
   if(origin&&directory!==origin)throw Error('工程目录已切换，请点击保存工程确认保存位置');
   if(!origin)autoDirectories.set(doc._projectId,directory);
   if(!B.library.isDirty(doc))return;
@@ -143,7 +184,7 @@ window.ShijieStudio={
  function overlay(){const b=box();frame.hidden=imageEditing||!b||!a.canSelect();if(!b)return;const r=a.rect(b);Object.assign(frame.style,{left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px'});frame.classList.toggle('is-locked',selectedEntries().some(e=>e.locked));frame.querySelector('span').textContent=(ids.size>1?ids.size+' 个图层 · ':'')+Math.round(b.width)+' × '+Math.round(b.height);const v=viewport.getBoundingClientRect();frame.style.clipPath=`inset(${Math.max(-22,v.top-r.y)}px ${Math.max(0,r.x+r.width-v.right)}px ${Math.max(0,r.y+r.height-v.bottom)}px ${Math.max(0,v.left-r.x)}px)`}
  const recoveryState=document.createElement('span');recoveryState.id='studio-recovery-state';Object.assign(recoveryState.style,{fontSize:'10px',whiteSpace:'nowrap'});recoveryState.setAttribute('role','status');projectControls.append(recoveryState);function recoveryError(e){recoveryState.textContent=e.name==='RecoveryConflictError'?'保存冲突 · 未保存':'保存失败 · 未保存';recoveryState.style.color='#ffb39f';recoveryState.title=e.message;a.status('保存失败：'+e.message+'。当前修改仍在页面中，请重试保存或下载工程文件。')}function recoverySaved(entry){const t=B.recoveryTime?.(entry);recoveryState.textContent='已保存';recoveryState.style.color='';recoveryState.title=t?'保存于 '+new Date(t).toLocaleTimeString('zh-CN',{hour12:false}):'已保存工程'}
 
- async function persistRecovery(doc,options={}){if(!doc)return;if(!doc._projectId)doc._projectId=B.id();const key=doc._projectId;if(a.get()===doc){rememberTabProject(doc);recoveryState.textContent=B.library.requiresManualExport?'仅当前页面':'正在保存';recoveryState.style.color='';recoveryState.title=B.library.requiresManualExport?'当前结果仅在页面中，请手动导出工程':options.checkpoint?'正在保存：'+(options.reason||'关键节点'):'正在手动保存工程'}try{const entry=await B.library.put(doc,a.kind,options);reloadRecovery?.schedule(doc);if(entry?.manualExportRequired){if(a.get()===doc){save();a.status('当前结果仅在页面中，请点击导出工程下载到自己电脑。')}return entry}if(a.get()===doc&&doc._projectId===key&&!B.library.isDirty(doc)){recoverySaved(entry);if(options.manual)a.status((window.SHIJIE?.sharedCodex?'工程已保存到本机所选文件夹':'工程已保存到服务器')+(entry?.coverWarning?'；'+entry.coverWarning:''));rememberTabProject(doc)}else if(a.get()===doc)save();return entry}catch(e){if(a.get()===doc&&doc._projectId===key){recoveryError(e);if(options.manual)a.status('保存失败：'+e.message)}throw e}}
+ async function persistRecovery(doc,options={}){if(!doc)return;if(!doc._projectId)doc._projectId=B.id();const key=doc._projectId;if(a.get()===doc){rememberTabProject(doc);recoveryState.textContent=B.library.requiresManualExport?'仅当前页面':'正在保存';recoveryState.style.color='';recoveryState.title=B.library.requiresManualExport?'当前结果仅在页面中，请手动导出工程':options.checkpoint?'正在保存：'+(options.reason||'关键节点'):'正在手动保存工程'}try{const entry=await B.library.put(doc,a.kind,options);reloadRecovery?.schedule(doc);await reloadRecovery?.flush();if(entry?.manualExportRequired){if(a.get()===doc){save();a.status('当前结果仅在页面中，请点击导出工程下载到自己电脑。')}return entry}if(a.get()===doc&&doc._projectId===key&&!B.library.isDirty(doc)){recoverySaved(entry);if(options.manual)a.status((window.SHIJIE?.sharedCodex?'工程已保存到本机所选文件夹':'工程已保存到服务器')+(entry?.coverWarning?'；'+entry.coverWarning:''));rememberTabProject(doc)}else if(a.get()===doc)save();return entry}catch(e){if(a.get()===doc&&doc._projectId===key){recoveryError(e);if(options.manual)a.status('保存失败：'+e.message)}throw e}}
  function save(){
   clearTimeout(saveTimer);const doc=a.get();rememberTabProject(doc);if(!restoringProject)reloadRecovery?.schedule(doc);
   if(!doc){recoveryState.textContent='';recoveryState.title='';return}
@@ -177,7 +218,7 @@ window.ShijieStudio={
  const contextItems=[['copy','复制图层  Ctrl+C'],['paste','粘贴图层'],['duplicate','创建副本  Ctrl+J'],['select-all-layers','选择全部图层  Ctrl+Alt+A'],['invert-layers','反选图层'],['deselect-layers','取消图层选择'],['rename','重命名'],['group','分组  Ctrl+G'],['ungroup','解除分组'],['front','置于顶层'],['back','置于底层'],['lock','锁定 / 解锁'],['hide','隐藏 / 显示'],['export','导出所选…'],['delete','删除所选  Delete']];
  for(const host of [viewport,a.layerRoot,frame])host.addEventListener('contextmenu',e=>{if(busy())return;const row=e.target.closest('[data-layer],[data-id],[data-studio-group]'),hit=host===a.layerRoot?(row?.dataset.layer||row?.dataset.studioGroup||row?.dataset.id):a.hit(e),id=hit?(host===a.layerRoot?hit:pick(hit,e.altKey)):null;const contextSelection=new Set(ids);if(id&&!ids.has(id))select([id],host===a.layerRoot);e.preventDefault();e.stopPropagation();const stack=host===a.layerRoot?[]:hitStack(a.point(e)),map=entries(),items=stack.map(key=>[()=>select([key],true),'选择图层：'+(map.get(key)?.node.name||key)]);menuAt(e.clientX,e.clientY,[...items,...contextItems.map(item=>item[0]==='invert-layers'?[()=>select(window.ShijieStudio.panelIds(entries()).filter(key=>!contextSelection.has(key))),item[1]]:item)])});
  document.addEventListener('pointerdown',e=>{if(menu&&!menu.contains(e.target)&&!bar.contains(e.target))closeMenu()},true);
- function modal(title,body){const d=document.createElement('dialog');d.className='studio-dialog';d.innerHTML=`<header><div><small>工程管理 · DESIGNED BY XT</small><h2>${B.escape(title)}</h2></div><button data-close aria-label="关闭">×</button></header><div class="studio-dialog-body">${body}</div>`;document.body.append(d);d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>d.remove());if(title==='打开工程'||document.querySelector('.studio-project-library-dialog[open]')){d.classList.add('studio-project-library-dialog');window.ShijieInlinePanels?.close();d.showModal()}else window.ShijieInlinePanels.open(d);return d}
+ function modal(title,body){const d=document.createElement('dialog');d.className='studio-dialog';d.innerHTML=`<header><div><small>工程管理 · DESIGNED BY XT</small><h2>${B.escape(title)}</h2></div><button data-close aria-label="关闭">×</button></header><div class="studio-dialog-body">${body}</div>`;document.body.append(d);d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>d.remove());if(title==='打开工程'||title==='处理保存冲突'||document.querySelector('.studio-project-library-dialog[open]')){d.classList.add('studio-project-library-dialog');window.ShijieInlinePanels?.close();d.showModal()}else window.ShijieInlinePanels.open(d);return d}
  function rename(){if(!ids.size)return;const d=modal('重命名图层','<label>名称<input id="studio-rename" maxlength="120"></label><footer><button class="primary" id="studio-rename-ok">保存名称</button></footer>'),input=d.querySelector('input');input.value=selectedEntries()[0]?.node.name||'';input.focus();input.select();const apply=()=>{const value=input.value.trim();if(!value)return;d.close();commit('重命名',()=>a.mutate('rename',roots(),value))};d.querySelector('#studio-rename-ok').onclick=apply;input.onkeydown=e=>{if(e.key==='Enter')apply()}}
  async function exportSelection(){if(!ids.size)return;if(a.openExport){a.openExport();return;}const b=box(),d=modal('导出所选图层',`<p class="studio-note">${ids.size} 个图层 · 按所选范围裁切 · 画布底色不包含在内</p><div class="studio-export-options"><label>格式<select id="studio-export-format"><option value="png">透明 PNG</option><option value="svg">SVG · 文字与矢量</option><option value="psd">分层 PSD</option></select></label><label>四周留白（像素）<input id="studio-export-padding" type="number" min="0" max="256" value="0"></label></div><p class="studio-note">${Math.ceil(b.width)} × ${Math.ceil(b.height)} px。图层自身的不透明背景会保留。</p><footer><span id="studio-export-status"></span><button class="primary" id="studio-export-go">导出所选</button></footer>`);d.querySelector('#studio-export-go').onclick=async e=>{e.target.disabled=true;processing=true;try{await a.export(roots(),d.querySelector('#studio-export-format').value,Math.max(0,Math.min(256,+d.querySelector('#studio-export-padding').value||0)));a.status('所选图层已导出');d.close()}catch(err){d.querySelector('#studio-export-status').textContent=err.message;e.target.disabled=false}finally{processing=false;sync(false);a.refreshControls?.()}}}
  async function projects(){
@@ -249,6 +290,6 @@ window.ShijieStudio={
  document.addEventListener('paste',e=>{if(e.target.closest('#free-assistant'))return;if(e.target.closest('#original-annotation-overlay')){e.preventDefault();e.stopImmediatePropagation();return}if(imageEditing&&!e.target.closest('input,textarea,[contenteditable=true]')){e.preventDefault();e.stopImmediatePropagation();return}if(e.target.closest('input,textarea,[contenteditable=true]')||[...(e.clipboardData?.files||[])].some(f=>f.type.startsWith('image/'))||document.querySelector('dialog[open]'))return;if(clipboard){e.preventDefault();e.stopImmediatePropagation();run('paste')}},true);
  window.addEventListener('resize',overlay);document.addEventListener('scroll',overlay,true);new ResizeObserver(overlay).observe(viewport);
  function setImageEditing(value){imageEditing=!!value;setRegionMode(false);closeMenu();for(const el of document.querySelectorAll('.app-header,.layer-bottom,#layer-list,.studio-bar,.document-actions,.history-tools'))el.inert=imageEditing;if(imageEditing&&a.kind==='image'&&typeof setTool==='function')setTool('select');overlay()}
- const api={setImageEditing,isImageEditing:()=>imageEditing,sync,scheduleRecovery:save,confirmDiscard,setInitial,select,ids,roots,run,overlay,saveProject,saveCheckpoint,isBusy:busy,flush:async(options={})=>{clearTimeout(saveTimer);if(options.leaving===true&&B.library.requiresManualExport){if(!await confirmDiscard())throw Error('未保存工程仍在当前页面，请完成导出后重试');return}return saveCheckpoint('离开工程')},adapter:a};
+ const api={setImageEditing,isImageEditing:()=>imageEditing,sync,scheduleRecovery:save,confirmDiscard,setInitial,select,ids,roots,run,overlay,saveProject,saveCheckpoint,isBusy:busy,flush:async(options={})=>{clearTimeout(saveTimer);if(options.leaving===true&&B.library.requiresManualExport){if(!await confirmDiscard())throw Error('未保存工程仍在当前页面，请完成导出后重试');return}return options.leaving===true?saveBeforeLeaving():saveCheckpoint('离开工程')},adapter:a};
  const requested=new URLSearchParams(location.search).get('project');api.ready=restoreTabProject(requested);window.addEventListener('pagehide',()=>{clearTimeout(saveTimer);rememberTabProject(a.get());reloadRecovery?.flush().catch(()=>{});});document.addEventListener('visibilitychange',()=>{if(document.hidden&&a.get()&&!busy())saveCheckpoint('离开工作区').catch(()=>{})});window.addEventListener('beforeunload',warnBeforeUnload);sync(false);return api;
 }};

@@ -91,7 +91,8 @@ def run(job):
         elif expired:
             result = {'status': 'failed', 'message': '任务超时，原图和中间图层已保留，可继续拆分'}
             write_json(root / 'finished.json', result)
-        Job.objects.filter(pk=job.pk).update(**result, finished_at=timezone.now(), progress=1 if result['status'] == 'completed' else job.progress)
+        # Runner receipts include timing metadata, which is not a Job column.
+        Job.objects.filter(pk=job.pk).update(status=result['status'], message=result['message'], finished_at=timezone.now(), progress=1 if result['status'] == 'completed' else job.progress)
     finally:
         try:
             if provider == 'local' and result['status'] != 'completed':

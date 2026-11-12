@@ -138,6 +138,9 @@ def main():
             message = '个人 Codex 正在登录，请完成登录后重试'
         elif isinstance(exc, (CodexLoginRequired, CodexImageGenerationRequired, CodexImageGenerationFailed, CodexQuotaExceeded, CompanyError, LocalModelError)):
             message = str(exc)
+        elif isinstance(exc, ValueError) and str(exc) == '局部复核遗漏过多对象，本次标注未应用':
+            # Fixed local validation text only; never pass arbitrary provider errors.
+            message = '自动标注局部复核遗漏过多对象，未应用标注；原图保留，本次未生成图片，也未自动重试'
         else:
             message = '任务处理发生异常，原图和已有图层已保留；请联系管理员检查任务记录'
         finish({'status': 'failed', 'message': message})

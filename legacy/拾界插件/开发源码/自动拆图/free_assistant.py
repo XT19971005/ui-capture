@@ -20,7 +20,7 @@ def validate_request(body):
  if 'annotationOnly' in body and type(body['annotationOnly']) is not bool:raise ValueError('自动标注开关无效')
  if 'annotationAllowExpand' in body and type(body['annotationAllowExpand']) is not bool:raise ValueError('自动标注向外补全开关无效')
  if 'annotationLimit' in body and (type(body['annotationLimit']) is not int or not 1<=body['annotationLimit']<=128):raise ValueError('自动标注数量必须为1至128')
- if body['provider'] not in ('codex','tygpt') and not (body.get('annotationOnly') is True and body['provider']=='auto') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
+ if body['provider'] not in ('codex','tygpt','auto') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
  from selected_dialogue import validate_dialogue
  validate_dialogue({'action':'discuss','messages':body['messages']})
  workspace=body.get('workspace')
@@ -78,6 +78,10 @@ def validate_request(body):
  return copy.deepcopy(body)
 
 def validate_plan(result,body):
+ issues=result.get('planIssues') if isinstance(result,dict) else None
+ if issues is not None:
+  if not isinstance(issues,list) or len(issues)>256 or any(not isinstance(i,dict) or set(i)!={'index','name','reason'} or type(i['index']) is not int or not isinstance(i['name'],str) or len(i['name'])>100 or not isinstance(i['reason'],str) or len(i['reason'])>240 for i in issues):raise ValueError('待修复对象记录无效')
+  result={k:v for k,v in result.items() if k!='planIssues'}
  if not isinstance(result,dict) or set(result)-set(SCHEMA['properties']) or set(SCHEMA['properties'])-{'nextStep','choices'}-set(result):raise ValueError('助手返回格式无效')
  step=result.get('nextStep','none');choices=result.get('choices',[])
  if step not in ('choose','confirm','discuss','none') or not isinstance(choices,list) or len(choices)>8:raise ValueError('助手方案选项无效')
@@ -101,6 +105,8 @@ def validate_plan(result,body):
   if result['reference']!='original' and result['action']!='outpaint' and not (result['action'] in ('discuss','split') and body.get('annotationTargetId') in ids and len(ids)==1):raise ValueError('指定分层使用工程原图或已标注选中层')
   if not re.search('[\u4e00-\u9fff]',result['name']) or re.search(r'\.(png|jpg|jpeg|webp)$',result['name'],re.I):raise ValueError('请根据图片内容给出中文工程名，不能沿用文件名')
   from assistant_split import validate
+  from annotation_plan import native_node
+  for layer in result['layers']:native_node(layer,'validation')
   src=body['image'];width=body['scene']['width'];height=body['scene']['height']
   if result['reference']=='selection':
    from image_replace import _image
@@ -116,6 +122,7 @@ def validate_plan(result,body):
  from marked_scope import validate as validate_marked_scope
  result=validate_marked_scope(copy.deepcopy(result),body)
  if result['action']=='outpaint':result['outpaintSource']={'id':ids[0],'sourceHash':hashlib.sha256(src.encode()).hexdigest(),'width':width,'height':height}
+ if issues:result['planIssues']=copy.deepcopy(issues)
  return result
 
 def reply_prefix(text):
@@ -205,16 +212,8 @@ instruction是完整具体的执行要求，包括最新补充；name为根据�
  if bounded(body):prompt+='\n'+MARKED_SCOPE_RULES
  result=analyze(prompt,images,stage_schema(body.get('analysisStage')),body['provider'],body['model'],cancelled,on_status,**({'on_text':lambda text:on_reply(reply_prefix(text))} if on_reply else {}))
  if cancelled():raise InterruptedError('已停止对话')
- try:return validate_plan(result,body)
- except ValueError as exc:
-  # Repair one current batch only; never re-run annotation or other categories.
-  if not body.get('analysisStage') or not any(k in str(exc) for k in ('颜色','原生','矢量路径','圆角','字号','字重','渐变')):raise
-  if cancelled():raise InterruptedError('已停止参数修正')
-  on_status('当前类别参数未通过检查，正在修正本批格式；不重新标注、不分析其他类别')
-  repair_prompt=prompt+'\n上一份本批结构参数校验失败：'+str(exc)[:120]+'。仅修正本批JSON参数。所有native.fill必须是#RRGGBB六位十六进制，不得为颜色名、三位颜色、rgba、八位颜色或渐变表达式；渐变与样式使用对应结构字段，不悄悄改为图片。沿用以下本批对象及范围，不增加其他类别：'+json.dumps(result.get('layers',[]),ensure_ascii=False)
-  repaired=analyze(repair_prompt,images,stage_schema(body['analysisStage']),body['provider'],body['model'],cancelled,on_status)
-  if cancelled():raise InterruptedError('已停止参数修正')
-  return validate_plan(repaired,body)
+ from partial_plan import isolate
+ return isolate(result,body)
 
 
 class SelectedStageAnalysisTimeout(RuntimeError):
@@ -266,19 +265,16 @@ def stage_schema(kind):
 
 def plan(body,folder,cancelled,on_status,on_reply=None):
  body=validate_request(body);kind=body.get('analysisStage')
- if kind=='vector':
-  from material_classification import material_icon
-  conflicts=[i['label'] for i in (body.get('annotations') or {}).get('items',[]) if i.get('purpose')!='remove' and i.get('layerType')=='vector' and material_icon(i.get('label',''),i.get('planNote',''))]
-  if conflicts:raise ValueError('材质图标误分为矢量：'+ '、'.join(conflicts)+'；请点击修正材质图标分类，再生成图片；尚未生成')
+ # Material conflicts are checked per object during generation; unrelated vectors proceed.
  confirm=bool(body.get('layerPlan') and body['messages'] and body['messages'][-1]['content'].startswith('确认按上一条助手分析方案执行生成候选，'))
- if kind and confirm and stage_coverage(body['annotations'],body['layerPlan']['layers'],kind):raise ValueError('已保存方案漏项，请先补齐当前类别；已有图层保留')
+ # A confirmed subset can execute; unplanned marks remain explicit pending work.
  if not kind or body.get('annotationOnly') or confirm:return _plan_one(body,folder,cancelled,on_status,on_reply)
  marks=stage_annotations(body.get('annotations'),kind)
  if not marks or not marks['items']:raise ValueError('当前类别没有已确认的标注，请先完成分类；未分析其他类别')
  from source_annotations import summary
  number_map={i['color']:i['number'] for i in summary(body['annotations'])}
  batches=[marks['items'][i:i+8] for i in range(0,len(marks['items']),8)]
- layers=[];result=None
+ layers=[];result=None;issues=[]
  for index,items in enumerate(batches):
   if cancelled():raise InterruptedError('已停止类别分析')
   on_status('正在准备'+{'vector':'矢量','text':'文字','image':'图片'}[kind]+'参数 '+str(index+1)+'/'+str(len(batches))+' 批；其他类型未分析')
@@ -286,20 +282,23 @@ def plan(body,folder,cancelled,on_status,on_reply=None):
   if 'order' in current['annotations']:current['annotations']['order']=[c for c in current['annotations']['order'] if c in colors]
   current.pop('layerPlan',None);directory=folder/('类别分析'+str(index+1));directory.mkdir(parents=True,exist_ok=True)
   try:part=_plan_one(current,directory,cancelled,on_status,on_reply,number_map)
-  except RuntimeError as exc:
-   if '超时' in str(exc) or 'timeout' in str(exc).lower():raise SelectedStageAnalysisTimeout('所选类别参数分析超时，尚未生成；原图标注保留，仅需重试当前类型，不重算其他类型') from exc
-   raise
-  if not part.get('layers') or part.get('choices'):
-   # A single batch is not the complete category and must never become executable.
-   part=copy.deepcopy(part);part['layers']=[];part['reply']='当前类型第'+str(index+1)+'批尚未准备完整；已有图层保留。'+part['reply'];return part
+  except InterruptedError:raise
+  except (ValueError,RuntimeError) as exc:
+   issues.extend({'index':-1,'name':str(number_map.get(item['color'],''))+'号 '+str(item.get('label','对象'))[:60],'reason':('本批分析未完成，未重试：'+str(exc))[:240]} for item in items)
+   continue
+  if part.get('choices'):
+   issues.extend({'index':-1,'name':str(number_map.get(item['color'],''))+'号 '+str(item.get('label','对象'))[:60],'reason':'本批方案存在待选择项：'+part['reply'][:180]} for item in items)
+   continue
+  issues.extend(part.get('planIssues',[]))
   missing=stage_coverage(current['annotations'],part['layers'],kind,number_map)
-  if missing:raise ValueError({'text':'文字','vector':'矢量','image':'图片'}[kind]+'方案漏项：'+ '、'.join(missing)+'；未开始生成，不会把本批当作完整方案')
+  issues.extend({'index':-1,'name':name[:100],'reason':'尚无合格参数，保留待修复'} for name in missing)
   offset=len(layers)
   for layer in part['layers']:
    if layer.get('reuseOf') is not None:layer['reuseOf']+=offset
    layers.append(layer)
   result=part
- if result is None:raise ValueError('当前类型没有可执行方案')
+ if result is None:result={'action':'discuss','nextStep':'discuss','choices':[],'reference':'selection' if body.get('annotationTargetId') else 'original','targetIds':[body['annotationTargetId']] if body.get('annotationTargetId') else [],'name':'标注分层','reply':'本次没有合格参数；各对象保留待修复。','instruction':'只执行合格项','layers':[]}
+ if issues:result['planIssues']=issues[:256]
  if kind=='image':
   from resource_reuse import normalize_plan
   layers=normalize_plan(layers,body['annotations'])
@@ -308,4 +307,6 @@ def plan(body,folder,cancelled,on_status,on_reply=None):
   from resource_reuse import statistics
   counts=statistics(layers,[],body['annotations'])
   result['reply']='已准备图片'+str(counts['resources'])+'款素材、'+str(counts['positions'])+'处位置；同款只生图一次，其他类别尚未分析。'
+ if not layers:result.update(nextStep='discuss')
+ if issues:result['reply']+=' '+str(len(issues))+'项待修复或未覆盖，先执行合格项。'
  return validate_plan(result,body)

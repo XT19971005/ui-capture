@@ -41,7 +41,12 @@
   }
   async function permission(handle) {
     if (!handle || handle.kind !== 'directory') throw Error('请先在“打开工程”中选择自己电脑上的工程文件夹。');
-    if (await handle.queryPermission({mode: 'readwrite'}) !== 'granted')
+    let state = await handle.queryPermission({mode: 'readwrite'});
+    // Renew only from an explicit user gesture; refresh and progress stay quiet.
+    if (state === 'prompt' && navigator.userActivation?.isActive && typeof handle.requestPermission === 'function') {
+      try { state = await handle.requestPermission({mode: 'readwrite'}); } catch {}
+    }
+    if (state !== 'granted')
       throw Error('本地文件夹的读写权限已失效，请点击“选择本地文件夹”重新授权；当前编辑保留。');
   }
   async function current(expected, required = true) {

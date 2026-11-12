@@ -291,12 +291,12 @@ class WorkspaceContextTests(FreeAssistantTests):
 
 
 class ServerProviderCompatibilityTests(unittest.TestCase):
- def test_all_server_providers_and_workspace_project_id_remain_accepted(self):
+ def test_public_provider_names_and_bounded_workspace_remain_accepted(self):
   import free_assistant as f
-  for provider in ('auto','codex','company','taishi'):
-   body=FreeAssistantTests().body();body['provider']=provider;body['workspace']={'projectId':'server-project','title':'工程','hiddenLayers':[],'recentOutcomes':[],'earlierUserRequests':[]}
+  for provider in ('auto','codex','tygpt'):
+   body=FreeAssistantTests().body();body['provider']=provider;body['workspace']={'title':'工程','hiddenLayers':[],'recentOutcomes':[],'earlierUserRequests':[]}
    result=f.validate_request(body)
-   self.assertEqual(result['provider'],provider);self.assertEqual(result['workspace']['projectId'],'server-project')
+   self.assertEqual(result['provider'],provider);self.assertEqual(result['workspace']['title'],'工程')
 
 class DiscussionChoiceTests(FreeAssistantTests):
  def test_style_choices_are_discussion_not_permission_to_generate(self):

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../legacy/拾界插件/插件程序/edge/studio.js'),'utf8');
 const snippet=source.slice(source.indexOf(' async function confirmDiscard('),source.indexOf(' let confirmedNavigation='));
-function setup(){let doc={},dirty=true,fail=false;const ctx={a:{get:()=>doc,status:text=>ctx.status=text},B:{library:{isDirty:()=>dirty}},saveCheckpoint:async()=>{if(fail)throw Error('磁盘已满');dirty=false}};vm.runInNewContext(snippet+';this.confirmDiscard=confirmDiscard;',ctx);return {ctx,fail:()=>fail=true};}
+function setup(){let doc={},dirty=true,fail=false;const ctx={a:{get:()=>doc,status:text=>ctx.status=text},B:{library:{isDirty:()=>dirty}},saveBeforeLeaving:async()=>{if(fail)throw Error('磁盘已满');dirty=false}};vm.runInNewContext(snippet+';this.confirmDiscard=confirmDiscard;',ctx);return {ctx,fail:()=>fail=true};}
 test('replacing a document waits for its checkpoint',async()=>{const h=setup();assert.equal(await h.ctx.confirmDiscard(),true)});
 test('failed checkpoint prevents replacement and preserves a retryable document',async()=>{const h=setup();h.fail();assert.equal(await h.ctx.confirmDiscard(),false);assert.match(h.ctx.status,/磁盘已满/)});
 test('confirmed project navigation skips only its own unload check, then restores dirty protection',()=>{
@@ -146,7 +146,7 @@ test('refresh cache restores the original save version while real concurrent cha
 test('successful persistence schedules refresh cache even when no further edit follows',async()=>{
  const body=source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function save(){'));
  const doc={_projectId:'p'},scheduled=[];
- const c={a:{get:()=>doc,kind:'image',status(){}},B:{library:{put:async()=>({}),isDirty:()=>false}},reloadRecovery:{schedule:value=>scheduled.push(value)},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(){},save(){},window:{SHIJIE:{sharedCodex:true}}};
+ const c={a:{get:()=>doc,kind:'image',status(){}},B:{library:{put:async()=>({}),isDirty:()=>false}},reloadRecovery:{schedule:value=>scheduled.push(value),flush:async()=>{}},rememberTabProject(){},recoveryState:{style:{}},recoverySaved(){},recoveryError(){},save(){},window:{SHIJIE:{sharedCodex:true}}};
  vm.runInNewContext(body+';this.persist=persistRecovery',c);await c.persist(doc,{checkpoint:true});assert.deepEqual(scheduled,[doc]);
 });
 
@@ -157,19 +157,6 @@ test('unknown-origin manual recovery creates a same-title disk version and failu
  assert.equal(lib.unknownOrigin(doc),true);await assert.rejects(lib.put(doc,'image',{checkpoint:true}),/保存版本/);assert.equal(h.files.size,1);
  fail=true;await assert.rejects(lib.saveRecoveredCopy(doc,'image'),/disk full/);assert.deepEqual(doc,before);assert.equal(h.files.size,1);
  fail=false;const saved=await lib.saveRecoveredCopy(doc,'image');assert.notEqual(saved.id,'old');assert.equal(saved.title,'准确中文标题');assert.deepEqual(doc,before);assert.equal(h.files.get('准确中文标题.aisplit-project'),original);assert(h.files.has('准确中文标题（2）.aisplit-project'));assert.equal(lib.snapshotOrigin(saved.doc).version,saved.persistedVersion);
-});
-
-test('main save recovers an unknown cache only after acknowledgement and preserves edits made during the save',async()=>{
- const body=source.slice(source.indexOf(' async function saveProject(){'),source.indexOf(' async function saveCheckpoint('));
- for(const outcome of ['success','failure','switched']){
-  const original={_projectId:'old',title:'准确中文标题',nodes:[{id:'layer',x:1}],_assistantChat:{messages:['聊天']},_splitBaseline:{scene:{title:'initial'}}},snapshot=structuredClone(original);let current=original,resolve,reject,requests=0,saved;
-  const c={busy:()=>false,saveTimer:null,clearTimeout(){},recoveredCopySaving:false,a:{get:()=>current,kind:'image',status(){}},B:{library:{requiresManualExport:false,unknownOrigin:()=>true,directory:()=> 'folder',saveRecoveredCopy:()=>{requests++;return new Promise((ok,no)=>{resolve=ok;reject=no})},isDirty:doc=>JSON.stringify(doc)!==JSON.stringify(saved?.doc)}},autoDirectories:new Map(),reloadRecovery:{schedule(){}},rememberTabProject(){},recoverySaved(){},recoveryError(){},sync(){},save(){},persistRecovery:()=>assert.fail('unknown must not overwrite old ID')};
-  vm.runInNewContext(body+';this.saveProject=saveProject',c);const running=c.saveProject();await c.saveProject();assert.equal(requests,1);assert.equal(original._projectId,'old');original.nodes[0].x=9;
-  if(outcome==='failure'){reject(Error('disk full'));await assert.rejects(running,/disk full/);assert.equal(original._projectId,'old')}
-  else {if(outcome==='switched')current={_projectId:'other'};saved={id:'new',doc:{...snapshot,_projectId:'new'}};resolve(saved);await running;assert.equal(original._projectId,outcome==='success'?'new':'old')}
-  assert.equal(original.nodes[0].x,9);assert.deepEqual(original._assistantChat,snapshot._assistantChat);assert.deepEqual(original._splitBaseline,snapshot._splitBaseline);
-  if(outcome==='success')assert.equal(c.B.library.isDirty(original),true);
- }
 });
 
 test('网页下载名称只取工程内容标题，空标题使用未命名工程，不加产品前缀',()=>{

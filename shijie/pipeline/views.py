@@ -140,7 +140,7 @@ def engine(request, route):
                              'codexAvailable': True, 'imageWireVersion': 1, 'regionRefineVersion': 1,
                              'imageReplaceSelectionVersion': 1, 'imageGenerateVersion': 1,
                              'localProjectStoreVersion': 1, 'sourceAnnotationsVersion': 1, 'assistantVersion': 1,
-                             'freeAssistantVersion': 1, 'annotationPlanVersion': 2, 'phaseGenerationVersion': 1, 'assistantSplitVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
+                             'freeAssistantVersion': 1, 'annotationPlanVersion': 2, 'phaseGenerationVersion': 1, 'assistantSplitVersion': 1, 'partialObjectDeliveryVersion': 1, 'concurrentImageVersion': 1, 'imageProviderVersion': 1, 'selectedDialogueVersion': 1,
                              'jobModes': ['codex', 'local-layered', 'refine-ui', 'refine-selected', 'repair-order', 'replace-image']})
     if route=='image-provider/catalog' and method=='POST':
         if len(request.body)>20*1024:raise ValueError('连接请求超过大小限制')
@@ -359,6 +359,28 @@ def job_data(job, include_result=False, include_input=True):
     if pending:value['deliveryPending']=True
     if include_result:
         folder = job_root(job)
+        # Owner-scoped diagnostic facts only; never expose provider text or paths.
+        if job.status in ('failed', 'cancelled'):
+            facts = {}
+            for filename, fields in (('finished.json', ('status', 'elapsedSeconds')), ('failure.json', ('exception', 'stage'))):
+                try:
+                    receipt = json.loads((folder / filename).read_text())
+                    if filename == 'failure.json':
+                        frames = []
+                        for frame in receipt.get('frames', [])[-12:]:
+                            if not isinstance(frame, dict): continue
+                            file, function, line = frame.get('file'), frame.get('function'), frame.get('line')
+                            if isinstance(file, str) and re.fullmatch(r'[A-Za-z0-9_\-]+\.py', file) and isinstance(function, str) and re.fullmatch(r'[A-Za-z0-9_<>]{1,100}', function) and type(line) is int and 0 < line < 100000:
+                                frames.append({'file':file, 'function':function, 'line':line})
+                        if frames: facts['frames'] = frames
+                    for key in fields:
+                        item = receipt.get(key)
+                        if key == 'elapsedSeconds':
+                            if type(item) in (int, float) and 0 <= item < 864000: facts[key] = item
+                        elif isinstance(item, str) and re.fullmatch(r'[A-Za-z_\-]{1,80}', item): facts[key] = item
+                except (OSError, ValueError, AttributeError):
+                    pass
+            if facts: value['diagnostic'] = facts
         try:
             value['previewText'] = json.loads((folder / 'reply.json').read_text()).get('text','')[:4000]
         except FileNotFoundError:

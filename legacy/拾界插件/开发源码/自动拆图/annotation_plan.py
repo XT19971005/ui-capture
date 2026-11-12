@@ -6,7 +6,9 @@ from design_properties import obj, nullable, STYLE, GRADIENT, COLOR, color, numb
 from material_classification import material_icon
 
 RULES = """原画标注分析阶段先确定分层方案，不得等生成PNG后再决定类型。每个对象列明：编号/名称、主体图片/原生文字/矢量、所属分组、完整范围、遮挡补全、前后层序、同款复用、独立子层排除、图层样式和待确认项。普通纯文字必须原生可编辑；纯色图标、标识、简单图形必须完整平滑矢量，保留孔洞及细笔画；艺术字先判断原生文字加样式能否还原，不能一律当图片。复杂材质和完整角色保留透明图片底稿。描边、投影、内阴影、内外发光、颜色叠加、渐变叠加按原图证据作为绑定主体的原生layerStyle，主体填色与外挂效果分开；不烘焙效果，不虚构原图没有的效果，主体材质光照不机械拆碎。容器清除另成层子项并补全；同款仅在形状、颜色、材质、方向、状态一致时复用合格底稿，位置实例独立。模糊文字、字体、隐藏形态和不支持效果必须标明待确认，不猜作合格。先用discuss展示分类、分组及样式方案，等待用户确认再执行；用户已经确认则沿用完整方案，不重复要求确认，不缩成最新一句提到的对象。方案绑定干净原图及标注，不因换图或改标注而串用。生成、保存恢复及PSD导出都沿用类型和原生样式，逐项对照验收；应用、结构通过、导出成功不代表画面合格。"""
-NATIVE=obj({'text':{'type':'string'},'fontFamily':{'type':'string'},'fontSize':{'type':'number'},'fontWeight':{'type':'number'},'fill':COLOR,'d':{'type':'string'},'radius':{'type':'number'}})
+SUPPORTED_FONTS=('Arial','Microsoft YaHei','SimHei','Impact','Arial Narrow','Haettenschweiler','Noto Sans CJK SC','Noto Serif CJK SC','Liberation Sans','Liberation Serif')
+RULES+='\n文字的fontFamily必须填写受支持且可执行的字体名：'+', '.join(SUPPORTED_FONTS)+'。字体识别不确定写入reviewNote，不能将待确认、未知等占位文字填进fontFamily；无法确定可执行字体时保留该对象待修复，不影响其他对象。'
+NATIVE=obj({'text':{'type':'string'},'fontFamily':{'type':'string','enum':['',*SUPPORTED_FONTS]},'fontSize':{'type':'number'},'fontWeight':{'type':'number'},'fill':COLOR,'d':{'type':'string'},'radius':{'type':'number'}})
 FIELDS={'reuseOf':nullable({'type':'integer','minimum':0,'maximum':127}),'rotation':{'type':'number','minimum':-360,'maximum':360},'layerType':{'type':'string','enum':['image','text','rect','ellipse','path']},'native':nullable(NATIVE),'layerStyle':nullable(STYLE),'gradient':nullable(GRADIENT),'group':{'type':'string'},'reviewNote':{'type':'string'}}
 
 def native_node(layer,ident):
@@ -29,7 +31,7 @@ def native_node(layer,ident):
  out={'id':ident,'name':layer['name'],'type':kind,**layer['box'],'fill':color(n.get('fill')),**fields,'review':True,'assetReviewStatus':'NOT_REVIEWED','provenance':'annotation-native-plan'}
  if kind=='text':
   if not isinstance(n.get('text'),str) or not n['text'].strip() or len(n['text'])>12000:raise ValueError('原生文字内容无效')
-  if not isinstance(n.get('fontFamily'),str) or not n['fontFamily'].strip() or len(n['fontFamily'])>200:raise ValueError('原生字体无效')
+  if n.get('fontFamily') not in SUPPORTED_FONTS:raise ValueError('原生字体无效或待确认；请为此对象选择受支持字体，其他对象可继续')
   out.update(text=n['text'],fontFamily=n['fontFamily'],fontSize=number(n.get('fontSize'),1,2000,'字号'),fontWeight=number(n.get('fontWeight'),100,1000,'字重'),strokeWidth=0,fontMatchApproximate=True)
  if kind=='rect':out['radius']=number(n.get('radius',0),0,6000,'圆角')
  if kind=='path':

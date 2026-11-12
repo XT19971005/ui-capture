@@ -19,9 +19,9 @@
  nav.innerHTML='<a href="image-editor.html" data-mode="image"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15" cy="8" r="1"/></svg>图片拆分</a><a href="export.html" data-mode="web"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18m-13-3h1m3 0h1"/></svg>网页编辑</a>';
  header.querySelector('.brand').after(nav);nav.querySelector('[data-mode='+(imageMode?'image':'web')+']').setAttribute('aria-current','page');
  async function saveBeforeSwitch(studio){const owner=studio?.adapter.get();await studio?.flush({leaving:true});if(studio?.adapter.get()!==owner||owner&&StudioBase.library.isDirty(owner))throw Error('工程仍有未保存修改，请重试保存');return true}
- for(const link of nav.querySelectorAll('a'))link.addEventListener('click',async e=>{
+ for(const link of [...nav.querySelectorAll('a'),header.querySelector('.brand')].filter(Boolean))link.addEventListener('click',async e=>{
   if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;e.preventDefault();
-  if(link.hasAttribute('aria-current')||nav.hasAttribute('aria-busy'))return;
+  if(link===header.querySelector('.brand')&&imageMode||link.hasAttribute('aria-current')||nav.hasAttribute('aria-busy'))return;
   const studio=window.studio;if(studio?.isBusy()){document.querySelector('#status').textContent='当前操作尚未完成，请完成或取消后切换。';return}
   nav.setAttribute('aria-busy','true');
   try{await studio?.adapter.flush?.();if(await saveBeforeSwitch(studio))location.href=link.href}
