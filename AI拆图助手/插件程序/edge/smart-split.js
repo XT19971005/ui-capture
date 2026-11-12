@@ -3,7 +3,7 @@
 window.ShijieSmartSplit=(()=>{
  let connection=null,active=null;
  const cancelledRuns=new Set();
- const MIB=1024*1024,IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource']);
+ const MIB=1024*1024,IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource','bindingSource']);
  function serializeJob(job,imageTableSupported=false){
   const images=[],imageBytes=[],encodedImageBytes=[],indexes=new Map(),stack=new Set();let uniqueBytes=0,encodedUniqueBytes=0,logicalBytes=0,encodedLogicalBytes=0,metadataBytes=0,items=0;
   const utf8Size=value=>/^[\x00-\x7f]*$/.test(value)?value.length:new TextEncoder().encode(value).byteLength;
@@ -40,13 +40,17 @@ window.ShijieSmartSplit=(()=>{
   return JSON.stringify(wrapper);
  }
  const abortError=()=>new DOMException('已取消','AbortError');
+ function taskError(state,id){const error=Error(state.message);if(state.deliveryPending===true){error.deliveryPending=true;error.jobId=id}return error}
+ function submissionError(error,path,options){if(options.method==='POST'&&/^\/(?:jobs|assistant\/(?:jobs|split))$/.test(path)&&['TypeError','NetworkError','AbortError'].includes(error.name)){const pending=Error('提交请求时连接中断，服务可能已经接收；请先核对原任务记录，不要重复生成。');pending.submissionUnknown=true;return pending}return error}
  function releaseCancelledOrderResult(run,state){
   if(!['repair-order','replace-image'].includes(run.mode)||state?.status!=='completed')return;
   for(const id of new Set([state.result?._sessionId,state.result?.delivery?.sessionId]))if(typeof id==='string'&&id&&!run.keptSessions.has(id)&&!run.releasedSessions.has(id)){run.releasedSessions.add(id);try{releaseSession({_sessionId:id})}catch(_){}}
  }
- function nativeConnect(){if(location.protocol==='http:'&&['127.0.0.1:19217','localhost:19217'].includes(location.host))return fetch('/connection',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('本机连接失败');return r.json()});return new Promise((resolve,reject)=>{
+ function nativeConnect(){if(location.protocol==='http:'&&['127.0.0.1:19217','localhost:19217'].includes(location.host))return fetch('/connection',{cache:'no-store',signal:globalThis.AbortSignal?.timeout?.(10000)}).then(r=>{if(!r.ok)throw Error('本机连接失败');return r.json()});return new Promise((resolve,reject)=>{
   if(!globalThis.chrome?.runtime?.sendNativeMessage)return reject(Error('请从 Edge 扩展中打开图片拆分'));
+  const deadline=setTimeout(()=>reject(Error('本机引擎连接超时，请重新连接或重启本机助手')),10000);
   chrome.runtime.sendNativeMessage('cn.xt.shijie.engine',{action:'connect'},result=>{
+   clearTimeout(deadline);
    const error=chrome.runtime.lastError;
    if(error||!result?.ok)return reject(Error(result?.error||'本机引擎尚未连接。请在扩展管理页重新加载AI拆图助手；仍失败时，运行插件目录中的「连接智能拆图.ps1」'));
    if(result.url!=='http://127.0.0.1:19217'||typeof result.token!=='string')return reject(Error('本机引擎返回无效连接'));
@@ -54,9 +58,33 @@ window.ShijieSmartSplit=(()=>{
   });
  });}
  async function request(path,options={}){
-  const response=await fetch(connection.url+path,{...options,headers:{'Content-Type':'application/json','X-Shijie-Token':connection.token},cache:'no-store'});
-  let data;try{data=await response.json()}catch(_){const error=Error(response.status===413?'工程传输数据超过容量限制，原工程已保留。请保存工程后重试。':'本机引擎返回了无法读取的响应（HTTP '+response.status+'），原工程已保留。');error.status=response.status;throw error}
-  if(!response.ok){const error=Error(typeof data?.error==='string'?data.error:'本机处理请求失败');error.status=response.status;throw error}return data;
+  const connectionRequest=/^\/(codex\/|assistant\/(models|key)|image-provider)/.test(path),controller=connectionRequest?new AbortController():null;
+  const abort=()=>controller?.abort();if(options.signal?.aborted)abort();else options.signal?.addEventListener('abort',abort,{once:true});
+  const timer=controller?setTimeout(()=>controller.abort(),options.method==='POST'?100000:90000):null;
+  try{
+   const response=await fetch(connection.url+path,{...options,signal:controller?.signal||options.signal,headers:{'Content-Type':'application/json','X-Shijie-Token':connection.token},cache:'no-store'});
+   let data;try{data=await response.json()}catch(error){if(controller?.signal.aborted)throw error;const invalid=Error(response.status===413?'工程传输数据超过容量限制，原工程已保留。请保存工程后重试。':'本机引擎返回了无法读取的响应（HTTP '+response.status+'），原工程已保留。');invalid.status=response.status;throw invalid}
+   if(!response.ok){const error=Error(typeof data?.error==='string'?data.error:'本机处理请求失败');error.status=response.status;throw error}return data;
+  }catch(error){if(controller?.signal.aborted&&!options.signal?.aborted)throw Error(options.method==='POST'?'连接请求超时，保存或授权结果尚未确认；请先检查连接，不要重复提交':'连接检查超时，请检查本机引擎与网络后重试');throw submissionError(error,path,options)}
+  finally{if(timer)clearTimeout(timer);options.signal?.removeEventListener('abort',abort)}
+ }
+ async function pollJob(run,revision){
+  // Retry only the idempotent status read, never the generation POST.
+  for(let attempt=0;attempt<3;attempt++){
+   if(run.cancelled)throw abortError();
+   try{
+    const state=await request('/jobs/'+run.id+'?afterRevision='+revision);
+    if(!state||typeof state.status!=='string'){const error=Error('服务器任务状态响应不完整（HTTP 200）');error.status=200;throw error}
+    run.terminal=['completed','failed','expired','cancelled'].includes(state.status);return state;
+   }catch(cause){
+    if(run.cancelled||cause.name==='AbortError')throw abortError();
+    const transient=cause.name==='TypeError'||cause.name==='NetworkError'||cause.status>=200&&cause.status<300||[408,429].includes(cause.status)||cause.status>=500&&cause.status<600;
+    if(!transient){cause.jobId=run.id;if(run.partial)cause.partial=run.partial;throw cause}
+    if(transient&&attempt<2){await new Promise(resolve=>setTimeout(resolve,300*(attempt+1)));continue}
+    const error=Error('读取任务状态中断'+(Number.isFinite(cause.status)?'（HTTP '+cause.status+'）':'（网络读取错误）')+'，本页没有取消后台任务；请从任务记录核对并恢复，无需重新生成。');
+    error.cause={name:cause.name,status:cause.status,code:cause.code,contentType:cause.contentType,contentLength:cause.contentLength};error.status=cause.status;error.code=cause.code;error.contentType=cause.contentType;error.contentLength=cause.contentLength;error.jobId=run.id;error.deliveryPending=true;if(run.partial)error.partial=run.partial;throw error;
+   }
+  }
  }
  async function connect(){connection=await nativeConnect();const state=await request('/health');if(!state.codexAvailable)throw Error('未找到本机 Codex，请安装 Codex CLI 并登录自己的账号');if(!state.ready)throw Error('AI拆图助手运行依赖不完整，请重新解压完整分享包：'+(state.missing||[]).join('、'));return state;}
  async function awaitCancelledCleanup(run,onProgress){
@@ -64,7 +92,7 @@ window.ShijieSmartSplit=(()=>{
   while(cancelledRuns.size){
    if(run.cancelled)throw abortError();
    for(const previous of [...cancelledRuns]){
-    if(previous.id){try{const state=await request('/jobs/'+previous.id);releaseCancelledOrderResult(previous,state);if(!['queued','running'].includes(state.status)){await request('/jobs/'+previous.id,{method:'DELETE'}).catch(()=>{});cancelledRuns.delete(previous)}}catch(error){if(error.status===404)cancelledRuns.delete(previous);else throw error}}
+    if(previous.id){try{const state=await request('/jobs/'+previous.id);releaseCancelledOrderResult(previous,state);if(!['queued','running'].includes(state.status)){if(previous.mode!=='assistant')await request('/jobs/'+previous.id,{method:'DELETE'}).catch(()=>{});cancelledRuns.delete(previous)}}catch(error){if(error.status===404)cancelledRuns.delete(previous);else throw error}}
     else if(previous.finished)cancelledRuns.delete(previous);
     if(run.cancelled)throw abortError();
    }
@@ -86,35 +114,37 @@ window.ShijieSmartSplit=(()=>{
    await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();
    onProgress(.02,'正在整理工程图片，保留原图与全部图层…');await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const transportScene=resumeScene?{...resumeScene}:null;if(transportScene){delete transportScene._splitBaseline;delete transportScene._splitDraftCore;}
-   const body=serializeJob({image,title,mode,original,...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{}),...(options.dialogue?{dialogue:options.dialogue}:{})}:{})},engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
+   const body=serializeJob(assistantWire({image,title,mode,original,...(options.annotations?{annotations:options.annotations}:{}),...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{}),...(options.dialogue?{dialogue:options.dialogue}:{})}:{})}),engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const job=await request('/jobs',{method:'POST',body});run.id=job.id;
    let revision=0;
    while(true){
     if(run.cancelled)throw abortError();
-    const state=await request('/jobs/'+run.id+'?afterRevision='+revision);
+    const state=await pollJob(run,revision);
     if(state.partial){revision=state.partialRevision;if(mode==='codex')run.partial=state.partial}
     if(run.cancelled){releaseCancelledOrderResult(run,state);throw abortError()}
     onProgress(state.progress,state.message,mode==='codex'?state.partial||null:null);
     if(state.status==='completed')return {...state.result,...(resumeScene?._splitBaseline?{_splitBaseline:resumeScene._splitBaseline}:{}),...(resumeScene?._splitDraftCore?{_splitDraftCore:resumeScene._splitDraftCore}:{})};
-    if(['failed','expired'].includes(state.status))throw Error(state.message);
+    if(['failed','expired'].includes(state.status))throw taskError(state,run.id);
     if(state.status==='cancelled')throw abortError();
     await new Promise(resolve=>setTimeout(resolve,700));
    }
   }catch(error){if(run.partial)error.partial=run.partial;throw error}finally{
-   if(run.id&&connection&&!run.cancelled)await request('/jobs/'+run.id,{method:'DELETE'}).catch(()=>{});
+   if(run.id&&connection&&run.terminal&&!run.cancelled)await request('/jobs/'+run.id,{method:'DELETE'}).catch(()=>{});
    run.finished=true;
    if(active===run)active=null;
   }
  }
+ function assistantWire(value){if(Array.isArray(value))return value.map(assistantWire);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>key!=='strokeWidths').map(([key,v])=>[key,assistantWire(v)]));return value}
  async function assistant(body,onProgress=()=>{},split=false){
+  body=assistantWire(body);
   if(active)throw Error('已有任务正在处理');const run={mode:'assistant',cancelled:false,id:null,finished:false,partial:null,keptSessions:new Set(),releasedSessions:new Set()};active=run;
-  try{connection=await nativeConnect();const capabilities=await request('/health');if(body.annotations&&capabilities.sourceAnnotationsVersion!==1)throw Error('当前引擎尚未加载原画标注更新，请等待任务结束后重启AI拆图助手');if(capabilities.freeAssistantVersion!==1||split&&capabilities.assistantSplitVersion!==1)throw Error('当前引擎尚未加载自由对话更新，请在正在运行的任务结束后重启AI拆图助手；工程没有修改');await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();const job=await request(split?'/assistant/split':'/assistant/jobs',{method:'POST',body:serializeJob(body,true)});run.id=job.id;
-   while(true){if(run.cancelled)throw abortError();const state=await request('/jobs/'+run.id+'?afterRevision='+(run.partialRevision||0));if(state.partial){run.partial=state.partial;run.partialRevision=state.partialRevision||run.partialRevision||0}if(run.cancelled){const error=abortError();if(run.partial)error.partial=run.partial;throw error}await onProgress(state.progress,state.message,state.previewText,state.partial);if(state.status==='completed')return state.result;if(state.status==='cancelled'){const error=abortError();if(run.partial)error.partial=run.partial;throw error}if(['failed','expired'].includes(state.status)){const error=Error(state.message);if(run.partial)error.partial=run.partial;throw error}await new Promise(r=>setTimeout(r,400))}
-  }catch(error){if(run.partial)error.partial=run.partial;throw error}finally{if(run.id&&!run.cancelled)await request('/jobs/'+run.id,{method:'DELETE'}).catch(()=>{});run.finished=true;if(active===run)active=null}
+  try{connection=await nativeConnect();const capabilities=await request('/health');if(split&&body.stage&&!(capabilities.phaseGenerationVersion>=1))throw Error('当前引擎尚未加载分阶段生成功能，请在任务结束后重启AI拆图助手；工程没有修改');if((body.annotationOnly||body.layers?.some(n=>n.reuseOf!=null)||body.annotations?.items?.some(n=>n.reuseKey))&&!(capabilities.annotationPlanVersion>=2))throw Error('当前服务尚未加载自动分类与同款复用更新，请等待任务结束后重启对应服务；没有提交生成');if((body.layerPlan||body.layers?.some(n=>n.layerType)||body.annotations?.items?.some(n=>n.layerType||n.planNote))&&!(capabilities.annotationPlanVersion>=1))throw Error('当前服务尚未加载标注分类与原生样式更新，请等待任务结束后重启对应服务；没有提交生成');if(body.annotations&&capabilities.sourceAnnotationsVersion!==1)throw Error('当前引擎尚未加载原画标注更新，请等待任务结束后重启AI拆图助手');if(capabilities.freeAssistantVersion!==1||split&&capabilities.assistantSplitVersion!==1)throw Error('当前引擎尚未加载自由对话更新，请在正在运行的任务结束后重启AI拆图助手；工程没有修改');await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();const job=await request(split?'/assistant/split':'/assistant/jobs',{method:'POST',body:serializeJob(body,true)});run.id=job.id;
+   while(true){if(run.cancelled)throw abortError();const state=await pollJob(run,run.partialRevision||0);if(state.partial){if(split)state.partial._assistantJobId=run.id;run.partial=state.partial;run.partialRevision=state.partialRevision||run.partialRevision||0}if(run.cancelled){const error=abortError();if(run.partial)error.partial=run.partial;throw error}try{await onProgress(state.progress,state.message,state.previewText,state.partial)}catch(cause){const error=Error('生成结果已保留，写入画布或保存未完成；请先取回原任务结果，不要重新生成。');error.deliveryPending=true;error.jobId=run.id;if(run.partial)error.partial=run.partial;run.preserve=true;throw error}if(state.status==='completed'){if(split){run.preserve=true;state.result._assistantJobId=run.id;}return state.result;}if(state.status==='cancelled'){const error=abortError();if(run.partial)error.partial=run.partial;throw error}if(['failed','expired'].includes(state.status)){const error=taskError(state,run.id);if(run.partial)error.partial=run.partial;throw error}await new Promise(r=>setTimeout(r,400))}
+  }catch(error){if(run.id)error.jobId=run.id;if(run.partial)error.partial=run.partial;throw error}finally{if(run.id&&run.terminal&&!run.cancelled&&!run.preserve)await request('/jobs/'+run.id,{method:'DELETE'}).catch(()=>{});run.finished=true;if(active===run)active=null}
  }
- async function assistantModels(provider){connection=await nativeConnect();const value=await request('/assistant/models?provider='+encodeURIComponent(provider));if(provider==='codex'){const allowed=['gpt-6.1-sol','gpt-6.1-terra','gpt-6-astra','gpt-6-sol'];value.models=allowed.map(id=>(value.models||[]).find(m=>m.id===id)).filter(Boolean);if(!value.models.some(m=>m.id===value.model))value.model=value.models[0]?.id||'';value.ready=!!value.ready&&value.models.length>0}return value}
+ async function assistantModels(provider){connection=await nativeConnect();return request('/assistant/models?provider='+encodeURIComponent(provider))}
  async function assistantKey(key){connection=await nativeConnect();return request('/assistant/key',{method:'POST',body:JSON.stringify({key})})}
- async function cancel(){if(!active)return null;const previous=active;previous.cancelled=true;cancelledRuns.add(previous);active=null;const waitStarted=Date.now();while(!previous.id&&!previous.finished&&Date.now()-waitStarted<60000)await new Promise(r=>setTimeout(r,50));if(!previous.id){cancelledRuns.delete(previous);return previous.partial}if(previous.id&&connection){await request('/jobs/'+previous.id,{method:'DELETE',keepalive:true}).catch(()=>{});const started=Date.now();while(Date.now()-started<60000){try{const state=await request('/jobs/'+previous.id+'?afterRevision=-1');releaseCancelledOrderResult(previous,state);if(state.partial&&previous.mode==='codex')previous.partial=state.partial;if(!['queued','running'].includes(state.status)){await request('/jobs/'+previous.id,{method:'DELETE'}).catch(()=>{});cancelledRuns.delete(previous);break}}catch(e){if(e.status===404){cancelledRuns.delete(previous);break}break}await new Promise(r=>setTimeout(r,200))}}return previous.partial;}
+ async function cancel(){if(!active)return null;const previous=active;previous.cancelled=true;cancelledRuns.add(previous);active=null;const waitStarted=Date.now();while(!previous.id&&!previous.finished&&Date.now()-waitStarted<60000)await new Promise(r=>setTimeout(r,50));if(!previous.id){cancelledRuns.delete(previous);return previous.partial}if(previous.id&&connection){await request('/jobs/'+previous.id+(previous.mode==='assistant'?'?preserve=1':''),{method:'DELETE',keepalive:true}).catch(()=>{});const started=Date.now();while(Date.now()-started<60000){try{const state=await request('/jobs/'+previous.id+'?afterRevision=-1');releaseCancelledOrderResult(previous,state);if(state.partial&&(previous.mode==='codex'||previous.mode==='assistant')){if(previous.mode==='assistant')state.partial._assistantJobId=previous.id;previous.partial=state.partial};if(!['queued','running'].includes(state.status)){if(previous.mode!=='assistant')await request('/jobs/'+previous.id,{method:'DELETE'}).catch(()=>{});else previous.preserve=true;cancelledRuns.delete(previous);break}}catch(e){if(e.status===404){cancelledRuns.delete(previous);break}break}await new Promise(r=>setTimeout(r,200))}}return previous.partial;}
  function canRefine(doc){return !!(doc&&doc.version===2&&!doc._partial&&![doc.recognition?.reviewStatus,doc.recognition?.status].some(v=>['PROCESSING','RUNNING','QUEUED'].includes(v))&&(doc.comparisonSource||doc.source)&&doc.nodes?.some(n=>!n.versionArchived&&!n.locked&&n.assetKind!=='background'&&['text','rect','ellipse','path'].includes(n.type)))}
  async function refine(doc,onProgress=()=>{}){if(!canRefine(doc))throw Error(doc?._partial?'请先继续拆分，完成后再精修。':'当前工程没有可精修的完整文字或矢量图层。');return run(doc.comparisonSource||doc.source,doc.title,onProgress,doc.originalSource||doc.comparisonSource||doc.source,doc,{mode:'refine-ui'})}
  async function refineSelected(doc,selectedIds,onProgress=()=>{},region,dialogue){if(!doc?.nodes?.length||!(doc.comparisonSource||doc.source)||!Array.isArray(selectedIds)||!selectedIds.length||new Set(selectedIds).size!==selectedIds.length||selectedIds.some(id=>!doc.nodes.some(n=>n.id===id)))throw Error('请选择要检查的图层');if(region!==undefined&&(!region||Object.keys(region).sort().join(',')!=='height,width,x,y'||Object.values(region).some(v=>typeof v!=='number'||!Number.isFinite(v))||region.x<0||region.y<0||region.width<=0||region.height<=0||region.x+region.width>doc.width||region.y+region.height>doc.height))throw Error('检查区域必须完整位于画布内');return run(doc.comparisonSource||doc.source,doc.title,onProgress,doc.originalSource||doc.comparisonSource||doc.source,doc,{mode:'refine-selected',selectedIds,...(region?{region:{...region}}:{}),...(dialogue?{dialogue}:{})})}
@@ -136,6 +166,7 @@ window.ShijieSmartSplit=(()=>{
   const source=doc.comparisonSource||doc.source||doc.originalSource;if(!source)throw Error('工程缺少原图，无法替换');
   return run(source,doc.title,onProgress,doc.originalSource||source,doc,{mode:'replace-image',replacement:{targetId,region,prompt,reference:reference?{src:reference.src,region:reference.region??null}:null,...(selection?{selection:JSON.parse(JSON.stringify(selection))}:{}),...(replacement.intent?{intent:replacement.intent}:{}),...(replacement.task?{task:replacement.task}:{}),...(replacement.annotations?{annotations:JSON.parse(JSON.stringify(replacement.annotations))}:{})}});
  }
+ async function ackGenerationRecovery(scene,projectId){if(!scene?._generationRecoveryId)return {deleted:false,retained:true};connection=await nativeConnect();return request('/assistant/generation-recovery/ack',{method:'POST',body:JSON.stringify({projectId,recoveryId:scene._generationRecoveryId,recoveryVersion:scene._generationRecoveryVersion,jobId:scene._assistantJobId||null})})}
  async function savedProjects(){connection=await nativeConnect();return request('/saved-projects')}
  async function setProjectDirectory(directory){connection=await nativeConnect();return request('/saved-projects/settings/location',{method:'PUT',body:JSON.stringify({directory})})}
  async function savedProject(id,directory){connection=await nativeConnect();const result=await request('/saved-projects/'+encodeURIComponent(id)+(directory?'?directory='+encodeURIComponent(directory):'')),wire=result.project;if(wire?.wireFormat==='shijie-image-table'&&wire.wireVersion===1)result.project=ShijieProjectCodec.decode({format:'shijie-project',version:1,doc:wire.job,images:wire.images});return result}
@@ -149,5 +180,5 @@ window.ShijieSmartSplit=(()=>{
  }
  function releaseSession(scene){const id=scene?._sessionId||scene?.delivery?.sessionId;if(id&&connection)request('/sessions/'+encodeURIComponent(id),{method:'DELETE',keepalive:true}).catch(()=>{})}
  window.addEventListener('pagehide',()=>{cancel()});
- return {async imageProvider(body){connection=await nativeConnect();return request('/image-provider',body?{method:'POST',body:JSON.stringify(body)}:{})},assistantSplit:(body,progress)=>assistant(body,progress,true),assistant,assistantModels,assistantKey,run,refine,refineSelected,repairOrder,replaceImage,savedProjects,setProjectDirectory,savedProject,saveProject,archiveBrowserProject,deleteSavedProject,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
+ return {async calibrateImage(scene,targetId){connection=await nativeConnect();return request('/calibrate-image',{method:'POST',body:serializeJob({scene,targetId},true)})},async cancelLogin(){connection=await nativeConnect();return request('/codex/login/cancel',{method:'POST',body:'{}'})},async imageCatalog(body={}){connection=await nativeConnect();return request('/image-provider/catalog',{method:'POST',body:JSON.stringify(body)})},async imageProvider(body){connection=await nativeConnect();return request('/image-provider',body?{method:'POST',body:JSON.stringify(body)}:{})},assistantTask:async id=>{connection=await nativeConnect();return request('/jobs/'+encodeURIComponent(id)+'?afterRevision=-1')},assistantSplit:(body,progress)=>assistant(body,progress,true),assistant,assistantModels,assistantKey,run,refine,refineSelected,repairOrder,replaceImage,savedProjects,setProjectDirectory,savedProject,saveProject,ackGenerationRecovery,archiveBrowserProject,deleteSavedProject,canRefine,cancel,connect,downloadPsd,releaseSession,assertExportable,async storeCapture(entry){connection=await nativeConnect();return (await request('/captures',{method:'POST',body:JSON.stringify({image:entry.src,title:entry.title})})).id},async capture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id))},async clearCapture(id){connection=await nativeConnect();return request('/captures/'+encodeURIComponent(id),{method:'DELETE'})},async projects(){connection=await nativeConnect();return request('/projects')},async project(id){connection=await nativeConnect();return request('/projects/'+encodeURIComponent(id))},async setModel(model){connection=await nativeConnect();return request('/codex/model',{method:'POST',body:JSON.stringify({model})})},async openOutput(project){connection=await nativeConnect();return request('/open-output',{method:'POST',body:JSON.stringify({project})})},async account(){connection=await nativeConnect();return request('/codex/status')},async login(){connection=await nativeConnect();return request('/codex/login',{method:'POST',body:'{}'})}};
 })();

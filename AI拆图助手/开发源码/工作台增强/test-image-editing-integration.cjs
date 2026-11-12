@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const read=name=>fs.readFileSync(path.join(__dirname,name),'utf8');
-function keyboard(source,index,extra={}){const listeners=[];const scope={window:{studio:{isImageEditing:()=>true}},document:{addEventListener:(name,fn)=>listeners.push(fn),querySelector:()=>null},imageEditing:true,busy:false,...extra};vm.runInNewContext(source,scope);return listeners[index||0];}
+function keyboard(source,index,extra={}){const listeners=[];const scope={window:{studio:{isImageEditing:()=>true}},document:{addEventListener:(name,fn)=>listeners.push(fn),querySelector:()=>null},imageEditing:true,busy:false,...extra};const base={window:{}};vm.runInNewContext(read('studio.js'),base);scope.window.ShijieStudio=base.window.ShijieStudio;vm.runInNewContext(source,scope);return listeners[index||0];}
 function event(key,kind='button',code=key){return {key,code,target:{tagName:kind.toUpperCase(),closest:selector=>selector.split(',').some(s=>s.trim().split(/[\[.#:]/)[0]===kind)?{}:null},prevented:false,stopped:false,preventDefault(){this.prevented=true},stopImmediatePropagation(){this.stopped=true}};}
 const studioKey=read('studio.js').split('\n').find(s=>s.includes("document.addEventListener('keydown'"));
 const editorKeys=read('../图像重建/image-editor.js').split('\n').filter(s=>s.includes("document.addEventListener('keydown'")).map(s=>s.slice(s.indexOf("document.addEventListener('keydown'")));

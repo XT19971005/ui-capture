@@ -4,6 +4,20 @@ from PIL import Image
 from engine import png
 
 class SourceAnnotationTests(unittest.TestCase):
+ def test_local_split_route_validates_and_passes_marks_to_same_generation_job(self):
+  import server
+  from unittest.mock import patch
+  source,state=self.fixture();body={'image':source,'original':source,'title':'标注交接验收','mode':'codex','annotations':state}
+  client=server.app.test_client();headers={'X-Shijie-Token':server.TOKEN}
+  with patch.object(server.pool,'submit') as submit:
+   response=client.post('/jobs',base_url='http://127.0.0.1:19217',headers=headers,json=body)
+   self.assertEqual(response.status_code,202)
+   ident=response.get_json()['id']
+   try:self.assertEqual(submit.call_args.kwargs['annotations'],state)
+   finally:server.jobs.pop(ident,None)
+  with patch.object(server.pool,'submit') as submit:
+   bad={**body,'annotations':{**state,'sourceHash':'0'*64}}
+   self.assertEqual(client.post('/jobs',base_url='http://127.0.0.1:19217',headers=headers,json=bad).status_code,400);submit.assert_not_called()
  def fixture(self):
   source=png(Image.new('RGBA',(80,100),(80,140,120,255)))
   state={'version':1,'width':80,'height':100,'sourceHash':hashlib.sha256(source.encode()).hexdigest(),'items':[{'color':'#ffdf24','label':'后方完整勋章','strokes':[[[10,30],[40,5],[70,30],[40,90],[10,30]]]}]}

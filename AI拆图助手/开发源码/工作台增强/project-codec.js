@@ -1,7 +1,7 @@
 /* Portable project files share image bytes without changing document metadata. */
 (()=>{
  'use strict';
- const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:200000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource']);
+ const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:200000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource','bindingSource']);
  const utf8=value=>/^[\x00-\x7f]*$/.test(value)?value.length:new TextEncoder().encode(value).byteLength;
  const jsonBytes=value=>utf8(JSON.stringify(value));
  const fail=message=>{throw Error(message)};
@@ -17,10 +17,10 @@
    index=images.length;images.push(value);indexes.set(value,index);sizes.push(jsonBytes(value));return index;
   }
   if(table!==null){if(!Array.isArray(table)||table.length>LIMITS.imageCount)fail('工程图片表格式无效。');for(const value of table){if(indexes.has(value))fail('工程图片表包含重复图片。');register(value)}}
-  function reference(index,key){if(!IMAGE_KEYS.has(key)||!Number.isSafeInteger(index)||index<0||index>=images.length)fail('工程图片引用无效。');used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return table===null?{$image:index}:images[index]}
+  function reference(index,key){if(!IMAGE_KEYS.has(key)||!Number.isSafeInteger(index)||index<0||index>=(table===null?images.length:table.length))fail('工程图片引用无效。');used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return table===null?{$image:index}:images[index]}
   function walk(value,key=null,depth=0){
    if(++items>LIMITS.items)fail('工程结构条目过多。');if(depth>LIMITS.depth)fail('工程结构层级超过40层限制。');
-   if(typeof value==='string'&&IMAGE_KEYS.has(key)&&value.startsWith('data:image/')){if(table!==null)fail('工程图片引用格式无效。');return reference(register(value),key)}
+   if(typeof value==='string'&&IMAGE_KEYS.has(key)&&value.startsWith('data:image/')){if(table!==null){if(key!=='bindingSource')fail('工程图片引用格式无效。');const index=register(value);used.add(index);metadata+=jsonBytes({$image:index});logical+=sizes[index];budgets();return value}return reference(register(value),key)}
    if(value&&typeof value==='object'){
     if(Object.hasOwn(value,'$image')){if(table===null)fail('工程包含保留的图片引用字段。');if(Array.isArray(value)||Object.keys(value).length!==1)fail('工程图片引用无效。');return reference(value.$image,key)}
     if(stack.has(value))fail('工程结构存在循环引用。');if(!['[object Object]','[object Array]'].includes(Object.prototype.toString.call(value)))fail('工程包含无法保存的数据类型。');stack.add(value);

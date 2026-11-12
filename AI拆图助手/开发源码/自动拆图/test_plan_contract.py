@@ -44,3 +44,16 @@ class PlanContractTests(unittest.TestCase):
   self.assertEqual(len(scene['groups'][0]['children']),3)
 
 if __name__=='__main__':unittest.main()
+
+
+class PlannedVectorOpacity(unittest.TestCase):
+ def test_translucent_vector_opacity_survives_plan_and_rejects_invalid_values(self):
+  from design_properties import design_fields
+  from plan_contract import vector
+  from codex_pipeline import PLAN
+  row=dict(id="panel",name="半透明底板",type="rect",x=1,y=1,width=12,height=8,radius=2,fill="#334455",d="",opacity=.35)
+  self.assertEqual(vector(row,24,24,0)["opacity"],.35)
+  self.assertEqual(design_fields({"opacity":None}),{})
+  self.assertIn("opacity",PLAN["properties"]["vectors"]["items"]["required"])
+  for bad in [True,"0.5",float("nan"),10**400,-.1,1.1]:
+   with self.subTest(value=bad),self.assertRaises(ValueError):design_fields({"opacity":bad})

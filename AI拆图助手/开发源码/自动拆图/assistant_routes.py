@@ -7,15 +7,44 @@ from image_wire import decode_job
 from free_assistant import validate_request, plan
 
 def register(app,jobs,lock,pool,project_store=None):
+ @app.post('/assistant/generation-recovery/ack')
+ def acknowledge_generation_recovery():
+  from generation_recovery import acknowledge
+  try:
+   value=request.get_json(silent=True)
+   if not isinstance(value,dict):raise ValueError('恢复确认参数无效')
+   if not project_store:return jsonify(deleted=False,retained=True)
+   store=project_store();answer=acknowledge(store,value.get('projectId'),value.get('recoveryId'),value.get('recoveryVersion'))
+   if answer.get('deleted') and isinstance(value.get('jobId'),str):
+    main=store.get(value['projectId'])
+    if not main['doc'].get('_generationStages',{}).get('blocked'):
+     with lock:
+      item=jobs.get(value['jobId']);returned=(item.get('result') or item.get('partial') or {}) if item else {}
+      if item and item.get('status') in ('completed','failed','cancelled') and returned.get('_generationRecoveryId')==value.get('recoveryId') and returned.get('_generationRecoveryVersion')==value.get('recoveryVersion'):jobs.pop(value['jobId'],None)
+   return jsonify(answer)
+  except Exception:return jsonify(deleted=False,retained=True)
+
  @app.route('/image-provider',methods=['GET','POST'])
  def image_provider():
   from image_provider import status,save
   try:
    if request.method=='GET':return jsonify(status())
+   def commit(write):
+    with lock:
+     if any(j['status'] in ('queued','running') for j in jobs.values()):raise ValueError('请等待当前任务结束后修改图片模型')
+     write()
    with lock:
     if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='请等待当前任务结束后修改图片模型'),409
-    return jsonify(save(request.get_json(silent=True)))
+   return jsonify(save(request.get_json(silent=True),commit=commit))
+  except ValueError as error:return jsonify(error=str(error)),400
   except Exception:return jsonify(error='图片连接未完成，请检查本人亿创配置和模型权限'),400
+
+ @app.post('/image-provider/catalog')
+ def image_catalog():
+  from image_provider import refresh
+  try:return jsonify(refresh(request.get_json(silent=True)))
+  except ValueError as error:return jsonify(error=str(error)),400
+  except Exception:return jsonify(error='亿创模型目录暂不可读取，请检查网络与本人 Key'),503
 
  @app.get('/assistant/models')
  def assistant_models():
@@ -30,7 +59,13 @@ def register(app,jobs,lock,pool,project_store=None):
   try:
    body=request.get_json(silent=True)
    if not isinstance(body,dict) or set(body)!={'key'}:raise ValueError('连接参数无效')
-   return jsonify(save_key(body['key']))
+   def commit(write):
+    with lock:
+     if any(j['status'] in ('queued','running') for j in jobs.values()):raise ValueError('请等待当前任务结束后修改 TYGPT 连接')
+     write()
+   with lock:
+    if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='请等待当前任务结束后修改 TYGPT 连接'),409
+   return jsonify(save_key(body['key'],commit=commit))
   except _TygptError as error:return jsonify(error=str(error)),400
   except Exception:return jsonify(error='TYGPT连接未保存，请核对本人PAT、网络及模型权限'),400
 
@@ -44,7 +79,7 @@ def register(app,jobs,lock,pool,project_store=None):
    recovery=None
    if split and project_store:
     from generation_recovery import GenerationRecovery
-    recovery=GenerationRecovery(project_store(),body['title'])
+    recovery=GenerationRecovery(project_store(),body['title'],body.get('projectId'))
    with tempfile.TemporaryDirectory(prefix='shijie-assistant-',dir=TEMP) as folder:
     if split:
      from assistant_split import generate
@@ -82,7 +117,9 @@ def register(app,jobs,lock,pool,project_store=None):
   split=request.path=='/assistant/split'
   try:
    from assistant_split import validate as validate_split
-   body=(validate_split if split else validate_request)(decode_job(request.get_json(silent=True)))
+   raw=decode_job(request.get_json(silent=True))
+   if split:validate_split(raw);body=raw
+   else:body=validate_request(raw)
   except (ValueError,TypeError,RecursionError,KeyError):return jsonify(error='对话、图片或工程上下文无效，请检查后重试'),400
   with lock:
    for key in list(jobs):

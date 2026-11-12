@@ -10,7 +10,7 @@ MAX_HTTP_BYTES=MAX_UNIQUE_IMAGE_BYTES+MAX_METADATA_BYTES+4*MIB
 MAX_ITEMS=200000
 MAX_DEPTH=40
 MAX_IMAGES=4096
-IMAGE_FIELDS=frozenset(('image','original','src','source','originalSource','comparisonSource'))
+IMAGE_FIELDS=frozenset(('image','original','src','source','originalSource','comparisonSource','bindingSource'))
 
 
 def _utf8_size(value):

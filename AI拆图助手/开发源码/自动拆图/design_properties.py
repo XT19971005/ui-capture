@@ -17,7 +17,7 @@ FIELDS={'gradient':nullable(GRADIENT),'layerStyle':nullable(STYLE),'displayMask'
 GROUP=obj({'id':{'type':'string'},'name':{'type':'string'},'children':{'type':'array','maxItems':700,'items':{'type':'string'}},'layerStyle':nullable(STYLE),'displayMask':nullable(MASK)})
 
 def number(value,low,high,label):
- if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not low<=value<=high:raise ValueError(label+'数值无效')
+ if isinstance(value,bool) or not isinstance(value,(int,float)) or not low<=value<=high or not math.isfinite(value):raise ValueError(label+'数值无效')
  return value
 def color(value):
  if not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value):raise ValueError('样式颜色无效')
@@ -77,6 +77,7 @@ def mask(m):
  return result
 def design_fields(row):
  result={}
+ if row.get('opacity') is not None:result['opacity']=number(row['opacity'],0,1,'图层不透明度')
  for k,fn in [('gradient',gradient),('layerStyle',style),('displayMask',mask)]:
   if row.get(k) is not None:result[k]=fn(row[k])
  return result

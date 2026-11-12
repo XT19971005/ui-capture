@@ -36,3 +36,104 @@
 #original-annotation-badges{position:fixed;inset:0;z-index:112;pointer-events:none!important;overflow:hidden}
 #original-annotation-badges[hidden]{display:none}
 #original-annotation-badges .original-stroke-number{position:absolute;box-sizing:border-box;width:24px;height:18px;display:flex;align-items:center;justify-content:center;border:1px solid;border-radius:4px;background:#171923ed;color:#fff;font:700 11px/1 Arial,sans-serif;box-shadow:0 1px 3px #0008;pointer-events:none!important;user-select:none}
+
+#original-annotations .original-auto-actions{display:flex;gap:6px}#original-annotations [data-auto-annotate]{flex:1;background:#8c70c3;color:#fff}#original-annotations [data-auto-stop][hidden]{display:none!important}
+
+/* Object names stay screen-sized UI labels, never image pixels. */
+#original-annotation-badges .original-stroke-number{display:block;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 4px;line-height:12px}
+
+/* Compact, grouped inspector; vivid annotation identity colors stay unchanged. */
+#original-annotations{gap:12px}
+#original-annotations>header{background:#1e212b;border-bottom:1px solid #343746;padding-bottom:10px}
+#original-annotations .annotation-resource-summary{margin:0;color:#a8a4bb;line-height:1.6;font-size:11px}
+#original-annotations .annotation-section{display:block!important;margin:0;padding:0;border:1px solid #343746;border-radius:8px;background:#20232e}
+#original-annotations .annotation-section>summary{padding:10px 12px;color:#d3d1e1;font-size:12px!important;cursor:pointer;user-select:none}
+#original-annotations .annotation-section-content{display:flex;flex-direction:column;gap:12px;padding:2px 12px 12px}
+#original-annotations .annotation-section:not([open])>.annotation-section-content{display:none}
+#original-annotations .original-auto-actions [data-auto-annotate]{background:#262a36;border-color:#404452;color:#c9c4d8}
+#original-annotations .original-mark-tools [aria-pressed=true]{background:#393047;border-color:#80659f;color:#e8dcfa}
+#original-annotations footer{background:#1e212bf5;backdrop-filter:blur(8px);gap:6px;padding:10px 0}
+#original-annotations footer button{background:#272a36;border-color:#3c3e4d;color:#bcbfce}
+#original-annotations footer [data-send-ai]{background:#8869cf;color:#fff;border-color:#a38add}
+#original-annotations footer button:disabled{opacity:.4}
+#original-annotations .original-mark-legend{max-height:220px;overflow:auto;scrollbar-width:thin}
+#original-annotations>p[role=status]{margin:0;font-size:11px;color:#969bae;line-height:1.6}
+
+body.unified-workbench .document-actions #original-annotations-toggle{background:#242733!important;border-color:#3b3e4e!important;color:#bbb6cd!important}
+body.unified-workbench .document-actions #original-annotations-toggle[aria-expanded=true]{background:#363044!important;border-color:#74608e!important;color:#e4d7ff!important}
+body.unified-workbench .document-actions #generate-image{background:#242733!important;border-color:#3b3e4e!important;color:#d5d7e2!important}
+body.unified-workbench .app-header>#assistant-toggle{background:#302a40!important;border-color:#66547e!important;color:#e0d3fa!important;box-shadow:none!important;font-weight:500}
+body.unified-workbench .app-header>#assistant-toggle:hover{background:#3c3151!important;box-shadow:none!important}
+
+.annotation-generation-choice{display:flex;flex-direction:column;gap:9px;padding:12px;background:#282333;border:1px solid #67517f;border-radius:8px}.annotation-generation-choice[hidden]{display:none!important}.annotation-generation-choice>div,.generation-type-choices{display:flex;gap:5px}.annotation-generation-choice>div button,.generation-type-choices button{flex:1;min-width:0;padding:7px 4px!important;font-size:11px!important;white-space:nowrap}.annotation-generation-choice [aria-pressed=true],#free-assistant .generation-type-choices [aria-pressed=true]{background:#6f51a0;border-color:#ad8fdf;color:#fff}.annotation-generation-choice p{margin:0;font-size:11px;color:#bdb4cf;line-height:1.6}.annotation-generation-choice [data-prepare-stage]{background:#8869cf;color:white}#free-assistant .assistant-generation-stages>label:has([aria-label="生成阶段"]){display:none}
+
+/* Prioritise assistant actions, then objects and drawing. */
+#original-annotations{gap:9px}
+#original-annotations .annotation-section>summary{padding:8px 10px}
+#original-annotations .annotation-section-content{gap:8px;padding:0 10px 10px}
+#original-annotations .annotation-section .annotation-section{background:transparent;border-color:#343746}
+#original-annotations .annotation-ai-section{border-color:#625077}
+#original-annotations .annotation-ai-section [data-send-ai]{width:100%;background:#8869cf;color:white;padding:8px}
+#original-annotations .annotation-generation-choice{padding:0;border:0;background:transparent;gap:6px}
+#original-annotations .annotation-generation-choice>strong,#original-annotations .annotation-generation-choice>p{display:none}
+#original-annotations .annotation-generation-choice>div:not(:has(button:not([hidden]))){display:none}
+#original-annotations .annotation-ai-section [data-direct-marked-image]{padding:7px;background:#3b324c;border-color:#78628f}
+#original-annotations .annotation-expand{display:flex;align-items:center;gap:6px;margin:0;color:#b9b5c7}
+#original-annotations .original-auto-actions button{padding:6px}
+#original-annotations .original-mark-legend{max-height:135px;min-height:0}
+#original-annotations .original-mark-legend button{padding:7px}
+#original-annotations [data-add-color]{width:100%;border-style:dashed;color:#d5c7ee}
+#original-annotations footer{position:sticky;bottom:0;z-index:2;display:grid;grid-template-columns:1fr 1fr;padding:8px 0;align-items:start}
+#original-annotations footer .annotation-delete-menu{border:0;background:transparent}
+#original-annotations footer .annotation-delete-menu>summary{padding:6px;text-align:center;background:#272a36;border:1px solid #3c3e4d;border-radius:5px}
+#original-annotations footer .annotation-delete-menu .annotation-section-content{padding:5px 0 0}
+#original-annotations footer [data-clear]{color:#efacb4;width:100%}
+#original-annotations .annotation-resource-summary{line-height:1.4}
+
+#original-annotations .annotation-generation-choice.has-direct>div{display:none}
+#original-annotations .original-mark-legend button[aria-pressed=true]{background:#393047;border-color:#8b71ae;color:#eee3ff}
+
+/* Primary manual marking entry; auto marking lives in the inspector. */
+body.unified-workbench .document-actions #auto-annotate-primary{display:none!important}
+body.unified-workbench .document-actions #original-annotations-toggle{background:#7655b2!important;border-color:#b39bde!important;color:#fff!important;font-weight:600;box-shadow:0 0 0 1px #a28ac333}
+body.unified-workbench .document-actions #original-annotations-toggle[aria-expanded=true]{background:#9871dd!important;border-color:#d7c2ff!important;color:white!important}
+body.unified-workbench .document-actions #original-annotations-toggle.is-marking{background:#514069!important;border-color:#d7bbff!important;color:#fff!important}
+#original-annotations .original-mark-colors button{border:2px solid #d6d5df88!important;text-shadow:none!important}
+#original-annotations .original-mark-colors [aria-pressed=true]{outline:3px solid #fff;outline-offset:3px;box-shadow:0 0 0 6px #13151e}
+#original-annotations .original-mark-legend button[aria-pressed=true]{outline:1px solid #c9b0f6;outline-offset:-1px}
+
+#original-annotations .annotation-stroke-width{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#original-annotations .annotation-stroke-width select{width:100px;margin:0}
+#original-annotations .original-auto-actions [data-auto-annotate]:not(:disabled){background:#7655b2;border-color:#b296dd;color:#fff;font-weight:600}
+#original-annotations .original-auto-actions [data-auto-annotate]:not(:disabled):hover{background:#8963cc;border-color:#d2baff}
+#original-annotations .original-auto-actions [data-auto-annotate]:disabled{opacity:.6}
+body.original-mark-active #viewport.panning,body.original-mark-active #viewport.panning #original-annotation-overlay{cursor:grabbing!important}
+
+#original-annotations .annotation-stroke-width input{width:90px;box-sizing:border-box;padding:6px 8px;margin:0}
+#original-annotations footer [data-clear]{color:#efacb4}
+
+#original-annotations footer.annotation-edit-actions{position:static;bottom:auto;margin:0;padding:8px 0;border-top:0;border-bottom:1px solid #414251;grid-template-columns:1fr 1fr}
+
+#original-annotations .annotation-color-picker{display:grid;gap:6px;padding-top:5px;border-top:1px solid #343746}
+
+#original-annotations .original-mark-colors[hidden]{display:none!important}
+#original-annotations .annotation-color-picker{display:flex;align-items:center;gap:8px}
+#original-annotations .annotation-color-picker>[data-add-color]{flex:1}
+#original-annotations .original-mark-legend button{display:flex;align-items:center;gap:6px}
+#original-annotations .annotation-object-swatch{display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px;height:24px;border-radius:50%;border:1px solid #ffffff80;font-size:10px}
+#original-annotations [data-direct-marked-image]{width:100%}
+
+#original-annotations label[hidden],#original-annotations .original-mark-legend button[hidden]{display:none!important}
+#original-annotations .annotation-inline-name{width:100%;box-sizing:border-box;min-height:34px}
+#free-assistant .assistant-generation-stages.is-recovering .generation-type-choices{display:none!important}
+#free-assistant .assistant-message-details{margin-top:6px;font-size:11px}
+#free-assistant .assistant-message-details summary{cursor:pointer;color:#c9b3f2}
+
+#original-annotations .annotation-legacy-settings[hidden]{display:none!important}
+
+.layer-bottom[hidden],#free-assistant .assistant-media-tools>button[hidden]{display:none!important}
+
+#original-annotation-overlay[data-mark-tool=select]{cursor:default}
+#original-annotation-overlay[data-mark-tool=pen],#original-annotation-overlay[data-mark-tool=rect],#original-annotation-overlay[data-mark-tool=ellipse]{cursor:crosshair}
+#original-annotation-overlay[data-mark-tool=lasso]{cursor:cell}
+#original-annotation-overlay[data-mark-tool=pan]{cursor:grab}

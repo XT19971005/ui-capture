@@ -39,9 +39,11 @@ const groups={
     "free-assistant.js",
     "candidate-store.js",
     "free-assistant.css",
+    "annotation-order.js",
     "original-annotations.js",
     "original-annotations.css",
-    "canvas-compare.js"
+    "canvas-compare.js",
+    "split-registration.js"
   ],
   "网页抓取": [
     "url-capture.js",

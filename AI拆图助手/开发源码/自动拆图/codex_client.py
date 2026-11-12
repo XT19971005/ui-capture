@@ -35,6 +35,7 @@ def command():
 class CodexClient:
     def __init__(self):
         self.proc=None;self.lock=threading.RLock();self.send_lock=threading.Lock();self.pending={};self.turns={};self.sequence=0;self.selected_model=None;self.runtime_directory=None
+        self.login_pending=None;self.login_result=None;self.login_expires=0
     def start(self):
         with self.lock:
             if self.proc and self.proc.poll() is None:return
@@ -48,7 +49,7 @@ class CodexClient:
                 self.runtime_directory.cleanup();self.runtime_directory=None;raise
             try:
                 threading.Thread(target=self.read_loop,args=(self.proc,),daemon=True).start()
-                self.call('initialize',{'clientInfo':{'name':'shijie_local','title':'AI拆图助手 · 本机图片拆分','version':'0.9.0'},'capabilities':{'experimentalApi':True}},start=False)
+                self.call('initialize',{'clientInfo':{'name':'shijie_local','title':'AI拆图助手 · 本机图片拆分','version':'0.9.0'},'capabilities':{'experimentalApi':True}},timeout=15,start=False)
                 self.send({'method':'initialized','params':{}})
             except BaseException:
                 self.close()
@@ -98,6 +99,10 @@ class CodexClient:
                     self.send({'id':r['id'],'error':{'code':-32601,'message':'AI拆图助手视觉规划仅允许图片分析，不执行额外工具请求'}})
                     continue
                 method=r.get('method');p=r.get('params',{});state=self.turns.get(p.get('threadId'))
+                if method=='account/login/completed':
+                    if self.login_pending and p.get('loginId')==self.login_pending.get('loginId'):
+                        self.login_result={'success':p.get('success') is True};self.login_pending=None
+                    continue
                 if not state:continue
                 event_turn=p.get('turnId') or p.get('turn',{}).get('id')
                 if event_turn and state.get('turn_id') and event_turn!=state['turn_id']:continue
@@ -121,20 +126,31 @@ class CodexClient:
                     state['error']=p.get('error') or p.get('message');state['done'].set()
         finally:
             if self.proc is not proc:return
+            if self.login_pending:self.login_result={'success':False};self.login_pending=None
             for q in list(self.pending.values()):q.put({'error':{'message':'本机 Codex 进程已退出'}})
             for state in list(self.turns.values()):
                 if not state['done'].is_set():state['error']='本机 Codex 进程已退出';state['done'].set()
     def account(self):
-        data=self.call('account/read',{'refreshToken':False});a=data.get('account');ready=bool(a) or not data.get('requiresOpenaiAuth',True)
-        return {'ready':ready,'provider':a.get('type') if a else 'local','plan':a.get('planType') if a else None}
+        data=self.call('account/read',{'refreshToken':False},timeout=20);a=data.get('account');ready=bool(a) or not data.get('requiresOpenaiAuth',True)
+        if self.login_pending and time.monotonic()>=self.login_expires:self.login_pending=None;self.login_result={'success':False}
+        return {'ready':ready,'provider':a.get('type') if a else 'local','plan':a.get('planType') if a else None,'loginPending':bool(self.login_pending),'loginResult':self.login_result}
     def login(self):
-        r=self.call('account/login/start',{'type':'chatgpt'})
-        return {'url':r.get('authUrl'),'loginId':r.get('loginId')}
+        with self.lock:
+            if self.login_pending and time.monotonic()<self.login_expires:return dict(self.login_pending)
+            r=self.call('account/login/start',{'type':'chatgpt'},timeout=25)
+            from urllib.parse import urlsplit
+            url=r.get('authUrl')
+            if not isinstance(url,str) or urlsplit(url).scheme!='https' or urlsplit(url).hostname!='auth.openai.com' or not r.get('loginId'):raise RuntimeError('Codex 未返回有效的官方登录地址，请重新连接')
+            self.login_pending={'url':url,'loginId':r['loginId']};self.login_expires=time.monotonic()+600;self.login_result=None
+            return dict(self.login_pending)
     def models(self):
-        data=self.call('model/list',{}).get('data',[])
-        allowed=('gpt-6.1-sol','gpt-6.1-terra','gpt-6-astra','gpt-6-sol')
-        available={m.get('model') or m['id']:m for m in data if 'image' in m.get('inputModalities',['text','image'])}
-        return [{'id':ident,'name':available[ident].get('displayName') or ident,'default':bool(available[ident].get('isDefault'))} for ident in allowed if ident in available]
+        data=self.call('model/list',{},timeout=20).get('data',[])
+        return [{'id':m.get('model') or m['id'],'name':m.get('displayName') or m['id'],'default':bool(m.get('isDefault'))} for m in data if 'image' in m.get('inputModalities',['text','image'])]
+    def cancel_login(self):
+        with self.lock:
+            if self.login_pending:self.call('account/login/cancel',{'loginId':self.login_pending['loginId']},timeout=10)
+            self.login_pending=None;self.login_result=None
+        return {'ok':True}
     def model(self):
         models=self.models()
         if not models:raise RuntimeError('当前 Codex 没有提供可分析图片的模型')

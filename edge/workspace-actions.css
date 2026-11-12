@@ -25,9 +25,9 @@
  .unified-workbench .toolbar .view-tools{margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
 }
 /* The three document actions share one primary treatment. */
-.unified-workbench .document-actions :is(#recognize,#generate-image,#original-annotations-toggle){background:#9378dd!important;border:1px solid #a58be7!important;color:#fff!important}
-.unified-workbench .document-actions :is(#recognize,#generate-image,#original-annotations-toggle):hover:enabled{background:#a086e9!important}
-.unified-workbench .document-actions :is(#recognize,#generate-image,#original-annotations-toggle):disabled{opacity:.45}
+.unified-workbench .document-actions :is(#auto-annotate-primary){background:#9378dd!important;border:1px solid #a58be7!important;color:#fff!important}
+.unified-workbench .document-actions :is(#auto-annotate-primary):hover:enabled{background:#a086e9!important}
+.unified-workbench .document-actions :is(#auto-annotate-primary):disabled{opacity:.45}
 .unified-workbench .layers{position:relative}
 .studio-layer-resizer{position:absolute;right:-4px;top:0;bottom:0;width:8px;z-index:25;cursor:col-resize;touch-action:none}
 .studio-layer-resizer:hover,.studio-layer-resizer:focus-visible{background:#a58be755;outline:none}

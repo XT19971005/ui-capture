@@ -99,16 +99,21 @@ def validate_pat(key):
  except (requests.RequestException,ValueError,TypeError):raise ValueError('TYGPT PAT鉴权未通过，请核对本人的PAT、能力开放权限及网络；未自动重试') from None
 
 
-def save_key(value):
+def save_key(value,commit=None):
  if not isinstance(value,str) or not value.strip() or len(value)>4096 or any(c in value for c in '\r\n\0'):raise ValueError('请填写本人的有效TYGPT PAT')
+ version=CONFIG.read_bytes() if CONFIG.exists() else None
  value=value.strip();validate_pat(value);models=gateway_models(value)
  if not models:raise ValueError('TYGPT未返回可用模型，凭据未保存')
  encrypted=protect(value)
- with _lock:
-  CONFIG.parent.mkdir(parents=True,exist_ok=True);tmp=CONFIG.with_suffix('.tmp')
-  try:tmp.write_text(json.dumps({'baseUrl':BASE,'keyEncrypted':encrypted}),encoding='utf8');os.replace(tmp,CONFIG)
-  finally:
-   if tmp.exists():tmp.unlink()
+ def write():
+  with _lock:
+   if (CONFIG.read_bytes() if CONFIG.exists() else None)!=version:raise ValueError('TYGPT设置已在另一窗口修改，请重新打开设置；当前连接保留')
+   CONFIG.parent.mkdir(parents=True,exist_ok=True);tmp=CONFIG.with_suffix('.tmp')
+   try:tmp.write_text(json.dumps({'baseUrl':BASE,'keyEncrypted':encrypted}),encoding='utf8');os.replace(tmp,CONFIG)
+   finally:
+    if tmp.exists():tmp.unlink()
+ if commit:commit(write)
+ else:write()
  return {'ready':True,'models':models,'provider':'tygpt','model':_default_model(models)}
 
 
@@ -120,7 +125,9 @@ def status(provider):
  if provider!='codex':raise ValueError('模型来源无效')
  from codex_client import CLIENT
  account=CLIENT.account()
- return {**account,'models':CLIENT.models() if account['ready'] else [],'model':CLIENT.model() if account['ready'] else '', 'provider':'codex'}
+ models=CLIENT.models() if account['ready'] and not account.get('loginPending') else []
+ selected=next((m['id'] for m in models if m['id']==CLIENT.selected_model),next((m['id'] for m in models if m.get('default')),models[0]['id'] if models else ''))
+ return {**account,'models':models,'model':selected, 'provider':'codex'}
 
 
 def _reply_text(data):

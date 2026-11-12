@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const api=require('./annotation-order.js');
+const marks={sourceHash:'original-hash',width:100,height:80,items:[{color:'#ffdf24',label:'文字',layerType:'text',strokes:[[[1,2],[4,8]]]},{color:'#ff5c87',label:'图片',layerType:'image',strokes:[[[5,6],[8,9]]]},{color:'#123456',label:'矢量',layerType:'vector',strokes:[[[10,12],[13,15]]]},{color:'#abcdef',strokes:[[[20,22],[23,25]]]}]};
+const original=JSON.stringify(marks),order=api.parseReply('```json\n{"relations":[{"above":25,"below":1},{"above":1,"below":2},{"above":25,"below":1}],"uncertain":[26,26]}\n```',marks);
+assert.deepEqual(api.manifest(marks).map(v=>v.number),[1,2,25,26]);
+assert.deepEqual(order.relations,[{above:25,below:1},{above:1,below:2}]);
+assert.deepEqual(order.uncertain,[26]);
+assert.equal(api.compare(order,25,2),1);assert.equal(api.compare(order,2,25),-1);assert.equal(api.compare(order,26,1),null);assert.equal(api.compare(order,25,25),0);
+assert(api.valid(order,marks));const changed=structuredClone(marks);changed.items[0].strokeWidths=[30];changed.items[0].label='新名';changed.items[0].layerType='vector';assert(api.valid(order,changed));changed.items[0].strokes[0][0][0]++;assert(!api.valid(order,changed));assert(!api.valid(order,marks,'layer1'));assert(api.valid({...order,signature:api.signature(marks,'layer1')},marks,'layer1'));
+for(const relations of [[{above:1,below:2},{above:2,below:25},{above:25,below:1}],[{above:1,below:1}],[{above:99,below:1}],[{above:'1',below:2}],[{above:Infinity,below:2}]])assert.throws(()=>api.parseReply({relations,uncertain:[]},marks));
+assert.throws(()=>api.parseReply('解释 {"relations":[],"uncertain":[]}',marks));assert.throws(()=>api.parseReply({relations:[],uncertain:[99]},marks));
+assert.equal(api.numberForNode({annotationNumber:26},{}),26);assert.equal(api.numberForNode({_generationTask:'old',_generationPlanIndex:0},{base:{_generationStagesByType:{text:{id:'old',plan:{layers:[{reviewNote:'标注25；原编号'}]}}}}}),25);assert.equal(api.numberForNode({_generationTask:'now',_generationPlanIndex:0},{groupId:'now',plan:{layers:[{name:'26 自选色对象'}]}}),26);assert.equal(api.numberForNode({name:'无编号'},{}),null);
+assert.equal(JSON.stringify(marks),original);console.log('标注遮挡关系纯函数验证通过');

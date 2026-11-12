@@ -76,6 +76,12 @@ def cors(response):
 @app.get('/')
 def home():return send_from_directory(ROOT/'插件程序/edge','image-editor.html')
 
+@app.post('/calibrate-image')
+def calibrate_image():
+    from selected_registration import process
+    try:return jsonify(process(decode_job(request.get_json(silent=True))))
+    except (ValueError,TypeError,KeyError) as exc:return jsonify(error=str(exc)),400
+
 @app.get('/connection')
 def local_connection():return jsonify(url='http://127.0.0.1:19217',token=TOKEN)
 
@@ -282,13 +288,15 @@ def health():
     try:command();available=True
     except RuntimeError:available=False
     with lock:active_jobs=sum(j['status'] in ('queued','running') for j in jobs.values())
-    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,freeAssistantVersion=1,assistantSplitVersion=1,imageProviderVersion=1,sourceAnnotationsVersion=1,imageWireVersion=1,regionRefineVersion=1,selectedDialogueVersion=1,imageReplaceSelectionVersion=1,imageGenerateVersion=1,localProjectStoreVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order','replace-image'])
+    return jsonify(service='shijie-engine',version='0.9.0',ready=not missing,missing=missing,codexAvailable=available,activeJobs=active_jobs,freeAssistantVersion=1,annotationPlanVersion=2,phaseGenerationVersion=1,assistantSplitVersion=1,partialObjectDeliveryVersion=1,concurrentImageVersion=1,imageProviderVersion=1,sourceAnnotationsVersion=1,imageWireVersion=1,regionRefineVersion=1,selectedDialogueVersion=1,imageReplaceSelectionVersion=1,imageGenerateVersion=1,localProjectStoreVersion=1,jobModes=['codex','refine-ui','refine-selected','repair-order','replace-image'])
 
 @app.get('/codex/status')
 def codex_status():
     from codex_client import CLIENT
     try:
-        a=CLIENT.account();return jsonify(ok=True,**a,models=CLIENT.models() if a['ready'] else [],model=CLIENT.model() if a['ready'] else None)
+        a=CLIENT.account();models=CLIENT.models() if a['ready'] and not a.get('loginPending') else []
+        selected=next((m['id'] for m in models if m['id']==CLIENT.selected_model),next((m['id'] for m in models if m.get('default')),models[0]['id'] if models else None))
+        return jsonify(ok=True,**a,models=models,model=selected)
     except Exception as e:return jsonify(ok=False,ready=False,error=str(e)[:400])
 
 @app.post('/codex/model')
@@ -302,8 +310,16 @@ def codex_model():
 @app.post('/codex/login')
 def codex_login():
     from codex_client import CLIENT
+    with lock:
+        if any(j['status'] in ('queued','running') for j in jobs.values()):return jsonify(error='请先完成或取消当前任务，再切换 Codex 账号'),409
     try:return jsonify(ok=True,**CLIENT.login())
     except Exception as e:return jsonify(error=str(e)[:400]),400
+
+@app.post('/codex/login/cancel')
+def codex_login_cancel():
+    from codex_client import CLIENT
+    try:return jsonify(CLIENT.cancel_login())
+    except Exception:return jsonify(error='取消登录未完成，请稍后检查连接'),400
 
 @app.post('/open-output')
 def open_output():
@@ -373,7 +389,7 @@ def validate_resume(value):
     for k in ('delivery','_sessionId','_projectId'):result.pop(k,None)
     return result
 
-def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=None,replacement=None,dialogue=None):
+def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=None,replacement=None,dialogue=None,annotations=None):
     item=jobs[ident]
     def progress(value,message):
         with lock:item.update(progress=max(item.get('progress',0),float(value)),message=message)
@@ -394,6 +410,7 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=No
         else:
             from codex_pipeline import process
         options={'selected_ids':selected_ids,**({'region':region} if region is not None else {})} if mode=='refine-selected' else {}
+        if mode=='codex' and annotations is not None:options['annotations']=annotations
         if mode=='replace-image':options={'replacement':replacement}
         if dialogue is not None:options['dialogue']=dialogue
         result=process(source,title,progress,item['cancel'].is_set,original_source=original,on_scene=preview,resume_scene=resume,**options)
@@ -419,13 +436,21 @@ def run(ident,source,title,mode,original,resume=None,selected_ids=None,region=No
 def submit():
     try:data=decode_job(request.get_json(silent=True))
     except (ValueError,TypeError,RecursionError,UnicodeError) as exc:return jsonify(error=str(exc)[:240]),400
-    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds','region','replacement','dialogue'}:return jsonify(error='任务参数无效'),400
+    if not isinstance(data,dict) or set(data)-{'image','title','mode','original','resume','selectedIds','region','replacement','dialogue','annotations'}:return jsonify(error='任务参数无效'),400
     source=data.get('image');original=data.get('original',source);title=str(data.get('title') or '智能拆图')[:160];mode=data.get('mode','codex')
     if mode not in ('codex','refine-ui','refine-selected','repair-order','replace-image'):return jsonify(error='处理方式无效'),400
     if not isinstance(source,str) or len(source)>36000000 or not source.startswith('data:image/'):return jsonify(error='请选择有效图片'),400
     if not isinstance(original,str) or len(original)>36000000 or not original.startswith('data:image/'):return jsonify(error='原图无效'),400
     try:resume=validate_resume(data.get('resume'))
     except (ValueError,TypeError,RecursionError) as exc:return jsonify(error=str(exc)),400
+    annotations=data.get('annotations')
+    if annotations is not None:
+        if mode!='codex':return jsonify(error='当前处理方式不接受整图标注'),400
+        from source_annotations import validate as validate_annotations
+        from image_replace import _image
+        try:
+            with _image(source) as image:annotations=validate_annotations(annotations,source,image.width,image.height)
+        except (ValueError,TypeError,RecursionError):return jsonify(error='原画标注与原图不匹配或格式无效'),400
     selected_ids=data.get('selectedIds');region=data.get('region')
     if mode=='refine-selected':
         from selected_refine import validate_selection
@@ -458,7 +483,7 @@ def submit():
         ident=uuid.uuid4().hex;jobs[ident]={'status':'queued','progress':0,'message':('准备生成独立素材…' if replacement.get('intent')=='generate' else '准备生成替换候选…') if mode=='replace-image' else '准备修复层级…' if mode=='repair-order' else '准备精修…' if mode=='refine-ui' else '准备智能拆图…','mode':mode,'cancel':threading.Event()}
     if resume:
         with lock:jobs[ident].update(partial=copy.deepcopy(resume),partialRevision=1)
-    try:pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []),**({'replacement':replacement} if mode=='replace-image' else {}),**({'dialogue':dialogue} if dialogue is not None else {}))
+    try:pool.submit(run,ident,source,title,mode,original,resume,selected_ids,*([region] if region is not None else []),**({'replacement':replacement} if mode=='replace-image' else {}),**({'dialogue':dialogue} if dialogue is not None else {}),**({'annotations':annotations} if annotations is not None else {}))
     except Exception:
         with lock:jobs.pop(ident,None)
         logging.exception('Local job dispatch failed')
@@ -486,7 +511,7 @@ def cancel(ident):
         item=jobs.get(ident)
         if not item:return jsonify(error='任务不存在'),404
         item['cancel'].set()
-        if item['status'] not in ('queued','running'):
+        if item['status'] not in ('queued','running') and request.args.get('preserve')!='1':
             # Order results contain no downloadable PSD; DELETE owns their fresh
             # result session even if an in-flight GET has not delivered its ID.
             if item['status']=='completed' and item.get('mode') in ('repair-order','replace-image'):SESSIONS.take(item.get('sessionId'))

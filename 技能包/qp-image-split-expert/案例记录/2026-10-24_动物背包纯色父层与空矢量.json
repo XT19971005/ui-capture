@@ -1,0 +1,114 @@
+{
+  "case": "14_动物背包_全新智能体测试",
+  "runs": [
+    "b36d8c8e-a06b-400f-9019-f027168de440",
+    "ead71452-cc15-4718-985c-8750c9bf5a39"
+  ],
+  "confirmed": [
+    "纯色矢量父层从几何重建，本来不含子层像素，不应强制edited去子层；source等截图父容器仍须清除子层。",
+    "本轮5路规划断点复用真实成功，智能体未再次执行。",
+    "136项代码检查与72项方案结构校验通过，仍未覆盖实际图像提取可行性。"
+  ],
+  "failure": {
+    "asset": {
+      "id": "category_clothing_selected_mark",
+      "box": [
+        744,
+        630,
+        844,
+        663
+      ],
+      "method": "shape",
+      "color": [
+        129,
+        126,
+        191
+      ],
+      "tolerance": 45
+    },
+    "passing_pixels": 40,
+    "contours": [
+      {
+        "points": 4,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 2,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 2,
+        "area": 0
+      },
+      {
+        "points": 14,
+        "area": 0
+      },
+      {
+        "points": 16,
+        "area": 0
+      },
+      {
+        "points": 1,
+        "area": 0
+      },
+      {
+        "points": 2,
+        "area": 0
+      },
+      {
+        "points": 14,
+        "area": 0
+      }
+    ],
+    "path_count": 0,
+    "diagnosis": "采色阈值仅保留40个细碎线段像素，所有轮廓面积为0，被矢量拟合过滤；坐标与颜色仍需图像级复核，结构校验无法覆盖此故障。"
+  },
+  "lessons": [
+    "矢量采色必须基于实际图像核对，不能只信智能体估色。",
+    "细线采色后可能只剩零面积轮廓，必须在昂贵背景和容器生成前做实际遮罩及路径预检查。",
+    "不可静默删除空矢量或冒充已合格；本次按约定失败后停止。"
+  ],
+  "next_work": "待用户继续指示再做图像级矢量预检及细线提取修正；本轮未安装其他补丁、未自动重跑。",
+  "result": {
+    "status": "FAILED_AT_VECTOR_EXTRACTION_NO_PSD",
+    "run_id": "ead71452-cc15-4718-985c-8750c9bf5a39",
+    "resumes_run": "b36d8c8e-a06b-400f-9019-f027168de440",
+    "submitted_at_utc": "2026-10-24T03:28:52.261Z",
+    "installer_sha256": "efceff01709ffdc5a7c888f342207e2ce29cf11316786f4a04794d4313d52463",
+    "reuse_old_inventory": false,
+    "reuse_this_case_planning": true,
+    "automatic_retry": false,
+    "server_seconds": 88,
+    "background_sampling_seconds": 5.33,
+    "clip_encoding_seconds": 56.75,
+    "component_node_seconds": 6.66,
+    "agents_called": 0,
+    "planning_cache_reused": 5,
+    "error": "Empty vector: category_clothing_selected_mark",
+    "download_seconds": 0,
+    "download_note": "未产生可下载PSD；真实回复和失败记录直接读取页面保存",
+    "image_visual_review": "未完成，未导出完整图",
+    "total_elapsed_since_submit_seconds": 334
+  }
+}

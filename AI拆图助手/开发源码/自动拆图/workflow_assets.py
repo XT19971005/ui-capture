@@ -161,7 +161,7 @@ def complete_asset(source,node,assets,structure,cancelled,original_source=None,f
  target=extraction_bounds(node);tx,ty,tw,th=target
  original=Image.open(source).convert('RGB');pad=max(8,round(min(tw,th)*.07))
  x=max(0,int(tx)-pad);y=max(0,int(ty)-pad);right=min(original.width,int(tx+tw)+pad);bottom=min(original.height,int(ty+th)+pad)
- crop=structure/'图像编辑局部参照.png';original.crop((x,y,right,bottom)).save(crop)
+ crop=structure/('图像编辑局部参照_'+node['id']+'.png');original.crop((x,y,right,bottom)).save(crop)
  prompt=f'编辑目标是局部参考，只提取完整素材“{node["name"]}”。画布{right-x}x{bottom-y}，保持原位置、比例、颜色、光照、纹理、人物身份与姿势。'+COLOR_PRESERVATION+'去掉背景及非该素材的相邻物体；真正被遮挡的部分补全，但不重设计。白色实体、牌面、布料和皮肤必须保留，不能当背景去掉；字形、手指、发丝和孔洞完整。真实透明背景，不是白底或棋盘格。'
  if node.get('layerStyle'):prompt+='图层样式将单独原生重建：不要把外挂投影、发光、描边、颜色叠加或渐变叠加烘焙进完整底稿。保留物体材质本身的光照与纹理，完整可见/遮挡后实体先补全。'
  prompt+='\n'+CONTAINER_EXTRACTION_RULES

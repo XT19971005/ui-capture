@@ -1,0 +1,91 @@
+{
+  "generation": {
+    "workflow_id": "d2dc378c-d157-4b24-874c-076598a9be2c",
+    "run_id": "87378247-e29a-42ad-8a40-95430e08ed0f",
+    "submitted_at_utc": "2026-10-24T02:43:25.456Z",
+    "submitted_runs": 1,
+    "automatic_retry": false,
+    "status": "FILES_RECOVERED_VISUAL_FAIL",
+    "counts": {
+      "containers": 19,
+      "texts": 16,
+      "images": 11,
+      "vectors": 5
+    },
+    "timings": {
+      "server_seconds": 477,
+      "inventory_agent_seconds": 74.24,
+      "containers_agent_seconds": 29.26,
+      "images_agent_seconds": 61.24,
+      "vectors_agent_seconds": 48.24,
+      "texts_agent_seconds": 47.24,
+      "background_sampling_seconds": 5.36,
+      "components_and_psd_seconds": 21.36,
+      "publication_after_nodes_seconds": 162,
+      "download_seconds": 1.931,
+      "self_review_seconds": null,
+      "retrieval_server_seconds": 11,
+      "readback_and_sheet_seconds": 0.485
+    },
+    "server_report": {
+      "layers": 52,
+      "text_layers": 16
+    },
+    "verified": {
+      "all_agents_completed": true,
+      "branch_validation": true,
+      "merged_plan": true,
+      "full_execution": true,
+      "empty_branch_server_case": false,
+      "cross_run_cache_reuse": false,
+      "complete_file_download": true,
+      "visual_review": true,
+      "visual_acceptance": false
+    },
+    "retrieval_workflow_id": "1382864e-c7cd-41a2-bb33-2b06b8ca5ead",
+    "retrieval_run_id": "32dbf81f-1a48-433c-b436-8ac606d8a8e7"
+  },
+  "visual_review": {
+    "bundle_sha256": "fac62dc0444145f898b90221cd596fc061517d37b36762b21cb93d53a5d03199",
+    "verified_files": 54,
+    "canvas": [
+      1206,
+      2622
+    ],
+    "leaf_layers": 52,
+    "native_text": 16,
+    "native_shape": 7,
+    "groups": [
+      "顶部装饰",
+      "页面标题",
+      "团队信息栏",
+      "成员求助卡片",
+      "成员头像",
+      "成员信息卡片",
+      "成员头像",
+      "成员信息卡片",
+      "成员头像",
+      "成员信息卡片",
+      "底部操作按钮",
+      "底部导航"
+    ],
+    "visual_status": "FAIL",
+    "readback_and_sheet_seconds": 0.485,
+    "final_acceptance": "NOT_GRANTED",
+    "observed_issues": [
+      "阿拉伯语文字变方框，字体不支持",
+      "My Team艺术标题被普通字体替换，金色描边与立体效果丢失",
+      "生命进度填充残留原图文字或心形，子层去除不干净",
+      "数量徽章带白色矩形底，团队图标仍带部分绿色徽章",
+      "头像框和卡片等素材有多余矩形底色，背景色调偏离原图"
+    ],
+    "visual_review_scope": "本轮唯一汇总图：原图、PSD内嵌重组及52项图层缩略图；未逐件完成全部深浅底检查"
+  },
+  "lessons": [
+    "主画布输出仍未被平台收集，先前将问题仅归因于子图的判断不充分",
+    "只读取回节点通过TYSaveText传输服务器原ZIP，摘要一致；不重新生成",
+    "空分支惰性跳过与跨运行缓存复用仅本地验证，本轮四类均非空",
+    "规划检查点不等于图像逐件断点，后者尚未实现",
+    "完整流程执行成功不等于美术合格；原生文字数量不能掩盖不支持阿拉伯语字体"
+  ]
+}

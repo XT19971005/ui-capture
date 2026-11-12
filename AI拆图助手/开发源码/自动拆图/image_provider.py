@@ -1,5 +1,5 @@
 """Image transport is independent of the conversational model; never resubmit a generation."""
-import hashlib,io,json,os,time,uuid,threading,tempfile
+import hashlib,io,json,os,re,time,uuid,threading,tempfile,subprocess,shutil
 from pathlib import Path
 from urllib.parse import urlparse
 import requests
@@ -9,17 +9,18 @@ from runtime import STATE
 BASE='https://api-matrix.tuyoo.com/api/matrix/aimake/v1'
 CONFIG=STATE/'image-provider.local.json'
 DRAMA_CONFIG=Path.home()/'.drama-studio/aimake.json'
+_settings_lock=threading.RLock()
 MODELS={'nano-banana-2':'Nano Banana 2','gpt-image-2':'GPT Image 2','nano-banana-pro':'Nano Banana Pro'}
-# Current Matrix schemas expose no native transparent-background switch.
-# GPT Image 2 actually returned RGB PNG in the verified failed layer request.
-VERIFIED_TRANSPARENT_MODELS=frozenset()
+# GPT Image 2.5 advertises native transparency; always verify returned alpha.
+# Other models retain the explicit Pixelcut path.
+NATIVE_TRANSPARENCY_MODELS=frozenset(('gpt-image-2.5-flare','gpt-image-2.5-sunburst'))
 _uploads={}
 _upload_lock=threading.RLock()
 
 def settings():
  if not CONFIG.exists():return {'provider':'codex','model':'gpt-image-2'}
  value=json.loads(CONFIG.read_text('utf-8'))
- if value.get('provider') not in ('codex','aimake') or value.get('model') not in MODELS:raise ValueError('图片模型设置无效，请重新配置')
+ if value.get('provider') not in ('codex','aimake') or not valid_model(value.get('model')):raise ValueError('图片模型设置无效，请重新配置')
  return value
 
 def key(config=None):
@@ -40,26 +41,117 @@ def request(route,body=None,secret=None):
  if data.get('code') not in (0,'0'):raise ValueError('亿创未接受请求，请检查本人连接、模型权限与额度')
  return data.get('data')
 
+def valid_model(model):
+ return isinstance(model,str) and bool(re.fullmatch(r'[a-z0-9][a-z0-9.-]{0,95}',model))
+
+_schema_cache={}
+_schema_lock=threading.RLock()
+
+def model_schema(model,secret=None):
+ if not valid_model(model):raise ValueError('亿创模型标识无效')
+ secret=secret or key()
+ cache_key=(hashlib.sha256(secret.encode()).digest(),model)
+ with _schema_lock:
+  cached=_schema_cache.get(cache_key)
+  if cached and time.monotonic()-cached[0]<300:return cached[1]
+ value=request('/models/'+model+'/schema',secret=secret)
+ if not isinstance(value,dict) or not isinstance(value.get('input'),dict):raise ValueError('亿创模型参数说明暂不可读取，未提交生成')
+ with _schema_lock:
+  if len(_schema_cache)>=256:_schema_cache.pop(next(iter(_schema_cache)))
+  _schema_cache[cache_key]=(time.monotonic(),value)
+ return value
+
+class ModelCatalog(list):
+ def __init__(self,values,unavailable):
+  super().__init__(values);self.unavailable=unavailable
+
 def catalog(secret=None):
+ from concurrent.futures import ThreadPoolExecutor
  values=request('/models',secret=secret)
  if not isinstance(values,list):raise ValueError('亿创模型目录格式无效')
- return [{'id':m['id'],'name':MODELS[m['id']]} for m in values if isinstance(m,dict) and m.get('id') in MODELS]
+ candidates=[m for m in values if isinstance(m,dict) and valid_model(m.get('id')) and m.get('material_type_slug','picture')=='picture']
+ unavailable=[]
+ def describe(m):
+  ident=m['id']
+  try:schema=model_schema(ident,secret)
+  except ValueError:
+   unavailable.append(ident);return None
+  props=schema['input'].get('properties',{});required=set(schema['input'].get('required',[]));output=schema.get('output',{}).get('properties',{})
+  if 'prompt' not in props or required-{'prompt','ref_images','input_images'} or not {'image_url','image_urls'}.intersection(output):return None
+  return {'id':ident,'name':m.get('display_name') or MODELS.get(ident,ident),'reference':bool({'ref_images','input_images'}.intersection(props)),'vector':ident=='recraft-v4-vector'}
+ with ThreadPoolExecutor(max_workers=8) as pool:values=[value for value in pool.map(describe,candidates) if value]
+ return ModelCatalog(values,unavailable)
+
 
 def status():
  value=settings();configured=bool(value.get('keyEncrypted') or DRAMA_CONFIG.exists())
- return {'provider':value['provider'],'model':value['model'],'configured':configured,'models':catalog() if configured else []}
+ models=catalog() if configured else []
+ return {'provider':value['provider'],'model':value['model'],'configured':configured,'models':models,'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
 
-def save(body):
- if not isinstance(body,dict) or set(body)-{'provider','model','key'} or body.get('provider') not in ('codex','aimake') or body.get('model') not in MODELS:raise ValueError('请选择已适配的图片来源和模型')
- value=settings();value.update(provider=body['provider'],model=body['model'])
- if 'key' in body:
-  from assistant_models import protect
-  secret=body['key']
+def refresh(body=None):
+ body=body or {}
+ if not isinstance(body,dict) or set(body)-{'key'}:raise ValueError('图片模型查询参数无效')
+ secret=body.get('key')
+ if secret is not None:
   if not isinstance(secret,str) or not secret.strip() or len(secret)>4096 or any(c in secret for c in '\r\n\0'):raise ValueError('请填写本人有效亿创Key')
-  catalog(secret.strip());value['keyEncrypted']=protect(secret.strip())
- if value['provider']=='aimake' and not any(m['id']==value['model'] for m in catalog(key(value))):raise ValueError('本人亿创账号未提供该图片模型')
- tmp=CONFIG.with_suffix('.tmp');tmp.write_text(json.dumps(value),encoding='utf-8');os.replace(tmp,CONFIG)
- return {'provider':value['provider'],'model':value['model'],'ready':True}
+  secret=secret.strip()
+ models=catalog(secret or key())
+ return {'models':models,'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
+
+def save(body,commit=None):
+ if not isinstance(body,dict) or set(body)-{'provider','model','key'} or body.get('provider') not in ('codex','aimake') or not valid_model(body.get('model')):raise ValueError('请选择有效的图片来源和模型')
+ version=CONFIG.read_bytes() if CONFIG.exists() else None
+ value=settings();value.update(provider=body['provider'],model=body['model'])
+ secret=body.get('key')
+ if secret is not None:
+  from assistant_models import protect
+  if not isinstance(secret,str) or not secret.strip() or len(secret)>4096 or any(c in secret for c in '\r\n\0'):raise ValueError('请填写本人有效亿创Key')
+  secret=secret.strip()
+ models=catalog(secret or key(value)) if value['provider']=='aimake' or secret else []
+ if value['provider']=='aimake' and not any(m['id']==value['model'] for m in models):raise ValueError('本人亿创账号未提供该图片模型，请刷新模型目录')
+ if secret:value['keyEncrypted']=protect(secret)
+ def write():
+  with _settings_lock:
+   if (CONFIG.read_bytes() if CONFIG.exists() else None)!=version:raise ValueError('图片设置已在另一窗口修改，请重新打开设置；当前连接保留')
+   temporary=None
+   try:
+    with tempfile.NamedTemporaryFile(dir=CONFIG.parent,delete=False) as stream:
+     temporary=Path(stream.name);stream.write(json.dumps(value).encode('utf8'));stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,CONFIG)
+   finally:
+    if temporary:temporary.unlink(missing_ok=True)
+ if commit:commit(write)
+ else:write()
+ return {'provider':value['provider'],'model':value['model'],'ready':True,'models':models,'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
+
+def rasterize_vector(raw):
+ import xml.etree.ElementTree as ET
+ if len(raw)>4*1024*1024 or b'<!' in raw:raise ValueError('矢量图片格式或大小不受支持')
+ try:root=ET.fromstring(raw)
+ except ET.ParseError:raise ValueError('矢量图片无法读取') from None
+ allowed={'svg','g','path','rect','circle','ellipse','polygon','polyline','line','defs','linearGradient','radialGradient','stop','clipPath','mask','pattern','use','title','desc'}
+ for el in root.iter():
+  if el.tag.split('}')[-1] not in allowed:raise ValueError('矢量图片含不支持的外部资源或元素')
+  for name,value in el.attrib.items():
+   if name.lower().startswith('on') or name.split('}')[-1]=='href' and not value.startswith('#') or '@import' in value.lower():raise ValueError('矢量图片不能引用外部资源')
+   for ref in re.findall(r'url\((.*?)\)',value,re.I):
+    if not ref.strip(" \"' ").startswith('#'):raise ValueError('矢量图片不能引用外部资源')
+ box=root.get('viewBox','0 0 1024 1024').replace(',',' ').split()
+ try:
+  width=float(root.get('width',box[2]));height=float(root.get('height',box[3]))
+ except (ValueError,IndexError):raise ValueError('矢量图片尺寸无效') from None
+ if not 0<width<=6000 or not 0<height<=6000 or width*height>6000000:raise ValueError('矢量图片超过安全尺寸')
+ root.set('width',str(max(1,round(width))));root.set('height',str(max(1,round(height))))
+ ET.register_namespace('','http://www.w3.org/2000/svg')
+ raw=ET.tostring(root,encoding='utf-8',xml_declaration=False)
+ node=shutil.which('node')
+ if not node:raise ValueError('矢量预览运行环境尚未就绪')
+ script="const c=require('@napi-rs/canvas');let b=[];process.stdin.on('data',x=>b.push(x));process.stdin.on('end',async()=>{try{const im=await c.loadImage(Buffer.concat(b));if(!im.width||!im.height||Math.max(im.width,im.height)>6000||im.width*im.height>6000000)throw Error();const out=c.createCanvas(im.width,im.height);out.getContext('2d').drawImage(im,0,0);process.stdout.write(out.toBuffer('image/png'));}catch{process.exitCode=1;}});"
+ try:result=subprocess.run([node,'-e',script],input=raw,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,cwd=Path(__file__).resolve().parents[2]/'依赖/构建工具',timeout=20)
+ except subprocess.TimeoutExpired:raise ValueError('矢量图片预览超时') from None
+ if result.returncode or not result.stdout.startswith(b'\x89PNG'):raise ValueError('矢量图片暂不能转换为画布素材')
+ return result.stdout
+
 
 def safe_https(url):
  parsed=urlparse(url)
@@ -105,7 +197,59 @@ def dimensions(images):
  _,_,width,height=min(candidates)
  return {'width':width,'height':height}
 
-def generation_input(model,prompt,images,urls):
+def validate_input(value,schema,label='生图参数'):
+ types=schema.get('type',[]);types=[types] if isinstance(types,str) else types
+ matches={'string':isinstance(value,str),'integer':type(value) is int,'number':type(value) in (int,float),'boolean':type(value) is bool,'array':isinstance(value,list),'object':isinstance(value,dict),'null':value is None}
+ if types and not any(matches.get(kind,False) for kind in types):raise ValueError(label+'类型与模型要求不符，尚未提交生成')
+ if 'enum' in schema and value not in schema['enum']:raise ValueError(label+'不在模型支持的范围内')
+ if isinstance(value,str) and (len(value)<schema.get('minLength',0) or len(value)>schema.get('maxLength',32000)):raise ValueError(label+'长度与模型要求不符')
+ if type(value) in (int,float) and (value<schema.get('minimum',float('-inf')) or value>schema.get('maximum',float('inf'))):raise ValueError(label+'超出模型范围')
+ if isinstance(value,list):
+  if len(value)<schema.get('minItems',0) or len(value)>schema.get('maxItems',16):raise ValueError(label+'数量与模型要求不符')
+  for item in value:validate_input(item,schema.get('items',{}),label)
+ if isinstance(value,dict):
+  for name in schema.get('required',[]):
+   if name not in value:raise ValueError(label+'缺少参数：'+name)
+  for name,item in value.items():validate_input(item,schema.get('properties',{}).get(name,{}),label+' '+name)
+
+
+def generation_input(model,prompt,images,urls,schema=None):
+ if schema is not None:
+  props=schema.get('input',{}).get('properties',{})
+  if 'prompt' not in props:raise ValueError('所选模型不是提示词生图模型，尚未提交生成')
+  limit=props['prompt'].get('maxLength',32000);minimum=props['prompt'].get('minLength',5 if model.startswith('nano-banana') else 1)
+  if not isinstance(prompt,str) or not prompt.strip() or not minimum<=len(prompt)<=limit:raise ValueError('所选模型提示词需要'+str(minimum)+'至'+str(limit)+'字符，未截断或提交生成')
+  result={'prompt':prompt}
+  ref=next((name for name in ('input_images','ref_images') if name in props),None)
+  if images and not ref:raise ValueError('所选模型仅支持文生图，不支持参考图片；请改选支持参考图的模型')
+  if model.startswith('nano-banana'):
+   for file in images:
+    with Image.open(file) as source:
+     if min(source.size)<300 or Path(file).stat().st_size>30*1024*1024:raise ValueError('Nano Banana参考图宽高均须至少300像素且不超过30MB；未改变原图或提交生成')
+  if ref:
+   maximum=props[ref].get('maxItems',3 if model=='nano-banana' else 14)
+   if not props[ref].get('minItems',0)<=len(images)<=maximum:raise ValueError('所选模型最多支持'+str(maximum)+'张参考图，未上传或生成')
+   result[ref]=urls
+  for name in ('resolution','quality','output_format','sequential_image_generation','tier','image_size'):
+   if name in props and 'default' in props[name]:result[name]=props[name]['default']
+  if 'output_format' in props and 'png' in props['output_format'].get('enum',[]):result['output_format']='png'
+  ratio=1
+  if images:
+   with Image.open(images[0]) as im:ratio=im.width/im.height
+  choices=props.get('aspect_ratio',{}).get('enum',[])
+  if choices:
+   candidates=[(abs(int(v.split(':')[0])/int(v.split(':')[1])-ratio)/ratio,v) for v in choices if isinstance(v,str) and re.fullmatch(r'[1-9][0-9]*:[1-9][0-9]*',v)]
+   error,chosen=min(candidates) if candidates else (1,None)
+   if error<=.001:result['aspect_ratio']=chosen
+   elif 'width' in props and 'height' in props and model.startswith('gpt-image-'):result.update(dimensions(images))
+   else:raise ValueError('所选模型不支持当前原图比例；未拉伸原图或提交生成')
+  elif images:raise ValueError('所选模型不能指定参考画布比例，尚未上传或生成')
+  for name in schema.get('input',{}).get('required',[]):
+   if name not in result:raise ValueError('所选模型还需要参数：'+name+'，尚未提交生成')
+  probe=dict(result)
+  if ref and images and not urls:probe[ref]=['https://reference.invalid/image.png']*len(images)
+  validate_input(probe,schema.get('input',{}))
+  return result
  if model=='gpt-image-2':return {'prompt':prompt,'input_images':urls,'output_format':'png','quality':'high',**dimensions(images)}
  if model not in ('nano-banana-2','nano-banana-pro'):raise ValueError('请选择已适配的图片模型')
  if not 5<=len(prompt)<=5000:raise ValueError('Nano Banana 提示词须为5至5000字符，未提交生成')
@@ -122,7 +266,48 @@ def generation_input(model,prompt,images,urls):
  if abs(a/b-ratio)/ratio>.001:raise ValueError('所选Nano Banana模型不支持当前原图比例；未拉伸或提交生成，请改用GPT Image 2')
  return {'prompt':prompt,'ref_images':urls,'aspect_ratio':chosen,'resolution':'1K'}
 
-def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on_status=None):
+
+
+def repair_opaque_interior(image,*,expected_opaque=False):
+ """Restore a confirmed solid material's near-opaque interior only.
+ Keep RGB, canvas, holes, antialias edges and truly translucent pixels intact.
+ """
+ if expected_opaque is not True:return image,0
+ import numpy as np
+ import cv2
+ rgba=np.array(image.convert('RGBA'));alpha=rgba[:,:,3]
+ core=(alpha>=250).astype('uint8');distance=cv2.distanceTransform(core,cv2.DIST_L2,5)
+ fix=(alpha>=250)&(alpha<255)&(distance>=2)
+ count=int(fix.sum())
+ if not count:return image,0
+ rgba[:,:,3][fix]=255
+ return Image.fromarray(rgba,'RGBA'),count
+
+
+def clean_pixelcut_residue(image):
+ """Remove only tiny remote black alpha=1 islands introduced by Pixelcut.
+ Never threshold all low-alpha pixels: glows, shadows and connected edges survive.
+ """
+ import numpy as np
+ import cv2
+ rgba=np.array(image.convert('RGBA'));alpha=rgba[:,:,3];core=alpha>=16
+ ys,xs=np.nonzero(core)
+ if not len(xs):return image,0
+ count,labels,stats,_=cv2.connectedComponentsWithStats((alpha>0).astype('uint8'),connectivity=8)
+ if count<=1:return image,0
+ exact=(alpha==1)&np.all(rgba[:,:,:3]==0,axis=2)
+ invalid=np.bincount(labels[~exact].ravel(),minlength=count)
+ left,top,right,bottom=int(xs.min()),int(ys.min()),int(xs.max())+1,int(ys.max())+1
+ candidates=[]
+ for label in range(1,count):
+  x,y,w,h,area=map(int,stats[label])
+  if area<=8 and invalid[label]==0 and (x+w<left-8 or x>right+8 or y+h<top-8 or y>bottom+8):candidates.append(label)
+ if not candidates:return image,0
+ remove=np.isin(labels,candidates);removed=int(remove.sum());rgba[remove]=0
+ return Image.fromarray(rgba,'RGBA'),removed
+
+
+def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on_status=None,*,opaque_subject=False):
  """Pixelcut is a separate billed task. Never resubmit either upstream stage."""
  notice=on_status or (lambda _:None)
  if cancelled():raise InterruptedError('已取消；尚未提交Pixelcut抠图')
@@ -165,14 +350,29 @@ def remove_background(source,target,secret,cancelled=lambda:False,timeout=900,on
   im.load()
   if im.mode!='RGBA' or im.getchannel('A').getextrema()[0]!=0 or not im.getchannel('A').getbbox():raise ValueError('Pixelcut未返回有效透明RGBA，未应用结果')
   size=list(im.size)
+  cleaned,removed=clean_pixelcut_residue(im)
+  cleaned,opaque_repaired=repair_opaque_interior(cleaned,expected_opaque=opaque_subject)
+  if removed or opaque_repaired:
+   buffer=io.BytesIO();cleaned.save(buffer,format='PNG');raw=bytearray(buffer.getvalue())
  with Image.open(source) as original:
   if tuple(size)!=original.size:raise ValueError('Pixelcut改变了画幅，未自动缩放或应用')
  if cancelled():raise InterruptedError('已取消，未应用Pixelcut结果')
  target=Path(target);tmp=target.with_name(target.name+'.'+ident+'.tmp')
  try:tmp.write_bytes(raw);os.replace(tmp,target)
  finally:tmp.unlink(missing_ok=True)
- record.update(state='completed',outputSHA256=hashlib.sha256(raw).hexdigest());save()
- return {'provider':'aimake','model':'pixelcut-background-removal','genId':gid,'sourceGeneratedSHA256':record['sourceSHA256'],'size':size}
+ record.update(state='completed',outputSHA256=hashlib.sha256(raw).hexdigest(),removedRemoteAlphaIslandsPixels=removed,opaqueInteriorPixelsRepaired=opaque_repaired);save()
+ return {'provider':'aimake','model':'pixelcut-background-removal','genId':gid,'sourceGeneratedSHA256':record['sourceSHA256'],'size':size,'removedRemoteAlphaIslandsPixels':removed,'opaqueInteriorPixelsRepaired':opaque_repaired}
+
+
+def opaque_stage_prompt(prompt):
+ # This is an intermediate RGB image. Alpha instructions belong to Pixelcut,
+ # never to this paid generation request.
+ text=re.sub(r'RGBA\s*(?:透明)?\s*PNG','RGB PNG',prompt,flags=re.I)
+ text=re.sub(r'(?:真正)?RGBA','RGB',text,flags=re.I)
+ text=re.sub(r'(?:背景)?Alpha\s*(?:为|=|是)\s*0','背景为纯白色',text,flags=re.I)
+ for old in ('透明背景','透明底','透明PNG','透明素材','透明区','背景全部透明','背景透明','其余透明','其它实体及背景透明','其他实体和背景全部透明'):
+  text=text.replace(old,{'透明素材':'独立素材','透明PNG':'白底PNG','透明区':'纯白留白区'}.get(old,'纯白背景'))
+ return '本阶段只输出不透明RGB图片，本阶段背景使用纯白(#FFFFFF)，避免与最终透明通道要求冲突。灰白棋盘格、网格、格纹不是透明效果，绝对不要绘制。参考图的透明区域统一视为纯白留白；主体外、内部空洞和新增留白区也用纯白色，不添加阴影。后续另由去背景工具生成透明通道，本阶段不要模拟透明。\n'+text+'\n最终核对：交付的是纯白底中间图；不得出现棋盘格、灰格、网格或透明效果示意。保留主体原有白色实体、纹理、细线、镂空与柔和边缘，不改变主体造型、颜色、大小、方向及落位。'
 
 
 def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwargs):
@@ -183,9 +383,9 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
  target=Path(target)
  with tempfile.TemporaryDirectory(prefix='pixelcut-stage-',dir=target.parent) as folder:
   rgb=Path(folder)/'generated.png'
-  instruction=prompt+'\n阶段输出说明：前文的透明要求描述最终成品；为交给Pixelcut去背景，本阶段背景使用纯白，该阶段说明仅覆盖背景输出要求，避免与RGBA指令冲突，其他主体要求全部不变。不得添加阴影、底座、棋盘格、描边或彩色标线，不增加参考中不存在的对象。保留原有白色实体、细线、镂空和柔和边缘，不因换底改变造型、大小、方向、光照、颜色或在画布上的位置。'
+  instruction=opaque_stage_prompt(prompt)
   record=generate(instruction,images,rgb,transparent=False,cancelled=cancelled,timeout=timeout,on_status=on_status,**kwargs)
-  post=remove_background(rgb,target,secret,cancelled,timeout,on_status)
+  post=remove_background(rgb,target,secret,cancelled,timeout,on_status,opaque_subject=kwargs.get('opaque_subject') is True)
   record.update(file=str(target),transparent=True,size=post['size'],postprocessing=post)
   notice('Pixelcut透明化完成，正在准备素材校对…')
   return record
@@ -193,13 +393,16 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
 
 def generate(prompt,images,target,transparent=False,cancelled=lambda:False,timeout=900,on_status=None,**unused):
  value=settings();model=value['model']
- if transparent and model not in VERIFIED_TRANSPARENT_MODELS:return generate_transparent(prompt,images,target,cancelled,timeout,on_status,**unused)
+ if transparent and model not in NATIVE_TRANSPARENCY_MODELS:return generate_transparent(prompt,images,target,cancelled,timeout,on_status,**unused)
  secret=key(value);notice=on_status or (lambda _:None)
  if not any(m['id']==model for m in catalog(secret)):raise ValueError('所选亿创图片模型不可用')
  if cancelled():raise InterruptedError('已取消')
  instruction=prompt+('\n保真编辑优先级：可见原图的轮廓、内部孔洞、纹理、非对称细节、颜色和朝向是依据，不是风格灵感；只推断被遮挡或出画的缺失部分，不重新设计、不变成同类另一款。保持第一张参考画布中的相对位置和比例，不自动居中、放大主体或重新排版。其他参考只帮助定位目标，不把标线或其他对象画进结果。' if unused.get('allow_identity_change') is False else '')+('\n必须输出真正RGBA透明PNG，背景Alpha为0；禁止棋盘格、纯色底或彩笔标线。' if transparent else '')
- generation_input(model,instruction,images,[]);notice('亿创正在上传本层参考…');urls=[upload(file,secret,cancelled) for file in images]
- model_input=generation_input(model,instruction,images,urls)
+ schema=model_schema(model,secret)
+ generation_input(model,instruction,images,[],schema=schema);notice('亿创正在上传本层参考…');urls=[upload(file,secret,cancelled) for file in images]
+ model_input=generation_input(model,instruction,images,urls,schema=schema)
+ if transparent and model in NATIVE_TRANSPARENCY_MODELS:model_input['background']='transparent'
+ validate_input(model_input,schema['input'])
  if cancelled():raise InterruptedError('已取消；尚未提交亿创生成')
  ident=uuid.uuid4().hex;receipt=STATE/('亿创任务_'+ident+'.json');record={'requestId':ident,'model':model,'state':'submitting','createdAt':time.time()}
  receipt.write_text(json.dumps(record),encoding='utf-8')
@@ -222,18 +425,21 @@ def generate(prompt,images,target,transparent=False,cancelled=lambda:False,timeo
   poll_errors=0;items=result.get('outputs',[])
   failed=[item for item in items if item.get('item_status')=='failed']
   if failed:raise ValueError('亿创本层生成失败，原图保留，未自动重试')
-  done=next((item for item in items if item.get('item_status')=='succeeded' and isinstance(item.get('data'),dict) and item['data'].get('image_url')),None)
+  done=next((item for item in items if item.get('item_status')=='succeeded' and isinstance(item.get('data'),dict) and (item['data'].get('image_url') or item['data'].get('image_urls'))),None)
   if done:break
   notice('亿创正在生成本层素材…');time.sleep(.6)
  target=Path(target);raw=bytearray()
- with requests.get(safe_https(done['data']['image_url']),stream=True,timeout=(10,90),allow_redirects=False) as response:
+ output_url=done['data'].get('image_url') or next(iter(done['data'].get('image_urls') or []),None)
+ with requests.get(safe_https(output_url),stream=True,timeout=(10,90),allow_redirects=False) as response:
   if response.status_code!=200:raise ValueError('亿创结果下载未完成，原任务未重提')
   for chunk in response.iter_content(65536):
    if cancelled():raise InterruptedError('已取消下载')
    raw.extend(chunk)
    if len(raw)>64*1024*1024:raise ValueError('亿创图片超过64MB限制')
+ if model=='recraft-v4-vector' and not raw.startswith(b'\x89PNG'):raw=rasterize_vector(bytes(raw))
  with Image.open(io.BytesIO(raw)) as image:
   image.load()
+  if transparent and image.mode=='RGBA' and not image.getchannel('A').getbbox():raise ValueError('亿创返回了全透明空白图片，未应用')
   if transparent and (image.mode!='RGBA' or image.getchannel('A').getextrema()[0]>0):raise ValueError('亿创本层未提供真实透明通道，结果待校对，未伪造透明素材')
   size=list(image.size)
  target.write_bytes(raw);record.update(state='completed',sha256=hashlib.sha256(raw).hexdigest());receipt.write_text(json.dumps(record),encoding='utf-8')

@@ -193,3 +193,37 @@ nodes:[{id:'ink',name:'ink',type:'path',x:0,y:0,width:100,height:80,fill:'#1f678
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SourceTopologyRegressionTests(unittest.TestCase):
+    def test_high_iou_cannot_hide_a_split_merge_or_counter_change(self):
+        from source_vector import topology_matches
+        expected = np.zeros((100, 100), bool)
+        expected[20:80, 20:80] = True
+        split = expected.copy(); split[:, 50] = False
+        self.assertFalse(topology_matches(expected, split, 4))
+        self.assertFalse(topology_matches(split, expected, 4))
+        counter = expected.copy(); counter[45:50, 45:50] = False
+        self.assertFalse(topology_matches(expected, counter, 4))
+        self.assertFalse(topology_matches(counter, expected, 4))
+        opened = counter.copy(); opened[20:46,47] = False
+        self.assertFalse(topology_matches(counter, opened, 4))
+        self.assertFalse(topology_matches(opened, counter, 4))
+
+    def test_base_silhouette_and_two_colour_eyes_remain_independent(self):
+        from PIL import Image, ImageDraw
+        from annotation_plan import native_node
+        from source_vector import reconstruct, _render
+        source = Image.new('RGB', (140, 100), '#9682c3')
+        draw = ImageDraw.Draw(source)
+        draw.polygon([(25,60),(45,30),(65,55),(75,50),(80,35),(85,25),(90,35),(95,50),(110,30),(115,60),(90,75),(70,75)], fill='#19142d')
+        draw.rectangle((79,44,83,48), fill='#d99136')
+        draw.rectangle((88,44,92,48), fill='#d99136')
+        base = {'name':'主体','layerType':'path','box':{'x':20,'y':20,'width':100,'height':60},'native':{'fill':'#19142d','d':'M0 0H1V1Z'}}
+        eyes = {'name':'双眼','layerType':'path','box':{'x':77,'y':42,'width':18,'height':9},'native':{'fill':'#d99136','d':'M0 0H1V1Z'}}
+        body = reconstruct(source, base, native_node(base,'body'), [eyes])
+        accents = reconstruct(source, eyes, native_node(eyes,'eyes'), check_connectivity=False)
+        for node, count in [(body,1),(accents,2)]:
+            alpha = _render(node['d'], node['width'], node['height']) >= 128
+            self.assertEqual(cv2.connectedComponents(alpha.astype('uint8'), connectivity=8)[0]-1, count)
+            self.assertEqual(node['sourceFidelity']['version'],2)

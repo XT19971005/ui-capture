@@ -321,3 +321,30 @@ body.unified-workbench.web-workbench #url-capture-form[hidden]{display:none!impo
 .shared-ai-settings .assistant-key-row button{flex:none;min-width:50px}
 .shared-ai-settings [data-text-status]{overflow-wrap:anywhere;line-height:1.55}
 .shared-ai-settings .ai-connection-actions{flex-wrap:wrap;gap:7px}
+
+/* Reviewed workflow: one analysis entry; generation follows an approved plan. */
+body.unified-workbench{--workflow-accent:#8c70d8;--workflow-border:#343746;--workflow-muted:#a3a7b8}
+.unified-workbench .document-actions{gap:8px;flex-wrap:wrap;align-items:center}
+.unified-workbench .document-actions button{min-height:32px;padding:6px 12px;border:1px solid var(--workflow-border);border-radius:7px;background:#242733;color:#d5d7e2;font-size:12px;box-shadow:none}
+.unified-workbench .document-actions #auto-annotate-primary{background:#8869cf;border-color:#a38add;color:white;font-weight:600;order:-2}
+.unified-workbench .document-actions #auto-annotate-primary:hover:not(:disabled){background:#997ade}
+.unified-workbench .document-actions #original-annotations-toggle{order:-1;background:#242733;color:#bcb5d1}
+.unified-workbench .document-actions #original-annotations-toggle[aria-expanded=true]{background:#363044;color:#e4d7ff;border-color:#74608e}
+.unified-workbench #recognize[hidden],.unified-workbench #split-engine{display:none!important}
+.unified-workbench .document-actions button:disabled{opacity:.45;cursor:default}
+.unified-workbench .header-actions #save-project{background:#242733;color:#c6c8d5;border-color:#3b3e4e;box-shadow:none}
+.unified-workbench .header-actions #save-project.has-unsaved-changes{background:#8869cf;color:#fff;border-color:#a38add}
+.unified-workbench .app-header>#assistant-toggle{background:#302a40;border-color:#66547e;color:#e0d3fa;box-shadow:none;font-weight:500}
+.unified-workbench .app-header>#assistant-toggle:hover{background:#3c3151;box-shadow:none}
+.unified-workbench .inspector-tabs button[aria-pressed=true],.unified-workbench .workspace-switch a.active{background:#363044;color:#e3d6fa;border-color:#65537c}
+.unified-workbench .properties{background:#1e212b!important;border-left:1px solid #323542}
+.unified-workbench .properties :is(input,select,textarea){background:#171a22;border-color:#373b49;border-radius:6px;color:#dddfea}
+.unified-workbench .properties :is(input,select,textarea):focus-visible,.unified-workbench button:focus-visible{outline:2px solid #ab90e8;outline-offset:2px}
+.unified-workbench .bar-hint{color:#9397a9;font-size:11px}
+@media(min-width:1321px){body.unified-workbench:not(.web-workbench) .workspace{grid-template-columns:212px minmax(300px,1fr) 300px!important}}
+@media(min-width:961px) and (max-width:1320px){body.unified-workbench:not(.web-workbench) .workspace{grid-template-columns:190px minmax(260px,1fr) 280px!important}}
+
+/* Keep annotation, generation and sizing actions visually separate. */
+.unified-workbench .document-actions #calibrate-split-size{margin-inline-start:20px}
+
+body.unified-workbench .app-header .project-controls>#clear-image{width:80px!important;min-width:80px!important;max-width:80px!important;flex:0 0 80px!important;height:34px!important;padding:6px 10px!important}

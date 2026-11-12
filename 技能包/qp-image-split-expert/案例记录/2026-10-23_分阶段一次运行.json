@@ -1,0 +1,29 @@
+{
+  "architecture": "分类→容器/图片/矢量/文字四路规划→汇合职责与路径校验→开源执行",
+  "user_limit": "只生成一次，不重复测试",
+  "submitted_runs": 1,
+  "retried_runs": 0,
+  "run_id": "c1c2f8a2-e89f-4d61-8986-b4ebf8a38674",
+  "result": "API等待超时，未生成图片/PSD",
+  "actual_inventory": {
+    "total": 98,
+    "containers": 34,
+    "images": 8,
+    "vectors": 18,
+    "texts": 38
+  },
+  "timings_seconds": {
+    "server_total": 888,
+    "classification": 190.24,
+    "images": 84.22,
+    "containers_timeout": 600.29
+  },
+  "lessons": [
+    "真正分阶段已部署，但只拆成四类不保证每类任务足够小或返回稳定。",
+    "本次容器分支包含34项；超时发生在平台API等待阶段，不能称ComfyUI图像模型失败。",
+    "完整思考与生成同一工作流应保留阶段回复；本次只有分类与图片规划两份回复。",
+    "超时后上游状态未确认，禁止重复提交。",
+    "用户限制一轮时，失败即保存停止，不擅自恢复旧规划另跑。"
+  ],
+  "runtime_knowledge_note": "本记录为本地案例复盘；未追加安装、未自动重打包或重跑。"
+}

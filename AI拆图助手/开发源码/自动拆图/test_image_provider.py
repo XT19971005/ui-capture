@@ -1,6 +1,7 @@
 import unittest,tempfile,json
 from pathlib import Path
 from unittest.mock import patch,Mock
+from PIL import Image
 import image_provider as p
 class ImageProviderTests(unittest.TestCase):
  def test_default_retains_codex_without_reading_credentials(self):
@@ -19,7 +20,7 @@ class ImageProviderTests(unittest.TestCase):
    with self.assertRaises(InterruptedError):p.generate('test',[],Path('unused'),cancelled=lambda:True)
    upload.assert_not_called();request.assert_not_called()
  def test_uncertain_submission_retains_receipt_and_never_retries(self):
-  with tempfile.TemporaryDirectory() as d,patch.object(p,'STATE',Path(d)),patch.object(p,'settings',return_value={'provider':'aimake','model':'gpt-image-2'}),patch.object(p,'key',return_value='private'),patch.object(p,'catalog',return_value=[{'id':'gpt-image-2'}]),patch.object(p,'request',side_effect=ValueError('transport failed')) as request:
+  with tempfile.TemporaryDirectory() as d,patch.object(p,'model_schema',return_value={'input':{'properties':{'prompt':{},'size':{},'aspect_ratio':{'enum':['1:1']},'ref_images':{},'input_images':{}}}}),patch.object(p,'STATE',Path(d)),patch.object(p,'settings',return_value={'provider':'aimake','model':'gpt-image-2'}),patch.object(p,'key',return_value='private'),patch.object(p,'catalog',return_value=[{'id':'gpt-image-2'}]),patch.object(p,'request',side_effect=ValueError('transport failed')) as request:
    with self.assertRaises(ValueError):p.generate('test',[],Path(d)/'output.png')
    self.assertEqual(request.call_count,1);record=json.loads(next(Path(d).glob('亿创任务_*.json')).read_text('utf-8'));self.assertEqual(record['state'],'uncertain');self.assertNotIn('private',json.dumps(record))
  def test_cancel_after_final_upload_never_submits_paid_generation(self):
@@ -27,7 +28,7 @@ class ImageProviderTests(unittest.TestCase):
   def upload(*args):
    nonlocal stopped
    stopped=True;return 'https://storage.example/reference.png'
-  with patch.object(p,'settings',return_value={'provider':'aimake','model':'gpt-image-2'}),patch.object(p,'key',return_value='private'),patch.object(p,'catalog',return_value=[{'id':'gpt-image-2'}]),patch.object(p,'dimensions',return_value={'width':1024,'height':1024}),patch.object(p,'upload',side_effect=upload),patch.object(p,'request') as request:
+  with patch.object(p,'settings',return_value={'provider':'aimake','model':'gpt-image-2'}),patch.object(p,'key',return_value='private'),patch.object(p,'catalog',return_value=[{'id':'gpt-image-2'}]),patch.object(p,'dimensions',return_value={'width':1024,'height':1024}),patch('PIL.Image.open',return_value=Image.new('RGB',(1024,1024))),patch.object(p,'model_schema',return_value={'input':{'properties':{'prompt':{},'size':{},'aspect_ratio':{'enum':['1:1']},'ref_images':{},'input_images':{}}}}),patch.object(p,'upload',side_effect=upload),patch.object(p,'request') as request:
    with self.assertRaises(InterruptedError):p.generate('test',['reference.png'],Path('unused'),cancelled=lambda:stopped)
    request.assert_not_called()
  def test_unsupported_source_ratio_is_rejected_before_upload_or_generation(self):
@@ -70,3 +71,24 @@ class FidelityTransportTests(unittest.TestCase):
    prompt=generate.call_args.args[0]
    self.assertNotIn('花瓣',prompt);self.assertIn('仅提取战斧',prompt)
    self.assertIn('本阶段背景使用纯白',prompt);self.assertIn('冲突',prompt)
+
+class PixelcutResidueTests(unittest.TestCase):
+ def test_only_remote_tiny_black_one_alpha_islands_are_removed(self):
+  im=Image.new('RGBA',(100,80));im.paste((200,140,40,255),(30,25,70,60));im.putpixel((2,2),(0,0,0,1));im.putpixel((29,30),(0,0,0,1));im.putpixel((4,70),(20,80,200,1));im.putpixel((8,72),(0,0,0,2))
+  fixed,count=p.clean_pixelcut_residue(im)
+  self.assertEqual(count,1);self.assertEqual(fixed.getpixel((2,2))[3],0)
+  for xy in [(29,30),(4,70),(8,72),(40,40)]:self.assertEqual(fixed.getpixel(xy),im.getpixel(xy))
+  self.assertEqual(im.getpixel((2,2))[3],1)
+ def test_large_faint_shadow_and_all_low_alpha_material_are_preserved(self):
+  im=Image.new('RGBA',(100,80));im.paste((200,140,40,255),(30,25,70,60));im.paste((0,0,0,1),(2,2,12,3))
+  fixed,count=p.clean_pixelcut_residue(im);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())
+  faint=Image.new('RGBA',(30,30),(0,0,0,1));fixed,count=p.clean_pixelcut_residue(faint);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),faint.tobytes())
+
+class OpaqueInteriorTests(unittest.TestCase):
+ def test_explicit_opaque_repair_fixes_interior_but_preserves_rgb_edges_and_holes(self):
+  im=Image.new('RGBA',(50,50));im.paste((40,40,48,253),(5,5,45,45));im.putpixel((25,25),(0,0,0,0));im.putpixel((5,20),(220,220,220,100));im.putpixel((1,1),(40,40,50,80))
+  fixed,count=p.repair_opaque_interior(im,expected_opaque=True)
+  self.assertGreater(count,0);self.assertEqual(fixed.getpixel((15,15)),(40,40,48,255));self.assertEqual(fixed.getpixel((25,25)),im.getpixel((25,25)));self.assertEqual(fixed.getpixel((5,20)),im.getpixel((5,20)));self.assertEqual(fixed.getpixel((1,1)),im.getpixel((1,1)));self.assertEqual(fixed.getpixel((5,10)),im.getpixel((5,10)));self.assertEqual(im.getpixel((15,15))[3],253)
+ def test_no_material_confirmation_and_genuinely_translucent_regions_are_unchanged(self):
+  im=Image.new('RGBA',(20,20),(80,90,100,253));fixed,count=p.repair_opaque_interior(im);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())
+  im=Image.new('RGBA',(20,20),(80,90,100,180));fixed,count=p.repair_opaque_interior(im,expected_opaque=True);self.assertEqual(count,0);self.assertEqual(fixed.tobytes(),im.tobytes())

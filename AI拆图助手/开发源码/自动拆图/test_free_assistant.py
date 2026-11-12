@@ -4,6 +4,161 @@ from unittest.mock import patch
 from PIL import Image
 from engine import png
 
+class AutoAnnotationTests(unittest.TestCase):
+ def test_fresh_asset_name_and_auto_apply_instructions_are_distinct_from_project_title(self):
+  import free_assistant as f
+  body=self.body();body.pop('annotationOnly');body.pop('annotationLimit')
+  expected={'reply':'将生成新素材','action':'generate','instruction':'生成透明绿色宝石','targetIds':[],'reference':'original','name':'绿色宝石图标','layers':[]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=expected) as model:
+   self.assertEqual(f.plan(body,Path(folder),lambda:False,lambda *_:None),expected)
+   self.assertIn('generate和extract的name是本次新素材名称',model.call_args.args[0])
+   self.assertIn('自动添加为新图层',model.call_args.args[0])
+ def test_incomplete_subject_support_keeps_full_bag_and_reports_review_warning(self):
+  from auto_annotations import refine_envelopes
+  objects=[{'name':'完整主体','points':[[0,0],[100,0],[100,80],[0,80]]}]
+  detections={'objects':[{'name':'完整主体','shape':'envelope'}]}
+  with patch('assistant_models.analyze',return_value={'outlines':[{'index':0,'points':[[0,0],[100,0],[50,10]]}]}):
+   result,warnings=refine_envelopes(copy.deepcopy(objects),detections,self.body(),[],[(0,0,1)],100,80,128,False,lambda:False,lambda *_:None)
+   self.assertEqual(result,objects);self.assertEqual(warnings,['完整主体'])
+ def test_outer_bag_uses_convex_supports_in_any_order_without_diagonal_cuts(self):
+  from auto_annotations import support_envelope
+  points=[[5,10],[18,2],[30,10],[25,28],[10,28],[12,12],[20,15]]
+  contour=support_envelope(points,40,40,False)
+  self.assertGreater(max(p[1] for p in contour),28);self.assertLess(min(p[0] for p in contour),5)
+  from auto_annotations import validate_objects
+  self.assertEqual(len(validate_objects({'objects':[{'name':'完整主体','points':contour}]},40,40,1)),1)
+ def test_crop_coordinates_map_back_once_and_clamped_envelope_stays_valid(self):
+  from auto_annotations import box_candidates
+  result={'objects':[{'name':'小图标','box':[10,20,20,20],'shape':'rect','imageIndex':1}]}
+  points=box_candidates(result,400,300,128,False,[(0,0,1),(100,50,2)])[0]['points']
+  self.assertEqual(points,[[103,58],[117,58],[117,72],[103,72]])
+  edge={'objects':[{'name':'完整主体','box':[0,0,100,100],'shape':'envelope'}]}
+  self.assertEqual(len(box_candidates(edge,100,100,128,False,[(0,0,1)])[0]['points']),4)
+ def test_independent_text_and_panel_may_share_bounds_without_being_same_object(self):
+  from auto_annotations import box_candidates
+  result={'objects':[{'name':'按钮底板','box':[2,2,10,6],'shape':'rect'},{'name':'按钮文字','box':[2,2,10,6],'shape':'rect'}]}
+  self.assertEqual(len(box_candidates(result,20,16,128,False,[(0,0,1)])),2)
+ def test_localized_box_review_and_generated_contours_do_not_slice_subject(self):
+  import free_assistant as f
+  first={'objects':[{'name':'完整战车','box':[2,1,16,14],'shape':'rect'}]}
+  reviewed={'objects':[{'name':'完整战车','box':[-1,-1,22,18],'shape':'envelope'},{'name':'次数圆底','box':[2,10,3,3],'shape':'ellipse'}]}
+  body={**self.body(),'annotationAllowExpand':True}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=[first,reviewed,{'outlines':[{'index':0,'points':[[-1,-1],[21,-1],[21,17],[-1,17]]}]}]) as model:
+   result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(model.call_count,3);self.assertEqual(len(model.call_args_list[1].args[1]),5)
+   self.assertIn('局部放大复核',model.call_args_list[1].args[0]);self.assertEqual(list(Path(folder).iterdir()),[])
+   car=result['annotationObjects'][0]['points'];self.assertLess(min(p[0] for p in car),-1);self.assertGreater(max(p[0] for p in car),21)
+   self.assertLess(min(p[1] for p in car),-1);self.assertGreater(max(p[1] for p in car),17)
+   self.assertGreaterEqual(len(car),4);self.assertEqual(len(result['annotationObjects'][1]['points']),24)
+   self.assertEqual(result['action'],'discuss');self.assertEqual(result['layers'],[])
+ def test_localized_review_failure_cleans_all_references_and_does_not_return_first_pass(self):
+  import free_assistant as f
+  first={'objects':[{'name':'主体','box':[1,1,10,10],'shape':'rect'}]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=[first,RuntimeError('review failed')]),self.assertRaises(RuntimeError):
+   try:f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   finally:self.assertEqual(list(Path(folder).iterdir()),[])
+ def test_detailed_inventory_exceeds_old_caps_and_survives_guide_validation(self):
+  import free_assistant as f
+  from source_annotations import validate
+  import hashlib
+  body={**self.body(),'annotationLimit':128}
+  objects=[{'name':'独立控件'+str(i),'points':[[i*4+1,1],[i*4+3,1],[i*4+3,3],[i*4+1,3]]} for i in range(80)]
+  body['image']=png(Image.new('RGB',(400,40),'red'));body['scene'].update(width=400,height=40)
+  f.validate_request(body)
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value={'objects':objects}) as model:
+   result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(len(result['annotationObjects']),80)
+   for phrase in ('帮助图标','倒计时','数量文字','半透明底板','逐区扫描','不是要求凑满','完整徽章','铆钉','不是独立控件'):self.assertIn(phrase,model.call_args.args[0])
+  state={'version':1,'width':400,'height':40,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'items':[{'color':'#%06x'%(i+1),'label':o['name'],'strokes':[o['points']]} for i,o in enumerate(objects)]}
+  self.assertEqual(len(validate(state,body['image'],400,40)['items']),80)
+ def test_expanded_outline_roundtrips_through_annotation_validation(self):
+  import free_assistant as f
+  from source_annotations import validate
+  import hashlib
+  body={**self.body(),'annotationAllowExpand':True}
+  output={'objects':[{'name':'完整战车','points':[[-3,-4],[23,-4],[23,20],[-3,20]]}]}
+  f.validate_request(body)
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=output) as model:
+   result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(result['annotationObjects'],output['objects'])
+   for phrase in ('宽松包围','不要用最后一条闭合线','不是硬蒙版','底板','负坐标'):self.assertIn(phrase,model.call_args.args[0])
+  state={'version':1,'width':20,'height':16,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'allowExpand':True,'items':[{'color':'#ffdf24','label':'完整战车','strokes':[output['objects'][0]['points']]}]}
+  self.assertIsNotNone(validate(state,body['image'],20,16))
+  for changed in ({**body,'annotationAllowExpand':False},{**body,'annotationAllowExpand':0}):
+   with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=output),self.assertRaises(ValueError):f.plan(changed,Path(folder),lambda:False,lambda *_:None)
+ def test_no_recognized_objects_is_static_no_retry_result(self):
+  import free_assistant as f
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value={'objects':[]}) as model:
+   result=f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   model.assert_called_once();self.assertEqual(result['annotationObjects'],[]);self.assertIn('未识别',result['reply']);self.assertEqual(result['action'],'discuss')
+ def test_scope_discussion_preserves_selection_until_explicit_scope_change(self):
+  import free_assistant as f
+  body=self.body();body.pop('annotationOnly');body.pop('annotationLimit')
+  body['messages']=[{'role':'user','content':'只拆标注1角色头部'},{'role':'assistant','content':'可以按选区拆分'},{'role':'user','content':'若整张拆分，还有什么替代方案？先讨论'}]
+  expected={'reply':'这里的整图方案不是本轮授权范围，请先明确对象范围。','action':'discuss','instruction':'','targetIds':[],'reference':'original','name':'角色头部','layers':[],'nextStep':'discuss','choices':[]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=expected) as model:
+   self.assertEqual(f.plan(body,Path(folder),lambda:False,lambda *_:None),expected)
+   prompt=model.call_args.args[0]
+   self.assertIn('若整张拆分',prompt);self.assertIn('不是本轮授权范围',prompt)
+   self.assertIn('范围尚有歧义时action=discuss且nextStep=discuss',prompt)
+   self.assertIn('用户最新明确变更范围时按新范围执行',prompt)
+   self.assertIn('只拆标注1角色头部',prompt);self.assertIn('还有什么替代方案',prompt)
+ def test_auto_provider_uses_existing_default_without_touching_image_models(self):
+  import free_assistant as f
+  body={**self.body(),'provider':'auto','model':''}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.objects()) as model:
+   f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertIn(model.call_args.args[3],('auto','codex'));self.assertEqual(model.call_args.args[4],'')
+ def test_explicit_tygpt_model_is_preserved_and_valid_triangle_accepted(self):
+  import free_assistant as f
+  body={**self.body(),'provider':'tygpt','model':'my-current-vision'}
+  output={'objects':[{'name':'文字','points':[[1,1],[18,1],[1,14]],'category':'text'}]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=output) as model:
+   result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(model.call_args.args[3:5],('tygpt','my-current-vision'));self.assertEqual(len(result['annotationObjects'][0]['points']),3)
+ def test_false_flag_preserves_ordinary_assistant_validation_and_plan(self):
+  import free_assistant as f
+  body=self.body();body['annotationOnly']=False;body['scene']['width']=19
+  expected={'reply':'只讨论','action':'discuss','instruction':'','targetIds':[],'reference':'original','name':'角色','layers':[]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=expected) as model:
+   self.assertEqual(f.plan(body,Path(folder),lambda:False,lambda *_:None),expected)
+   self.assertIs(model.call_args.args[2],f.SCHEMA)
+ def body(self):
+  return {'image':png(Image.new('RGB',(20,16),'red')),'scene':{'width':20,'height':16,'nodes':[]},'selectedIds':[],'messages':[{'role':'user','content':'自动标注主体'}],'provider':'codex','model':'vision','annotationOnly':True,'annotationLimit':2}
+ def objects(self):return {'objects':[{'name':'角色','points':[[1,1],[18,1],[18,14],[1,14]]}]}
+ def test_annotation_analysis_once_returns_readonly_candidate_and_native_metadata(self):
+  import free_assistant as f,hashlib
+  body=self.body();before=copy.deepcopy(body);status=lambda *_:None;cancel=lambda:False
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.objects()) as model:
+   result=f.plan(body,Path(folder),cancel,status)
+   model.assert_called_once();args=model.call_args.args
+   self.assertEqual(args[3:7],('codex','vision',cancel,status));self.assertEqual(len(args[1]),1)
+   for word in ('不得执行','不得生成图片','20','16'):self.assertIn(word,args[0])
+   self.assertEqual(result['annotationObjects'],self.objects()['objects']);self.assertEqual(result['action'],'discuss');self.assertEqual(list(Path(folder).iterdir()),[])
+   self.assertEqual(result['sourceHash'],hashlib.sha256(body['image'].encode()).hexdigest())
+   self.assertEqual((result['width'],result['height']),(20,16));self.assertEqual(result['layers'],[]);self.assertEqual(result['targetIds'],[])
+  self.assertEqual(body,before)
+ def test_invalid_request_options_or_snapshot_rejected_before_analysis(self):
+  import free_assistant as f
+  changes=[{'annotationOnly':1},{'annotationOnly':'true'},{'annotationLimit':True},{'annotationLimit':0},{'annotationLimit':129},{'annotationLimit':1.5},{'scene':{'width':19,'height':16,'nodes':[]}},{'selectedIds':['a']},{'attachment':{'src':self.body()['image']}}]
+  for change in changes:
+   with self.subTest(change=change),patch('assistant_models.analyze') as model,self.assertRaises(ValueError):f.validate_request({**self.body(),**change})
+   model.assert_not_called()
+ def test_invalid_contours_never_return_candidate_or_mutate_request(self):
+  import free_assistant as f
+  contours=[[[1,1],[2,2]],[[1,1],[2,2],[3,3]],[[1,1],[18,14],[18,1],[1,14]],[[1,1],[18,1],[18,1],[1,14]],[[1,1],[float('nan'),1],[1,14]],[[1,1],[float('inf'),1],[1,14]],[[1,1],[21,1],[1,14]],[[1,1],[10**400,1],[1,14]],[[True,1],[18,1],[1,14]],[[1,1],[18,1],[1,14]]*22]
+  invalid=[{'objects':[{'name':'角色','points':points}]} for points in contours]+[{'objects':self.objects()['objects']*3},{'objects':self.objects()['objects']*2},{'objects':[{'name':'','points':[[1,1],[18,1],[1,14]]}]},{'objects':self.objects()['objects'],'action':'generate'}]
+  for output in invalid:
+   body=self.body();before=copy.deepcopy(body)
+   with self.subTest(output=output),tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=output) as model,self.assertRaises(ValueError):f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   model.assert_called_once();self.assertEqual(body,before)
+ def test_cancel_before_or_after_analysis_returns_no_candidate(self):
+  import free_assistant as f
+  for after in (False,True):
+   calls=[False,True] if after else [True]
+   with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value=self.objects()) as model,self.assertRaises(InterruptedError):f.plan(self.body(),Path(folder),lambda:calls.pop(0),lambda *_:None)
+   self.assertEqual(model.call_count,int(after))
+
 class FreeAssistantTests(unittest.TestCase):
  def test_whole_image_split_rules_include_unmarked_entities_and_opaque_base(self):
   import free_assistant as f

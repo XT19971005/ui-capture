@@ -77,7 +77,21 @@
   },discard:()=>ShijieCanvasComparison.close()});
  }
  async function retry(id){const blank=blankDrafts.get(id);if(blank){await StudioBase.library.put(blank,'image',{checkpoint:true});return records(blank).find(r=>r.id===id)}await window.studio.saveCheckpoint('重试保存候选');return records(window.studio.adapter.get()).find(r=>r.id===id)}
- window.ShijieCandidateStore={retain,records,signature,render,preview,remove,retry,savedBase:id=>clone(blankDrafts.get(id))};
+ // Generated rasters always become new root layers; the existing artwork is immutable.
+ function appendImages(current,generated,ids,uuid=()=>crypto.randomUUID()){
+  if(!current?.nodes||!generated?.nodes)throw Error('生成结果缺少完整图片工程');
+  const next=clone(current),chosen=new Set(ids),used=new Set([...current.nodes,...(current.groups||[])].map(n=>n.id)),added=[];
+  for(const n of generated.nodes){if(n.type!=='image'||!n.src||!chosen.has(n.id)||n.versionArchived)continue;const item=clone(n);let id=uuid();if(used.has(id))throw Error('新图片图层标识重复，未添加');used.add(id);Object.assign(item,{id,name:String(n.name||'图片')+' · 生成',provenance:'generated-image',locked:false,visible:true,hidden:false,review:true,assetReviewStatus:'NOT_REVIEWED'});for(const key of ['versionArchived','versionArchivedAt','versionOf','imageReplacement','_sourceAnnotations','pendingGeneration'])delete item[key];next.nodes.push(item);added.push(id)}
+  if(!added.length)throw Error('没有可添加的新图片');delete next._sessionId;delete next.delivery;return {scene:next,ids:added};
+ }
+ // Only the result of the current user-started task enters this path. Restored candidates remain passive.
+ async function applyFresh({isCurrent,apply,save,retain}){
+  try{if(!isCurrent())throw Error('操作已停止，或工程/选择已改变，生成结果未自动应用');await apply()}
+  catch(error){try{await retain?.()}catch(saveError){error.message+='；候选保存失败：'+saveError.message+'；结果仍在本页，请重试保存'}throw error}
+  try{await save();return {applied:true,saveError:''}}catch(error){return {applied:true,saveError:error.message}}
+ }
+ async function retry(id){const blank=blankDrafts.get(id);if(blank){await StudioBase.library.put(blank,'image',{checkpoint:true});return records(blank).find(r=>r.id===id)}await window.studio.saveCheckpoint('重试保存候选');return records(window.studio.adapter.get()).find(r=>r.id===id)}
+ window.ShijieCandidateStore={appendImages,applyFresh,retain,records,signature,render,preview,remove,retry,savedBase:id=>clone(blankDrafts.get(id))};
  if(typeof document==='undefined')return;
  document.addEventListener('DOMContentLoaded',()=>{const old=updateButtons;updateButtons=function(...args){const result=old.apply(this,args);render();return result};render()},{once:true});
 })();

@@ -1,0 +1,9 @@
+numpy>=1.24,<3
+Pillow>=10
+opencv-python>=4.8,<5
+scipy>=1.10
+fonttools>=4.40
+rapidocr-onnxruntime==1.4.4
+nodejs-wheel-binaries>=22.13,<23
+transformers>=4.57.1,<6
+modelscope>=1.30,<2

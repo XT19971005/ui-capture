@@ -1,0 +1,48 @@
+{
+  "case": "14_动物背包_全新智能体测试",
+  "run_id": "96477fe2-50a9-4647-863d-f87b0c1510e5",
+  "result": "完整文件已取回，视觉FAIL",
+  "fixed": [
+    "纯色父层误判",
+    "细线估色偏差导致空矢量：在明确背景分离和原容差内校准实测颜色，保留诊断",
+    "英文文字使用BASIC排版并分行测量，复杂文字仍保留原排版引擎"
+  ],
+  "packaging_error": "字符串仅替换首处导致字体源码错写components.py，已纠正；今后ZIP必须逐个变更文件与源码比对，并编译包内所有Python文件。不能只测源码就宣称安装包合格。",
+  "visual_issues": [
+    "左侧库存主纸张仍残留整套卡片及分类内容，独立层叠加产生重复。",
+    "卡片底板仍保留服装残影，内窗补绘变成凹陷框；父子职责未在实际图像中兑现。",
+    "背景重建为室内木屋，与原图环境不一致。",
+    "底部Sort/Equip圆底与字母位置不一致，规划坐标存在错误。",
+    "纯色圆底完整、细线矢量已成功；普通字体仍为近似字体。"
+  ],
+  "lessons": [
+    "JSON结构及提示词正确不能证明容器去子层成功；底板实际仍含子内容，模型执行后必须看图验收。",
+    "生成独立背景仍须约束原场景，不得接受换场景作为背景恢复。",
+    "底部控件实例须核对圆底和字母共同坐标，不能仅分别合法。"
+  ],
+  "verification": {
+    "tests": 138,
+    "real_vector_assets": 16,
+    "files_sha_verified": 75,
+    "native_text": 17,
+    "native_shape": 16
+  },
+  "timings": {
+    "run_id": "96477fe2-50a9-4647-863d-f87b0c1510e5",
+    "start_utc": "2026-10-24T03:53:24.147Z",
+    "status": "FILES_DOWNLOADED_VISUAL_FAIL",
+    "planning_reuse": true,
+    "installer_sha256": "06e0fa45c7f2888d8e741556ef6926aab4cad6b12e924915c39146168151ddc7",
+    "server_generation_ui_status": "导出节点已完成，平台任务仍显示整理输出；总完成耗时暂缺",
+    "component_and_psd_seconds": 42.11,
+    "background_sampling_seconds": 5.39,
+    "download_seconds": 7.136,
+    "readback_and_sheet_seconds": 1.375,
+    "retrieval_run_id": "8ceb7acd-6be4-4b7b-8b69-cc6e4684b162",
+    "retrieval_server_seconds": 16,
+    "planning_agents_recalled": 0,
+    "verified_files": 75,
+    "visual_status": "FAIL"
+  },
+  "expert_runtime_knowledge_unchanged": true
+}

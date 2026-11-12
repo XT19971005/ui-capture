@@ -1,0 +1,100 @@
+{
+  "display_name": "QP拆图专家",
+  "meaning": "棋牌拆图专家",
+  "version": "1.1.0",
+  "skill_sha256": "d2e9381666159f8005deac74dffe9db687f38d4e021cc6b519cacce78dec2c03",
+  "utf8_bytes": 23081,
+  "validated": "89项本地回归通过；服务器完整知识加载成功，TYCompanyChat消息校验失败，尚未取得知识版本回执",
+  "sources": [
+    {
+      "path": "技能包/game-ui-to-psd/SKILL.md",
+      "sha256": "7149e0778782fc606e9d0f17f3065fd39cd169ad1e8c1669a43e7f3496e4dc97"
+    },
+    {
+      "path": "技能包/comfyui-shijie/shijie_source/acceptance_rules.py",
+      "sha256": "73eca2b78d3ce8186264ca2c73e6c49a5d2740c940990f468d3d3126f40655e3"
+    },
+    {
+      "path": "技能包/comfyui-shijie/docs/拾界能力迁移清单.json",
+      "sha256": "11dca77c4691b7f91aa1fd7a5c26b7f8f81d716777016195eef9f9acd8692136"
+    },
+    {
+      "path": "技能包/game-ui-to-psd/references/既有研究索引.json",
+      "sha256": "b3c63b7f8e38fc519dd39c066edd784b81b6a97f6bd6379b1fbf0e76551ca844"
+    },
+    {
+      "path": "测试结果/森之鹿灵_ComfyUI分支测试_20261020/12_实际验收记录.json",
+      "sha256": "3c5aade8fdae676bff1f77db80430ed7befaa2382de7fa2f5bf4ae6c37f8943b"
+    },
+    {
+      "path": "测试结果/森之鹿灵_ComfyUI分支测试_20261020/13_实际验收记录.json",
+      "sha256": "25c65cffda8432187548a8b57f9d2354efe42f8b6d0a3673f6c74533e1106db6"
+    }
+  ],
+  "platform_draft_url": "http://47.117.156.236:8000/tycomfyui/workspace/skill-workflows/?draft=b44b64c9-3822-4d7c-812a-bb91ae54eaa8",
+  "platform_state": "运行时v1.1.0节点包已启用；完整知识API验证阻塞；平台独立Skill卡片仍为旧版",
+  "authorization": "用户2026-10-21明确授权当前TYGPT专家规划及完整技能知识传入；其他图像执行继续开源",
+  "source_entry": "通过game-ui-to-psd既有研究索引指向同一实际SKILL.md，避免另存失同步副本",
+  "platform_analysis_result": {
+    "available_skill_tool_catalog": "未提供实际ComfyUI分层/抠图/背景编辑/原生PSD等工具",
+    "limitations": [
+      "未附待拆原图，本次不进行具体素材识别",
+      "Skill工具目录未接入开源OCR/字体拟合/矢量重建",
+      "Skill工具目录未接入Qwen分层/BiRefNet/Klein专用节点",
+      "Skill工具目录未接入原生PSD导出和独立回读"
+    ],
+    "distinction": "这些模型和部分节点在ComfyUI已有并曾实测，但平台Skill编排工具目录未暴露它们，不能解读成服务器完全没有模型。",
+    "not_created": "可执行专家与工作流均未创建；已保存的是上传文本和分析记录",
+    "iteration": "在同一本地源码上改版本，再上传；不把旧分析记录当新版本已发布"
+  },
+  "history": [
+    {
+      "version": "1.0.0",
+      "skill_sha256": "372826bd9e992924020a2aeb8d01b4c5be19b0c9e022664698b2f03144814ab2",
+      "utf8_bytes": 19867,
+      "platform_draft_url": "http://47.117.156.236:8000/tycomfyui/workspace/skill-workflows/?draft=e0dfaf4a-6fcd-4a8d-8954-eaa1ef3878dd",
+      "platform_state": "已上传并保存分析记录；未创建可执行专家/工作流，未运行生成"
+    },
+    {
+      "version": "1.0.1",
+      "skill_sha256": "4fb12e39b7408982325b8a6053483533bc6d9025b63481c360c4f023095c9110",
+      "platform_state": "v1.0.1上传分析完成，但平台报模型选择了未接入的工具；未创建或执行工作流"
+    }
+  ],
+  "revision_reason": "明确允许导入阶段创建保存定义，原图为运行时输入；附真实已运行的节点接线，避免把未立即生成误读为不创建工作流",
+  "corrected_diagnosis": {
+    "previous_issue": "v1.0.0补充要求把不执行生成写得不清楚，平台误述为禁止创建工作流；导入阶段也不该要求实际原图",
+    "correction": "v1.0.1明确允许创建定义、原图运行时提供，附两份实测原生工作流与节点接口",
+    "new_exact_error": "模型选择了未接入的工具",
+    "known": "本次工具选择未通过平台已接入工具校验；实际ComfyUI节点之前已跑通",
+    "unknown": "页面未显示具体被拒tool_id及完整允许目录，不能据此断言所有对应接口均不存在",
+    "workflow_execution": "未创建、未执行"
+  },
+  "runtime_knowledge": {
+    "bundle_id": "QP-full-knowledge/1.1.0",
+    "sha256": "bd9d7d6d40e60e0c561f601bd11e29a0915f190d79bc0d0d6c116f8d367a7252",
+    "source_count": 13
+  },
+  "runtime_probe": {
+    "status": "BLOCKED_API_MESSAGE_VALIDATION",
+    "knowledge": {
+      "bundle_id": "QP-full-knowledge/1.1.0",
+      "sha256": "bd9d7d6d40e60e0c561f601bd11e29a0915f190d79bc0d0d6c116f8d367a7252",
+      "source_count": 13
+    },
+    "source_text_bytes": 220457,
+    "local_tests": 89,
+    "server_package_sha256": "52870c3e970e6e90c3f08ebbddb12496053aaec98c07bb46d159b87bc7476d79",
+    "server_package_enabled": true,
+    "workflow_id": "f8db3300-a7ec-413e-b857-1ceda1224c25",
+    "run_id": "830829fc-383d-4f90-8f34-e26cefe018bc",
+    "nodes_completed": 2,
+    "nodes_total": 6,
+    "elapsed_seconds": 12,
+    "observed_error": "节点 2：API 消息或附件格式不正确",
+    "observed": "LoadImage和QPExpertRequest已完成，TYCompanyChat约1.08秒失败；没有原始API回复、知识回执或生成图片。",
+    "unknown": "错误未给出具体字段或长度上限；不能确定是平台消息长度校验还是上游格式拒绝。",
+    "required_help": "维护者按run_id检查TYCompanyChat消息校验和上游错误详情，确认长文本与图片同传的限制及允许的分段上下文接口；不可静默截断或退回旧精简规则。",
+    "visual_status": "07旧结果仍不合格，08未生成图片；知识接入尚未通过。"
+  }
+}

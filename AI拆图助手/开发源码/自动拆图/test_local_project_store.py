@@ -11,6 +11,59 @@ class LocalProjectStoreTests(unittest.TestCase):
   self.assertIsNotNone(importlib.util.find_spec('local_project_store'),'local disk project storage must exist')
   import local_project_store
   self.module=local_project_store;self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.store=local_project_store.LocalProjectStore(Path(self.temp.name)/'工程库')
+ def test_atomic_replace_does_not_retry_real_access_denied(self):
+  import ctypes, os
+  if os.name!='nt':self.skipTest('Windows error codes')
+  denied=ctypes.WinError(5)
+  with patch.object(self.module.os,'replace',side_effect=denied) as replace, patch.object(self.module.time,'sleep') as sleep:
+   with self.assertRaises(PermissionError):self.module.atomic_replace('source','destination')
+  self.assertEqual(replace.call_count,1);sleep.assert_not_called()
+ def test_atomic_replace_windows_reader_lock_and_timeout(self):
+  import ctypes, os, threading, time
+  from ctypes import wintypes
+  if os.name!='nt':self.skipTest('Windows sharing semantics')
+  kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+  kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+  kernel.CreateFileW.restype=wintypes.HANDLE
+  kernel.CloseHandle.argtypes=[wintypes.HANDLE];kernel.CloseHandle.restype=wintypes.BOOL
+  target=Path(self.temp.name)/'snapshot.json';source=Path(self.temp.name)/'complete.tmp'
+  target.write_text('old');source.write_text('new')
+  def lock():
+   handle=kernel.CreateFileW(str(target),0x80000000,1|2,None,3,0,None)
+   if handle==ctypes.c_void_p(-1).value:raise ctypes.WinError(ctypes.get_last_error())
+   return handle
+  handle=lock()
+  try:
+   with self.assertRaises(OSError) as error:self.module.os.replace(source,target)
+   self.assertIn(error.exception.winerror,(5,32,33))
+  finally:kernel.CloseHandle(handle)
+  handle=lock();released=threading.Event()
+  def release():
+   time.sleep(0.15);kernel.CloseHandle(handle);released.set()
+  worker=threading.Thread(target=release);worker.start()
+  try:self.module.atomic_replace(source,target)
+  finally:worker.join()
+  self.assertTrue(released.is_set());self.assertEqual(target.read_text(),'new');self.assertFalse(source.exists())
+  source.write_text('next');handle=lock();started=time.monotonic()
+  try:
+   with self.assertRaises(OSError) as error:self.module.atomic_replace(source,target)
+   self.assertIn(error.exception.winerror,(5,32,33))
+   self.assertGreaterEqual(time.monotonic()-started,1.9)
+   self.assertLess(time.monotonic()-started,3.5)
+   self.assertEqual(target.read_text(),'new');self.assertEqual(source.read_text(),'next')
+  finally:kernel.CloseHandle(handle)
+ def test_atomic_json_read_retries_only_transient_windows_access(self):
+  import ctypes, os
+  if os.name!='nt':self.skipTest('Windows error codes')
+  for code in (5,32,None):
+   error=ctypes.WinError(code) if code is not None else PermissionError(13,"Permission denied")
+   with patch.object(Path,'read_text',side_effect=[error,'{"complete":true}']), patch.object(self.module,'_windows_read_is_transient',return_value=False), patch.object(self.module.time,'sleep') as sleep:
+    if code in (5,None):
+     with self.assertRaises(PermissionError):self.module.read_json_atomic('snapshot')
+     sleep.assert_not_called()
+    else:self.assertEqual(self.module.read_json_atomic('snapshot'),{'complete':True})
+  with patch.object(Path,'read_text',return_value='{broken'):
+   with self.assertRaises(json.JSONDecodeError):self.module.read_json_atomic('snapshot')
  def test_roundtrip_deduplicates_and_preserves_baseline(self):
   original=record();meta=self.store.save('one',original,None)
   self.assertEqual(self.store.get('one')['doc'],original['doc']);self.assertEqual(meta['source'],'local-disk');self.assertNotIn('doc',meta)
@@ -61,14 +114,14 @@ class LocalProjectStoreTests(unittest.TestCase):
 
  def test_saved_filename_uses_chinese_title_and_same_title_projects_remain_distinct(self):
   self.store.save('one',record(),None)
-  self.assertEqual(self.store.path('one').name,'中文工程.shijie-project')
+  self.assertEqual(self.store.path('one').name,'中文工程.aisplit-project')
   second=record();second['id']='two';second['doc']['_projectId']='two'
   self.store.save('two',second,None)
-  self.assertEqual(self.store.path('two').name,'中文工程（2）.shijie-project')
+  self.assertEqual(self.store.path('two').name,'中文工程（2）.aisplit-project')
   self.assertEqual({p['id'] for p in self.store.list()},{'one','two'})
   self.assertEqual(self.store.get('one')['doc'],record()['doc'])
 
- def test_legacy_hash_filename_is_readable_then_explicit_save_renames_without_changing_id(self):
+ def test_legacy_hash_filename_is_readable_and_ordinary_save_keeps_original_path(self):
   import hashlib
   meta=self.store.save('one',record(),None)
   legacy=self.store.root/(hashlib.sha256(b'one').hexdigest()+'.shijie-project')
@@ -77,9 +130,45 @@ class LocalProjectStoreTests(unittest.TestCase):
   self.assertEqual(self.store.list()[0]['id'],'one')
   new=record();new['title']=new['doc']['title']='万圣节赛车海报'
   self.store.save('one',new,meta['persistedVersion'])
-  self.assertFalse(legacy.exists())
-  self.assertEqual(self.store.path('one').name,'万圣节赛车海报.shijie-project')
+  self.assertTrue(legacy.exists())
+  self.assertEqual(self.store.path('one'),legacy)
+  self.assertEqual(self.store.get('one')['title'],'万圣节赛车海报')
   self.assertEqual(len(list(self.store.root.iterdir())),1)
+
+ def test_mixed_extensions_list_open_and_stale_versions_do_not_overwrite(self):
+  old=self.store.save('one',record(),None)
+  legacy=self.store.root/'旧中文名.shijie-project';self.store.path('one').rename(legacy);old_bytes=legacy.read_bytes()
+  second=record();second['id']=second['doc']['_projectId']='two';self.store.save('two',second,None)
+  self.assertEqual({p['id'] for p in self.store.list()},{'one','two'})
+  self.assertEqual(self.store.get('one')['doc'],record()['doc']);self.assertEqual(self.store.path('two').suffix,'.aisplit-project')
+  with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),None)
+  self.assertEqual(legacy.read_bytes(),old_bytes)
+  newer=self.store.save('one',record(),old['persistedVersion'])
+  with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),old['persistedVersion'])
+  self.assertEqual(self.store.path('one'),legacy);self.assertEqual(self.store.get('one')['persistedVersion'],newer['persistedVersion'])
+
+ def test_explicit_manual_rename_changes_legacy_filename_once_to_new_extension(self):
+  old=self.store.save('one',record(),None);legacy=self.store.root/'旧文件.shijie-project';self.store.path('one').rename(legacy)
+  value=record();value['title']=value['doc']['title']='用户准确中文名';value['doc']['_titleSource']='manual'
+  self.store.save('one',value,old['persistedVersion'])
+  self.assertEqual(self.store.path('one').name,'用户准确中文名.aisplit-project');self.assertFalse(legacy.exists());self.assertEqual(len(list(self.store.root.iterdir())),1)
+
+ def test_ai_semantic_title_change_migrates_only_its_legacy_file_with_cas(self):
+  old=self.store.save('one',record(),None);legacy=self.store.root/'gd-hbimg-edge.shijie-project';self.store.path('one').rename(legacy)
+  value=record();value['title']=value['doc']['title']='春日麻将活动';value['doc']['_titleSource']='ai'
+  with self.assertRaises(self.module.ProjectConflict):self.store.save('one',value,'stale-version')
+  self.assertTrue(legacy.exists())
+  self.store.save('one',value,old['persistedVersion']);self.assertEqual(self.store.path('one').name,'春日麻将活动.aisplit-project');self.assertFalse(legacy.exists())
+  legacy=self.store.root/'kept-legacy.shijie-project';self.store.path('one').rename(legacy);saved=self.store.list()[0]
+  value['doc']['width']=100;self.store.save('one',value,saved['persistedVersion']);self.assertEqual(self.store.path('one'),legacy)
+
+ def test_duplicate_id_across_extensions_checks_latest_version_and_retains_old_bytes(self):
+  first=self.store.save('one',record(),None);legacy=self.store.root/'旧版.shijie-project';self.store.path('one').rename(legacy);old_bytes=legacy.read_bytes()
+  with patch.object(self.module.time,'time',return_value=first['updated']/1000+1):second=self.store.save('one',record(),first['persistedVersion'])
+  newest=self.store.root/'新版.aisplit-project';legacy.rename(newest);legacy.write_bytes(old_bytes)
+  self.assertEqual(len(self.store.list()),1);self.assertEqual(self.store.list()[0]['persistedVersion'],second['persistedVersion'])
+  with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),first['persistedVersion'])
+  self.store.save('one',record(),second['persistedVersion']);self.assertEqual(legacy.read_bytes(),old_bytes);self.assertEqual(len(list(self.store.root.iterdir())),2)
 
  def test_rename_failure_after_moving_old_file_keeps_old_contents_and_version(self):
   meta=self.store.save('one',record(),None);new=record();new['title']='新中文名称';new['doc']['source']='changed'

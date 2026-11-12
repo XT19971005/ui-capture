@@ -4,9 +4,79 @@ from pathlib import Path
 from image_wire import decode_job, measure, IMAGE_FIELDS, MAX_HTTP_BYTES, MAX_IMAGES
 
 HEADER_LIMIT=65536
+PROJECT_EXTENSION='.aisplit-project'
+LEGACY_PROJECT_EXTENSION='.shijie-project'
 _STORE_LOCKS={}
 _STORE_LOCKS_GUARD=threading.Lock()
 class ProjectConflict(ValueError):pass
+
+def _windows_replace_is_locked(source, destination):
+ # MoveFileEx may report access denied (5) for a reader denying DELETE sharing.
+ # Probe the required access to distinguish that from genuine ACL/read-only errors.
+ import ctypes
+ from ctypes import wintypes
+ kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+ kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+ kernel.CreateFileW.restype=wintypes.HANDLE
+ kernel.CloseHandle.argtypes=[wintypes.HANDLE];kernel.CloseHandle.restype=wintypes.BOOL
+ kernel.GetFileAttributesW.argtypes=[wintypes.LPCWSTR];kernel.GetFileAttributesW.restype=wintypes.DWORD
+ attributes=kernel.GetFileAttributesW(str(destination))
+ if attributes!=0xFFFFFFFF and attributes & (1|0x10):return False
+ locked=False;destination_accessible=False
+ for path in (source,destination):
+  handle=kernel.CreateFileW(str(path),0x00010000,1|2|4,None,3,0,None)
+  if handle==ctypes.c_void_p(-1).value:
+   code=ctypes.get_last_error()
+   if code in (32,33):locked=True
+   elif code!=2:return False
+  else:
+   kernel.CloseHandle(handle)
+   if path==destination:destination_accessible=True
+ # A short-lived reader may have closed between replace and this probe.
+ return locked or destination_accessible
+
+def atomic_replace(source, destination):
+ """Retry only transient Windows reader locks, keeping the same complete temp file."""
+ deadline=time.monotonic()+2.0
+ delay=0.01
+ while True:
+  try:
+   os.replace(source,destination)
+   return
+  except OSError as error:
+   if os.name!='nt':raise
+   code=getattr(error,'winerror',None)
+   if code not in (32,33) and not (code==5 and _windows_replace_is_locked(source,destination)):raise
+   remaining=deadline-time.monotonic()
+   if remaining<=0:raise
+   time.sleep(min(delay,remaining))
+   delay=min(delay*2,0.1)
+
+def _windows_read_is_transient(path):
+ import ctypes
+ from ctypes import wintypes
+ kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+ kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+ kernel.CreateFileW.restype=wintypes.HANDLE
+ kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+ handle=kernel.CreateFileW(str(path),0x80000000,1|2|4,None,3,0,None)
+ if handle==ctypes.c_void_p(-1).value:return ctypes.get_last_error() in (32,33)
+ kernel.CloseHandle(handle)
+ return True # The replace window ended before the access probe.
+
+def read_json_atomic(path):
+ """Read one complete snapshot, retrying only verified transient Windows access."""
+ deadline=time.monotonic()+2.0;delay=0.01
+ while True:
+  try:return json.loads(Path(path).read_text(encoding='utf8'))
+  except OSError as error:
+   if os.name!='nt':raise
+   code=getattr(error,'winerror',None)
+   denied=code==5 or (code is None and isinstance(error,PermissionError) and error.errno==13)
+   if code not in (32,33) and not (denied and _windows_read_is_transient(path)):raise
+   remaining=deadline-time.monotonic()
+   if remaining<=0:raise
+   time.sleep(min(delay,remaining));delay=min(delay*2,0.1)
 
 def pack_record(record):
  images=[];indexes={}
@@ -34,7 +104,8 @@ class LocalProjectStore:
   return path
  def _entries(self):
   if not self.root.exists():return
-  for path in self.root.glob('*.shijie-project'):
+  for path in self.root.iterdir():
+   if path.suffix.lower() not in (PROJECT_EXTENSION,LEGACY_PROJECT_EXTENSION):continue
    if path.is_symlink() or path.resolve().parent!=self.root.resolve():continue
    try:
     with path.open('rb') as stream:meta=self._header(stream)
@@ -45,12 +116,13 @@ class LocalProjectStore:
   legacy=self._legacy_path(ident)
   matches=[(p,m) for p,m in self._entries() if m['id']==ident]
   return max(matches,key=lambda pair:(pair[1]['updated'],pair[0].name))[0] if matches else legacy
- def _destination(self,title,current):
+ def _destination(self,title,current,rename_legacy=False):
+  if current.exists() and current.suffix.lower()==LEGACY_PROJECT_EXTENSION and not rename_legacy:return current
   name=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',title).strip(' .')[:80].rstrip(' .') or '未命名工程'
   if re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])',name.split('.')[0].rstrip(' ')):name='工程_'+name
   index=1
   while True:
-   path=self.root/(name+('' if index==1 else f'（{index}）')+'.shijie-project')
+   path=self.root/(name+('' if index==1 else f'（{index}）')+PROJECT_EXTENSION)
    if path.resolve().parent!=self.root.resolve():raise ValueError('工程路径无效')
    if not path.exists() or os.path.normcase(str(path))==os.path.normcase(str(current)):return path
    index+=1
@@ -86,6 +158,7 @@ class LocalProjectStore:
    with path.open('rb') as stream:previous=self._header(stream)
   actual=previous.get('persistedVersion') if previous else None
   if actual!=expected:raise ProjectConflict('工程已在另一个页面更新或删除；当前修改仍在页面中，请重新打开或导出工程副本。')
+  return previous
  def save(self,ident,record,expected):
   self._legacy_path(ident)
   if not isinstance(record,dict) or record.get('id')!=ident or record.get('saveMode')!='saved' or record.get('kind') not in ('image','web') or not isinstance(record.get('doc'),dict):raise ValueError('保存工程参数无效')
@@ -116,16 +189,16 @@ class LocalProjectStore:
   if len(header)>HEADER_LIMIT:raise ValueError('工程索引过大，原工程已保留')
   compressed=gzip.compress(raw,compresslevel=1,mtime=0)
   with self.lock:
-   path=self.path(ident);self._check_version(path,expected);self.root.mkdir(parents=True,exist_ok=True)
-   destination=self._destination(title,path)
+   path=self.path(ident);previous=self._check_version(path,expected);self.root.mkdir(parents=True,exist_ok=True)
+   destination=self._destination(title,path,record['doc'].get('_titleSource') in ('manual','ai') and title!=(previous or {}).get('title'))
    temp=None
    try:
     with tempfile.NamedTemporaryFile(dir=self.root,prefix='.saving-',suffix='.tmp',delete=False) as stream:
      temp=Path(stream.name);stream.write(header);stream.write(compressed);stream.flush();os.fsync(stream.fileno())
     # Keep the previous complete bytes available if writing the new version
     # fails after a title change. IDs and CAS versions do not depend on names.
-    if path.exists() and os.path.normcase(str(path))!=os.path.normcase(str(destination)):os.replace(path,destination)
-    os.replace(temp,destination)
+    if path.exists() and os.path.normcase(str(path))!=os.path.normcase(str(destination)):atomic_replace(path,destination)
+    atomic_replace(temp,destination)
    finally:
     if temp is not None:temp.unlink(missing_ok=True)
   return meta

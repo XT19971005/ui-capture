@@ -1,0 +1,1450 @@
+{
+  "extra": {
+    "ds": {
+      "scale": 0.5924955762261235,
+      "offset": [
+        127.60917311549571,
+        129.8535707796309
+      ]
+    },
+    "frontendVersion": "1.49.6"
+  },
+  "links": [
+    [
+      29,
+      1,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      30,
+      40,
+      1,
+      13,
+      1,
+      "INT"
+    ],
+    [
+      31,
+      41,
+      1,
+      13,
+      2,
+      "INT"
+    ],
+    [
+      32,
+      14,
+      0,
+      17,
+      0,
+      "MODEL"
+    ],
+    [
+      33,
+      15,
+      0,
+      18,
+      0,
+      "CLIP"
+    ],
+    [
+      34,
+      15,
+      0,
+      19,
+      0,
+      "CLIP"
+    ],
+    [
+      35,
+      16,
+      0,
+      20,
+      1,
+      "VAE"
+    ],
+    [
+      36,
+      13,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      37,
+      20,
+      0,
+      21,
+      1,
+      "LATENT"
+    ],
+    [
+      38,
+      18,
+      0,
+      21,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      39,
+      20,
+      0,
+      22,
+      1,
+      "LATENT"
+    ],
+    [
+      40,
+      19,
+      0,
+      22,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      41,
+      1,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      42,
+      40,
+      1,
+      24,
+      0,
+      "INT"
+    ],
+    [
+      43,
+      41,
+      1,
+      24,
+      1,
+      "INT"
+    ],
+    [
+      45,
+      17,
+      0,
+      25,
+      0,
+      "MODEL"
+    ],
+    [
+      46,
+      22,
+      0,
+      25,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      47,
+      21,
+      0,
+      25,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      48,
+      24,
+      0,
+      25,
+      3,
+      "LATENT"
+    ],
+    [
+      49,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      50,
+      26,
+      0,
+      27,
+      0,
+      "LATENT"
+    ],
+    [
+      51,
+      16,
+      0,
+      28,
+      1,
+      "VAE"
+    ],
+    [
+      52,
+      27,
+      0,
+      28,
+      0,
+      "LATENT"
+    ],
+    [
+      53,
+      28,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      54,
+      28,
+      0,
+      33,
+      0,
+      "IMAGE"
+    ],
+    [
+      55,
+      23,
+      0,
+      40,
+      0,
+      "INT"
+    ],
+    [
+      56,
+      23,
+      1,
+      41,
+      0,
+      "INT"
+    ],
+    [
+      101,
+      1,
+      0,
+      100,
+      0,
+      "IMAGE"
+    ],
+    [
+      102,
+      100,
+      0,
+      101,
+      1,
+      "STRING"
+    ],
+    [
+      103,
+      28,
+      0,
+      101,
+      0,
+      "IMAGE"
+    ],
+    [
+      104,
+      103,
+      0,
+      24,
+      2,
+      "INT"
+    ],
+    [
+      105,
+      102,
+      0,
+      103,
+      0,
+      "STRING"
+    ]
+  ],
+  "nodes": [
+    {
+      "id": 11,
+      "pos": [
+        100,
+        362
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        82
+      ],
+      "type": "PrimitiveInt",
+      "flags": {},
+      "order": 0,
+      "title": "最长边",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        1024,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "fixed": "fixed",
+        "value": 1024
+      }
+    },
+    {
+      "id": 13,
+      "pos": [
+        1470,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        130
+      ],
+      "type": "ImageScale",
+      "flags": {},
+      "order": 12,
+      "title": "对齐到原尺寸",
+      "inputs": [
+        {
+          "link": 29,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 30,
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "link": 31,
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScale"
+      },
+      "widgets_values": [
+        "lanczos",
+        512,
+        512,
+        "disabled"
+      ],
+      "widgets_values_named": {
+        "crop": "disabled",
+        "width": 512,
+        "height": 512,
+        "upscale_method": "lanczos"
+      }
+    },
+    {
+      "id": 14,
+      "pos": [
+        100,
+        786
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        82
+      ],
+      "type": "UNETLoader",
+      "flags": {},
+      "order": 2,
+      "title": "加载分层模型",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "qwen_image_layered_bf16.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "qwen_image_layered_bf16.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    {
+      "id": 15,
+      "pos": [
+        100,
+        998
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        106
+      ],
+      "type": "CLIPLoader",
+      "flags": {},
+      "order": 3,
+      "title": "加载文本编码器",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            33,
+            34
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "widgets_values_named": {
+        "type": "qwen_image",
+        "device": "default",
+        "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors"
+      }
+    },
+    {
+      "id": 16,
+      "pos": [
+        100,
+        1234
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        58
+      ],
+      "type": "VAELoader",
+      "flags": {},
+      "order": 4,
+      "title": "加载分层VAE",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            35,
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "qwen_image_layered_vae.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "qwen_image_layered_vae.safetensors"
+      }
+    },
+    {
+      "id": 17,
+      "pos": [
+        470,
+        326
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        58
+      ],
+      "type": "ModelSamplingAuraFlow",
+      "flags": {},
+      "order": 6,
+      "title": "设置采样移位",
+      "inputs": [
+        {
+          "link": 32,
+          "name": "model",
+          "type": "MODEL"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelSamplingAuraFlow"
+      },
+      "widgets_values": [
+        1
+      ],
+      "widgets_values_named": {
+        "shift": 1
+      }
+    },
+    {
+      "id": 19,
+      "pos": [
+        470,
+        844
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "CLIPTextEncode",
+      "flags": {},
+      "order": 8,
+      "title": "负向条件",
+      "inputs": [
+        {
+          "link": 34,
+          "name": "clip",
+          "type": "CLIP"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "text": ""
+      }
+    },
+    {
+      "id": 20,
+      "pos": [
+        1905.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        46
+      ],
+      "type": "VAEEncode",
+      "flags": {},
+      "order": 14,
+      "title": "编码原图",
+      "inputs": [
+        {
+          "link": 36,
+          "name": "pixels",
+          "type": "IMAGE"
+        },
+        {
+          "link": 35,
+          "name": "vae",
+          "type": "VAE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            37,
+            39
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEEncode"
+      }
+    },
+    {
+      "id": 21,
+      "pos": [
+        2145.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        46
+      ],
+      "type": "ReferenceLatent",
+      "flags": {},
+      "order": 15,
+      "title": "正向参考原图",
+      "inputs": [
+        {
+          "link": 38,
+          "name": "conditioning",
+          "type": "CONDITIONING"
+        },
+        {
+          "link": 37,
+          "name": "latent",
+          "type": "LATENT",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ReferenceLatent"
+      }
+    },
+    {
+      "id": 22,
+      "pos": [
+        2145.0494140625,
+        306
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        46
+      ],
+      "type": "ReferenceLatent",
+      "flags": {},
+      "order": 16,
+      "title": "负向参考原图",
+      "inputs": [
+        {
+          "link": 40,
+          "name": "conditioning",
+          "type": "CONDITIONING"
+        },
+        {
+          "link": 39,
+          "name": "latent",
+          "type": "LATENT",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ReferenceLatent"
+      }
+    },
+    {
+      "id": 23,
+      "pos": [
+        470,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        66
+      ],
+      "type": "GetImageSize",
+      "flags": {},
+      "order": 9,
+      "title": "读取缩放后尺寸",
+      "inputs": [
+        {
+          "link": 41,
+          "name": "image",
+          "type": "IMAGE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            55
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            56
+          ]
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImageSize"
+      }
+    },
+    {
+      "id": 24,
+      "pos": [
+        1470,
+        390
+      ],
+      "mode": 0,
+      "size": [
+        335.0494140625,
+        130
+      ],
+      "type": "EmptyQwenImageLayeredLatentImage",
+      "flags": {},
+      "order": 13,
+      "title": "准备分层潜空间",
+      "inputs": [
+        {
+          "link": 42,
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "link": 43,
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "link": 104,
+          "name": "layers",
+          "type": "INT",
+          "widget": {
+            "name": "layers"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyQwenImageLayeredLatentImage"
+      },
+      "widgets_values": [
+        640,
+        640,
+        3,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 640,
+        "height": 640,
+        "layers": 3,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 25,
+      "pos": [
+        2385.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        262
+      ],
+      "type": "KSampler",
+      "flags": {},
+      "order": 17,
+      "title": "分层采样",
+      "inputs": [
+        {
+          "link": 45,
+          "name": "model",
+          "type": "MODEL"
+        },
+        {
+          "link": 47,
+          "name": "positive",
+          "type": "CONDITIONING"
+        },
+        {
+          "link": 46,
+          "name": "negative",
+          "type": "CONDITIONING"
+        },
+        {
+          "link": 48,
+          "name": "latent_image",
+          "type": "LATENT"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        123456789,
+        "randomize",
+        20,
+        2.5,
+        "euler",
+        "simple",
+        1
+      ],
+      "widgets_values_named": {
+        "cfg": 2.5,
+        "seed": 123456789,
+        "steps": 20,
+        "denoise": 1,
+        "scheduler": "simple",
+        "sampler_name": "euler",
+        "control_after_generate": "randomize"
+      }
+    },
+    {
+      "id": 26,
+      "pos": [
+        2755.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        106
+      ],
+      "type": "LatentCut",
+      "flags": {},
+      "order": 18,
+      "title": "去掉参考帧",
+      "inputs": [
+        {
+          "link": 49,
+          "name": "samples",
+          "type": "LATENT"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LatentCut"
+      },
+      "widgets_values": [
+        "t",
+        1,
+        16384
+      ],
+      "widgets_values_named": {
+        "dim": "t",
+        "index": 1,
+        "amount": 16384
+      }
+    },
+    {
+      "id": 27,
+      "pos": [
+        3125.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        82
+      ],
+      "type": "LatentCutToBatch",
+      "flags": {},
+      "order": 19,
+      "title": "拆成图层批次",
+      "inputs": [
+        {
+          "link": 50,
+          "name": "samples",
+          "type": "LATENT"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            52
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LatentCutToBatch"
+      },
+      "widgets_values": [
+        "t",
+        1
+      ],
+      "widgets_values_named": {
+        "dim": "t",
+        "slice_size": 1
+      }
+    },
+    {
+      "id": 28,
+      "pos": [
+        3495.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        46
+      ],
+      "type": "VAEDecode",
+      "flags": {},
+      "order": 20,
+      "title": "解码透明图层",
+      "inputs": [
+        {
+          "link": 52,
+          "name": "samples",
+          "type": "LATENT"
+        },
+        {
+          "link": 51,
+          "name": "vae",
+          "type": "VAE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            53,
+            54,
+            103
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 29,
+      "pos": [
+        3735.0494140625,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        58
+      ],
+      "type": "SaveImage",
+      "flags": {},
+      "order": 21,
+      "title": "保存透明图层",
+      "inputs": [
+        {
+          "link": 53,
+          "name": "images",
+          "type": "IMAGE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "shijie/layers"
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "shijie/layers"
+      }
+    },
+    {
+      "id": 33,
+      "pos": [
+        3735.0494140625,
+        318
+      ],
+      "mode": 0,
+      "size": [
+        140,
+        26
+      ],
+      "type": "PreviewImage",
+      "flags": {},
+      "order": 22,
+      "title": "透明图层预览",
+      "inputs": [
+        {
+          "link": 54,
+          "name": "images",
+          "type": "IMAGE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 40,
+      "pos": [
+        970,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "ComfyMathExpression",
+      "flags": {},
+      "order": 10,
+      "title": "宽度对齐到16",
+      "inputs": [
+        {
+          "link": 55,
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "label": "a"
+        },
+        {
+          "link": null,
+          "name": "values.b",
+          "type": "FLOAT,INT,BOOLEAN",
+          "label": "b",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            30,
+            42
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "int(round(a / 16.0) * 16)"
+      ],
+      "widgets_values_named": {
+        "expression": "int(round(a / 16.0) * 16)"
+      }
+    },
+    {
+      "id": 41,
+      "pos": [
+        970,
+        460
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "ComfyMathExpression",
+      "flags": {},
+      "order": 11,
+      "title": "高度对齐到16",
+      "inputs": [
+        {
+          "link": 56,
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "label": "a"
+        },
+        {
+          "link": null,
+          "name": "values.b",
+          "type": "FLOAT,INT,BOOLEAN",
+          "label": "b",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            31,
+            43
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "int(round(a / 16.0) * 16)"
+      ],
+      "widgets_values_named": {
+        "expression": "int(round(a / 16.0) * 16)"
+      }
+    },
+    {
+      "id": 1,
+      "pos": [
+        100,
+        130
+      ],
+      "mode": 0,
+      "size": [
+        270,
+        314
+      ],
+      "type": "LoadImage",
+      "flags": {},
+      "order": 5,
+      "title": "原图",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            29,
+            41,
+            101
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "年年有余.jpg",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "年年有余.jpg",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 18,
+      "pos": [
+        470,
+        514
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "CLIPTextEncode",
+      "flags": {},
+      "order": 7,
+      "title": "正向画面说明",
+      "inputs": [
+        {
+          "link": 33,
+          "name": "clip",
+          "type": "CLIP"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "Chinese New Year poster, preserve the original composition and appearance. A cute orange dragon mascot rides a large orange koi fish in the center-right. Dark blue text on the upper left reads 2024, 龙年吉祥, 年年有余, with small Chinese and English text above. A red folding fan is at the bottom left, a turquoise folding fan along the bottom, pale peach cloud waves along the bottom, green decorative clouds at the right, and turquoise flowing abstract ribbons over a pale cyan background. Decompose into 8 transparent RGBA layers: clean pale cyan background with abstract ribbons; green decorative clouds; peach bottom clouds; red fan; turquoise fan; orange koi fish; orange dragon mascot; all blue typography. Keep original positions, colors, shapes and fine details. Complete occluded parts where possible. Each layer contains only its corresponding element, transparent elsewhere."
+      ],
+      "widgets_values_named": {
+        "text": "Chinese New Year poster, preserve the original composition and appearance. A cute orange dragon mascot rides a large orange koi fish in the center-right. Dark blue text on the upper left reads 2024, 龙年吉祥, 年年有余, with small Chinese and English text above. A red folding fan is at the bottom left, a turquoise folding fan along the bottom, pale peach cloud waves along the bottom, green decorative clouds at the right, and turquoise flowing abstract ribbons over a pale cyan background. Decompose into 8 transparent RGBA layers: clean pale cyan background with abstract ribbons; green decorative clouds; peach bottom clouds; red fan; turquoise fan; orange koi fish; orange dragon mascot; all blue typography. Keep original positions, colors, shapes and fine details. Complete occluded parts where possible. Each layer contains only its corresponding element, transparent elsewhere."
+      }
+    },
+    {
+      "id": 100,
+      "type": "ShijieAnalyze",
+      "pos": [
+        100,
+        1000
+      ],
+      "size": [
+        400,
+        280
+      ],
+      "flags": {},
+      "order": 130,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 101
+        }
+      ],
+      "outputs": [
+        {
+          "name": "专家方案_JSON",
+          "type": "STRING",
+          "links": [
+            102
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShijieAnalyze"
+      },
+      "widgets_values": [
+        0.85
+      ],
+      "title": "自动OCR（原图）"
+    },
+    {
+      "id": 101,
+      "type": "ShijieNativePSD",
+      "pos": [
+        3800,
+        700
+      ],
+      "size": [
+        400,
+        280
+      ],
+      "flags": {},
+      "order": 131,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "layers",
+          "type": "IMAGE",
+          "link": 103
+        },
+        {
+          "name": "plan_json",
+          "type": "STRING",
+          "link": 102,
+          "widget": {
+            "name": "plan_json"
+          }
+        },
+        {
+          "name": "masks",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "PSD路径",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "检查记录_JSON",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShijieNativePSD"
+      },
+      "widgets_values": [
+        "{\"texts\":[]}",
+        "年年有余_原生分层",
+        "NotoSansSC-Regular.ttf",
+        true,
+        false,
+        ""
+      ],
+      "title": "原生PSD（先检查OCR，确认后开启去重）"
+    },
+    {
+      "id": 102,
+      "type": "ShijiePlan",
+      "pos": [
+        100,
+        600
+      ],
+      "size": [
+        400,
+        280
+      ],
+      "flags": {},
+      "order": 132,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "专家方案_JSON",
+          "type": "STRING",
+          "links": [
+            105
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShijiePlan"
+      },
+      "widgets_values": [
+        "{}"
+      ],
+      "title": "视觉专家JSON：按实际内容填建议层数"
+    },
+    {
+      "id": 103,
+      "type": "ShijieLayerCount",
+      "pos": [
+        600,
+        600
+      ],
+      "size": [
+        400,
+        280
+      ],
+      "flags": {},
+      "order": 133,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "plan_json",
+          "type": "STRING",
+          "link": 105,
+          "widget": {
+            "name": "plan_json"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "建议分层数",
+          "type": "INT",
+          "links": [
+            104
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShijieLayerCount"
+      },
+      "widgets_values": [
+        "{}"
+      ],
+      "title": "动态分层数（缺少建议会明确报错）"
+    }
+  ],
+  "config": {},
+  "groups": [],
+  "version": 0.4,
+  "revision": 0,
+  "last_link_id": 105,
+  "last_node_id": 103
+}

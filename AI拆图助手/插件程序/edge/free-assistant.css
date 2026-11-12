@@ -112,3 +112,5 @@ body.assistant-docked #free-assistant .free-assistant-resizer{display:none}
 #free-assistant .assistant-choice-buttons{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 #free-assistant .assistant-choice-buttons[hidden]{display:none}
 #free-assistant .assistant-choice-buttons button{max-width:100%;white-space:normal;text-align:left;font-size:12px;overflow-wrap:anywhere}
+
+#free-assistant .assistant-generation-stages{display:flex;flex-direction:column;gap:7px;padding:10px;border:1px solid #63517d;border-radius:8px;margin:8px 0}#free-assistant .assistant-generation-stages[hidden]{display:none}#free-assistant .assistant-generation-stages label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}#free-assistant .assistant-generation-stages select{min-width:0;max-width:65%}#free-assistant .assistant-generation-stages p{margin:0;font-size:11px;line-height:1.5;color:#bcb5cd}
