@@ -8,7 +8,7 @@ const vm = require('node:vm');
 function pollingHarness(events,postFailure=false){
  const calls=[],context={TextEncoder,DOMException,setTimeout:fn=>setTimeout(fn,0),clearTimeout,SHIJIE:{prefix:'',user:99,sharedCodex:true},ShijieService:{headers:()=>({})},document:{getElementById:()=>null}};context.window=context;
  context.fetch=async(url,options={})=>{
-  calls.push({url,method:options.method||'GET'});let data;
+  calls.push({url,method:options.method||'GET',body:options.body});let data;
   if(url.endsWith('/health'))data={ready:true,codexAvailable:true,imageWireVersion:1,freeAssistantVersion:1,assistantSplitVersion:1};
   else if(options.method==='POST'){if(postFailure)throw TypeError('Failed to fetch fixture');data={id:'isolated-poll-job'}}
   else if(options.method==='DELETE')data={ok:true};
@@ -19,6 +19,13 @@ function pollingHarness(events,postFailure=false){
  return {api:context.ShijieSmartSplit,calls};
 }
 const pollInvokers={run:(api,progress)=>api.run('fixture-image','隔离轮询',progress),assistant:(api,progress)=>api.assistant({image:'fixture-image'},progress),assistantSplit:(api,progress)=>api.assistantSplit({image:'fixture-image'},progress)};
+
+test('annotation review display records never enter model requests or mutate saved metadata',async()=>{
+ const h=pollingHarness([{status:'completed',result:{reply:'ok'}}]);
+ const input={image:'fixture-image',_autoAnnotationIssues:{items:[{name:'待补项'}]},resume:{_autoAnnotationIssues:{items:[]},nested:{strokeWidths:[2],_retiredJobs:[{jobId:'private-old-job'}]}}},before=JSON.stringify(input);
+ await h.api.assistant(input);const posted=h.calls.find(c=>c.method==='POST').body;
+ assert.ok(!posted.includes('_retiredJobs'));assert.ok(!posted.includes('private-old-job'));assert.ok(!posted.includes('_autoAnnotationIssues'));assert.ok(!posted.includes('strokeWidths'));assert.equal(JSON.stringify(input),before);
+});
 
 test('temporary reads retry only GET; split receipts remain recoverable until saved',async()=>{
  for(const [kind,invoke] of Object.entries(pollInvokers)){

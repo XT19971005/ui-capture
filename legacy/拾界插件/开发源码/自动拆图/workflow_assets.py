@@ -166,6 +166,51 @@ def reusable_complete_asset(home,original_sha,node):
  return None
 
 def complete_asset(source,node,assets,structure,cancelled,original_source=None,force_repair=False,on_status=None):
+ # Full-scene backgrounds keep their established processing path.
+ if node.get('assetKind')=='background':return _legacy_complete_asset(source,node,assets,structure,cancelled,original_source,force_repair,on_status)
+ from asset_resolution import inspect_resolution,apply_resolution
+ from asset_geometry import extraction_bounds
+ from expanded_assets import extract
+ if cancelled():raise InterruptedError('已取消')
+ original_sha=hashlib.sha256(Path(original_source or source).read_bytes()).hexdigest()
+ record_file=structure/('补全_'+node['id']+'.json')
+ cached=None if force_repair or node.get('completionPlan') or node.get('sourceFidelity') else reusable_complete_asset(assets.parents[2],original_sha,node)
+ # An explicit new generation request may reuse only a genuinely large master.
+ if cached and inspect_resolution(cached[0])['status']!='MEETS_PIXEL_TARGET':cached=None
+ base=node.get('completionBase') if not force_repair else None
+ if cached or base is not None:
+  file=assets/('保留完整底稿_'+node['id']+'.png')
+  if cached:
+   previous,prior,record=cached;raw=previous.read_bytes();record=dict(record)
+   result={**copy.deepcopy(prior),'id':node['id'],'name':node['name']}
+   record.update(reusedFrom=str(previous))
+  else:
+   if not isinstance(base,dict) or not isinstance(base.get('generationRecord'),dict) or not isinstance(base.get('src'),str) or not base['src'].startswith('data:image/png;base64,'):raise ValueError('完整底稿记录无效')
+   raw=base64.b64decode(base['src'].split(',',1)[1],validate=True);record=dict(base['generationRecord'])
+   if len(raw)>27000000 or not record.get('actualImageGeneration') or not record.get('transparent') or record.get('sourceOriginalSHA256')!=original_sha or record.get('generatedAssetSHA256')!=hashlib.sha256(raw).hexdigest():raise ValueError('完整底稿与原图或登记字节不匹配，原素材保留')
+   file.write_bytes(raw)
+   result=image_node(file,node['name'],extraction_bounds(node))
+   result.update(id=node['id'],positionReviewRequired=True,reviewIssue='恢复已有生成底稿，位置仍需校对；没有重新付费生成')
+   record['reusedCompletionBase']=True
+  file.write_bytes(raw);result['src']='data:image/png;base64,'+base64.b64encode(raw).decode()
+  result.update(design_fields(node));result=apply_resolution(result,file,record,reused=True)
+ else:
+  target=extraction_bounds(node)
+  layer={**copy.deepcopy(node),**dict(zip(('x','y','width','height'),target))}
+  layer['extractionBrief']=str(node.get('extractionBrief') or node['name'])
+  if node.get('completionPlan'):layer['extractionBrief']+='；完整补绘依据：'+str(node['completionPlan'].get('notes',''))
+  if node.get('_repairNotes'):layer['extractionBrief']+='；本次已指出的修复要求：'+json.dumps(node['_repairNotes'],ensure_ascii=False)
+  result=extract(source,layer,assets,cancelled,on_status,structure=structure)
+  file=assets/(node['id']+'_完整扩展.png');record=dict(result['generationRecord'])
+ record.update(file=str(file),sourceOriginalSHA256=original_sha,generatedAssetSHA256=hashlib.sha256(file.read_bytes()).hexdigest(),**{k:node[k] for k in ('sourceAssetId','sourceEntityId','sourceEntityParts','sourceTextParts') if k in node})
+ result.update({k:node[k] for k in ('sourceAssetId','sourceEntityId','sourceEntityParts','sourceTextParts','extractionBrief','reuseEntityId') if k in node})
+ result.update(design_fields(node));result['assetKind']=node.get('assetKind','complete-asset');result['generationRecord']=record
+ result['completionBase']={'src':result['src'],'generationRecord':dict(record)}
+ record_file.write_text(json.dumps(record,ensure_ascii=False,indent=2),'utf8')
+ return result
+
+
+def _legacy_complete_asset(source,node,assets,structure,cancelled,original_source=None,force_repair=False,on_status=None):
  if node.get('_automaticCompletion'):
   from asset_completion import prepare
   node=prepare(source,node,structure,cancelled,on_status)

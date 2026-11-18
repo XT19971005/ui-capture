@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@figit/dom-to-figma": "^0.2.4"
+  }
+}

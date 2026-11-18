@@ -11,7 +11,11 @@ try:
         if image['provider']=='aimake':
             from desktop_connections import credentials
             credentials(Path(__file__).resolve().parents[1],'tygpt',{'provider':image['provider'],'model':image['model']},'assistant-plan')
-        print(json.dumps({**{k:state[k] for k in ('ready','models','model')},'imageGeneration':image['provider']=='aimake','analysisProvider':'tygpt','imageProvider':image['provider'],'imageModel':image['model']}))
+            images=True
+        else:
+            # The analysis provider does not determine the image provider's tools.
+            images=bool(CLIENT.call('modelProvider/capabilities/read',{}).get('imageGeneration'))
+        print(json.dumps({**{k:state[k] for k in ('ready','models','model')},'imageGeneration':images,'analysisProvider':'tygpt','imageProvider':image['provider'],'imageModel':image['model']}))
         raise SystemExit(0)
     account=CLIENT.account()
     models=CLIENT.models() if account['ready'] else []

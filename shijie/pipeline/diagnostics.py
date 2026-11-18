@@ -23,6 +23,10 @@ def sanitize_failure(value):
 
 
 def failure_message(value):
+    if value['exception'] == 'TygptConnectionError':
+        return 'TYGPT连接中断，本次分析未完成；原图、标注和已有图层保留，未自动重试'
+    if value['exception'] == 'TygptResponseError':
+        return 'TYGPT返回的回复无效，本次分析未完成；原图、标注和已有图层保留，未自动重试'
     if value['exception'] == 'SelectedStageAnalysisTimeout':
         return '所选类别参数分析超时，尚未生成；原图标注保留，仅需重试当前类型，不重算其他类型'
     if value['exception'] == 'CodexQuotaExceeded':

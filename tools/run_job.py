@@ -55,24 +55,28 @@ def main():
         assistant_models.CONNECTION = {'key': connection.get('taishi')}
         image_provider.CONNECTION = connection.get('image', {'provider':'codex','model':'gpt-image-2'})
         needs_codex = connection.get('needsCodex', not CLIENT.company and not local_root)
-        with (nullcontext() if not needs_codex else exclusive(Path(os.environ['CODEX_HOME']) / 'account.lock')):
+        with nullcontext():  # Each task owns a separate app-server process; no global execution lock.
             stage = 'validate_input'
             raw = read_scene(root / 'input.json')
             mode = connection.get('mode', raw.get('mode','codex'))
             if mode=='assistant-plan':
                 from free_assistant import validate_request
                 value = {'mode':mode, 'body':validate_request(raw)}
-                value['body']['provider'] = connection.get('analysisProvider', raw['provider'])
+                provider = connection.get('analysisProvider', raw['provider'])
+                # The company's selected credentials already live on CLIENT;
+                # keep its engine-facing provider inside the public allowlist.
+                value['body']['provider'] = 'auto' if provider == 'company' else provider
             elif mode=='assistant-split':
                 from assistant_split import validate
-                validate(raw)
-                value = {'mode':mode, 'body':raw}
+                value = {'mode':mode, 'body':raw, 'validated_body':validate(raw)}
             else:
                 value = validate_job(raw)
             if cancelled():
                 raise InterruptedError()
             stage = 'check_account'
-            if needs_codex:
+            from generation_stages import has_pending_images
+            native_only=value['mode']=='assistant-split' and not has_pending_images(value['validated_body'])
+            if needs_codex and not native_only:
                 CLIENT.ensure_ready(require_images=requires_generation(value) and image_provider.settings()['provider']=='codex')
             stage = 'process'
             modes = {'codex': 'codex_pipeline', 'refine-ui': 'refine_ui', 'refine-selected': 'selected_refine',

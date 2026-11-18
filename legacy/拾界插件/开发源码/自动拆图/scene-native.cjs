@@ -29,9 +29,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// node_modules/svgpath/lib/path_parse.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/path_parse.js
 var require_path_parse = __commonJS({
-  "node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
     "use strict";
     var paramCounts = { a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0 };
     var SPECIAL_SPACES = [
@@ -270,9 +270,9 @@ var require_path_parse = __commonJS({
   }
 });
 
-// node_modules/svgpath/lib/matrix.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/matrix.js
 var require_matrix = __commonJS({
-  "node_modules/svgpath/lib/matrix.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
     "use strict";
     function combine(m1, m2) {
       return [
@@ -375,9 +375,9 @@ var require_matrix = __commonJS({
   }
 });
 
-// node_modules/svgpath/lib/transform_parse.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/transform_parse.js
 var require_transform_parse = __commonJS({
-  "node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
     "use strict";
     var Matrix = require_matrix();
     var operations = {
@@ -448,9 +448,9 @@ var require_transform_parse = __commonJS({
   }
 });
 
-// node_modules/svgpath/lib/a2c.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/a2c.js
 var require_a2c = __commonJS({
-  "node_modules/svgpath/lib/a2c.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
     "use strict";
     var TAU = Math.PI * 2;
     function unit_vector_angle(ux, uy, vx, vy) {
@@ -548,9 +548,9 @@ var require_a2c = __commonJS({
   }
 });
 
-// node_modules/svgpath/lib/ellipse.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/ellipse.js
 var require_ellipse = __commonJS({
-  "node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
     "use strict";
     var epsilon = 1e-10;
     var torad = Math.PI / 180;
@@ -601,9 +601,9 @@ var require_ellipse = __commonJS({
   }
 });
 
-// node_modules/svgpath/lib/svgpath.js
+// AI拆图助手共享服务/node_modules/svgpath/lib/svgpath.js
 var require_svgpath = __commonJS({
-  "node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
     "use strict";
     var pathParse = require_path_parse();
     var transformParse = require_transform_parse();
@@ -1040,17 +1040,17 @@ var require_svgpath = __commonJS({
   }
 });
 
-// node_modules/svgpath/index.js
+// AI拆图助手共享服务/node_modules/svgpath/index.js
 var require_svgpath2 = __commonJS({
-  "node_modules/svgpath/index.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/svgpath/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_svgpath();
   }
 });
 
-// legacy/技能包/game-ui-to-psd/scripts/style_runtime.cjs
+// AI拆图助手共享服务/legacy/技能包/game-ui-to-psd/scripts/style_runtime.cjs
 var require_style_runtime = __commonJS({
-  "legacy/\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/legacy/\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
     var svgpath2 = require_svgpath2();
     var blends = ["normal", "multiply", "screen", "overlay"];
     var effects = ["stroke", "dropShadow", "innerShadow", "outerGlow", "innerGlow", "colorOverlay", "gradientOverlay"];
@@ -1478,9 +1478,9 @@ var require_style_runtime = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/trees.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/trees.js
 var require_trees = __commonJS({
-  "node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
     "use strict";
     var Z_FIXED = 4;
     var Z_BINARY = 0;
@@ -2116,9 +2116,9 @@ var require_trees = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/adler32.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/adler32.js
 var require_adler32 = __commonJS({
-  "node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
     "use strict";
     var adler32 = (adler, buf, len, pos) => {
       let s1 = adler & 65535 | 0, s2 = adler >>> 16 & 65535 | 0, n = 0;
@@ -2138,9 +2138,9 @@ var require_adler32 = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/crc32.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/crc32.js
 var require_crc32 = __commonJS({
-  "node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
     "use strict";
     var makeTable = () => {
       let c, table = [];
@@ -2167,9 +2167,9 @@ var require_crc32 = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/messages.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/messages.js
 var require_messages = __commonJS({
-  "node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       2: "need dictionary",
@@ -2194,9 +2194,9 @@ var require_messages = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/constants.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/constants.js
 var require_constants = __commonJS({
-  "node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       /* Allowed flush values; see deflate() and inflate() below for details */
@@ -2241,9 +2241,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/deflate.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/deflate.js
 var require_deflate = __commonJS({
-  "node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
     "use strict";
     var { _tr_init, _tr_stored_block, _tr_flush_block, _tr_tally, _tr_align } = require_trees();
     var adler32 = require_adler32();
@@ -3381,9 +3381,9 @@ var require_deflate = __commonJS({
   }
 });
 
-// node_modules/pako/lib/utils/common.js
+// AI拆图助手共享服务/node_modules/pako/lib/utils/common.js
 var require_common = __commonJS({
-  "node_modules/pako/lib/utils/common.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/utils/common.js"(exports2, module2) {
     "use strict";
     var _has = (obj, key) => {
       return Object.prototype.hasOwnProperty.call(obj, key);
@@ -3422,9 +3422,9 @@ var require_common = __commonJS({
   }
 });
 
-// node_modules/pako/lib/utils/strings.js
+// AI拆图助手共享服务/node_modules/pako/lib/utils/strings.js
 var require_strings = __commonJS({
-  "node_modules/pako/lib/utils/strings.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/utils/strings.js"(exports2, module2) {
     "use strict";
     var STR_APPLY_UIA_OK = true;
     try {
@@ -3551,9 +3551,9 @@ var require_strings = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/zstream.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/zstream.js
 var require_zstream = __commonJS({
-  "node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
     "use strict";
     function ZStream() {
       this.input = null;
@@ -3573,9 +3573,9 @@ var require_zstream = __commonJS({
   }
 });
 
-// node_modules/pako/lib/deflate.js
+// AI拆图助手共享服务/node_modules/pako/lib/deflate.js
 var require_deflate2 = __commonJS({
-  "node_modules/pako/lib/deflate.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/deflate.js"(exports2, module2) {
     "use strict";
     var zlib_deflate = require_deflate();
     var utils = require_common();
@@ -3734,9 +3734,9 @@ var require_deflate2 = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/inffast.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/inffast.js
 var require_inffast = __commonJS({
-  "node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
     "use strict";
     var BAD = 16209;
     var TYPE = 16191;
@@ -3962,9 +3962,9 @@ var require_inffast = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/inftrees.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/inftrees.js
 var require_inftrees = __commonJS({
-  "node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
     "use strict";
     var MAXBITS = 15;
     var ENOUGH_LENS = 852;
@@ -4274,9 +4274,9 @@ var require_inftrees = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/inflate.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/inflate.js
 var require_inflate = __commonJS({
-  "node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
     "use strict";
     var adler32 = require_adler32();
     var crc32 = require_crc32();
@@ -5525,9 +5525,9 @@ var require_inflate = __commonJS({
   }
 });
 
-// node_modules/pako/lib/zlib/gzheader.js
+// AI拆图助手共享服务/node_modules/pako/lib/zlib/gzheader.js
 var require_gzheader = __commonJS({
-  "node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
     "use strict";
     function GZheader() {
       this.text = 0;
@@ -5545,9 +5545,9 @@ var require_gzheader = __commonJS({
   }
 });
 
-// node_modules/pako/lib/inflate.js
+// AI拆图助手共享服务/node_modules/pako/lib/inflate.js
 var require_inflate2 = __commonJS({
-  "node_modules/pako/lib/inflate.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/lib/inflate.js"(exports2, module2) {
     "use strict";
     var zlib_inflate = require_inflate();
     var utils = require_common();
@@ -5720,9 +5720,9 @@ var require_inflate2 = __commonJS({
   }
 });
 
-// node_modules/pako/index.js
+// AI拆图助手共享服务/node_modules/pako/index.js
 var require_pako = __commonJS({
-  "node_modules/pako/index.js"(exports2, module2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/pako/index.js"(exports2, module2) {
     "use strict";
     var { Deflate, deflate, deflateRaw, gzip } = require_deflate2();
     var { Inflate, inflate, inflateRaw, ungzip } = require_inflate2();
@@ -5739,9 +5739,9 @@ var require_pako = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/jpeg.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/jpeg.js
 var require_jpeg = __commonJS({
-  "node_modules/ag-psd/dist/jpeg.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/jpeg.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeJpeg = void 0;
@@ -6755,9 +6755,9 @@ var require_jpeg = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/helpers.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/helpers.js
 var require_helpers = __commonJS({
-  "node_modules/ag-psd/dist/helpers.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/helpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.initializeCanvas = exports2.createImageData = exports2.createCanvas = exports2.createCanvasFromData = exports2.writeDataZipWithoutPrediction = exports2.writeDataRLE = exports2.writeDataRaw = exports2.decodeBitmap = exports2.imageDataToCanvas = exports2.resetImageData = exports2.hasAlpha = exports2.clamp = exports2.offsetForChannel = exports2.MaskParams = exports2.LayerMaskFlags = exports2.ColorSpace = exports2.createEnum = exports2.revMap = exports2.largeAdditionalInfoKeys = exports2.layerColors = exports2.toBlendMode = exports2.fromBlendMode = exports2.RAW_IMAGE_DATA = exports2.MOCK_HANDLERS = void 0;
@@ -7130,9 +7130,9 @@ var require_helpers = __commonJS({
   }
 });
 
-// node_modules/base64-js/index.js
+// AI拆图助手共享服务/node_modules/base64-js/index.js
 var require_base64_js = __commonJS({
-  "node_modules/base64-js/index.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/base64-js/index.js"(exports2) {
     "use strict";
     exports2.byteLength = byteLength;
     exports2.toByteArray = toByteArray;
@@ -7231,9 +7231,9 @@ var require_base64_js = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/utf8.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/utf8.js
 var require_utf8 = __commonJS({
-  "node_modules/ag-psd/dist/utf8.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/utf8.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeString = exports2.encodeString = exports2.encodeStringTo = exports2.stringLengthInBytes = void 0;
@@ -7380,9 +7380,9 @@ var require_utf8 = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/descriptor.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/descriptor.js
 var require_descriptor = __commonJS({
-  "node_modules/ag-psd/dist/descriptor.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/descriptor.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -9748,9 +9748,9 @@ var require_descriptor = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/imageResources.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/imageResources.js
 var require_imageResources = __commonJS({
-  "node_modules/ag-psd/dist/imageResources.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/imageResources.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -11044,9 +11044,9 @@ var require_imageResources = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/psdReader.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/psdReader.js
 var require_psdReader = __commonJS({
-  "node_modules/ag-psd/dist/psdReader.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/psdReader.js"(exports2) {
     "use strict";
     var __rest = exports2 && exports2.__rest || function(s, e) {
       var t = {};
@@ -12246,9 +12246,9 @@ var require_psdReader = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/effectsHelpers.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/effectsHelpers.js
 var require_effectsHelpers = __commonJS({
-  "node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.writeEffects = exports2.readEffects = void 0;
@@ -12565,9 +12565,9 @@ var require_effectsHelpers = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/engineData.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/engineData.js
 var require_engineData = __commonJS({
-  "node_modules/ag-psd/dist/engineData.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/engineData.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.serializeEngineData = exports2.parseEngineData = void 0;
@@ -12906,9 +12906,9 @@ var require_engineData = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/text.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/text.js
 var require_text = __commonJS({
-  "node_modules/ag-psd/dist/text.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/text.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -13526,9 +13526,9 @@ var require_text = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/engineData2.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/engineData2.js
 var require_engineData2 = __commonJS({
-  "node_modules/ag-psd/dist/engineData2.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/engineData2.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeEngineData2 = void 0;
@@ -13940,9 +13940,9 @@ var require_engineData2 = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/additionalInfo.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/additionalInfo.js
 var require_additionalInfo = __commonJS({
-  "node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -17582,9 +17582,9 @@ var require_additionalInfo = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/psdWriter.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/psdWriter.js
 var require_psdWriter = __commonJS({
-  "node_modules/ag-psd/dist/psdWriter.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/psdWriter.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -18413,9 +18413,9 @@ var require_psdWriter = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/abr.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/abr.js
 var require_abr = __commonJS({
-  "node_modules/ag-psd/dist/abr.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/abr.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -18787,9 +18787,9 @@ var require_abr = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/csh.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/csh.js
 var require_csh = __commonJS({
-  "node_modules/ag-psd/dist/csh.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/csh.js"(exports2) {
     "use strict";
     var __assign = exports2 && exports2.__assign || function() {
       __assign = Object.assign || function(t) {
@@ -18839,9 +18839,9 @@ var require_csh = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/psd.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/psd.js
 var require_psd = __commonJS({
-  "node_modules/ag-psd/dist/psd.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/psd.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Compression = exports2.ChannelID = exports2.LayerCompCapturedInfo = exports2.SectionDividerType = exports2.ColorMode = void 0;
@@ -18890,9 +18890,9 @@ var require_psd = __commonJS({
   }
 });
 
-// node_modules/ag-psd/dist/index.js
+// AI拆图助手共享服务/node_modules/ag-psd/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/ag-psd/dist/index.js"(exports2) {
+  "AI\u62C6\u56FE\u52A9\u624B\u5171\u4EAB\u670D\u52A1/node_modules/ag-psd/dist/index.js"(exports2) {
     "use strict";
     var __createBinding = exports2 && exports2.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -18954,7 +18954,7 @@ var require_dist = __commonJS({
   }
 });
 
-// legacy/拾界插件/开发源码/图像重建/scene-export.js
+// AI拆图助手共享服务/legacy/拾界插件/开发源码/图像重建/scene-export.js
 var scene_export_exports = {};
 __export(scene_export_exports, {
   SCENE_CAPACITY_LIMITS: () => SCENE_CAPACITY_LIMITS,
@@ -18968,6 +18968,7 @@ __export(scene_export_exports, {
   edgeNode: () => edgeNode,
   esc: () => esc,
   figma: () => figma,
+  figmaSvg: () => figmaSvg,
   geometry: () => geometry,
   gradientData: () => gradientData2,
   groupBounds: () => groupBounds,
@@ -18992,10 +18993,10 @@ __export(scene_export_exports, {
 });
 module.exports = __toCommonJS(scene_export_exports);
 
-// legacy/拾界插件/开发源码/图像重建/layer-style.js
+// AI拆图助手共享服务/legacy/拾界插件/开发源码/图像重建/layer-style.js
 var import_style_runtime = __toESM(require_style_runtime());
 
-// legacy/拾界插件/插件程序/edge/psd-native.js
+// AI拆图助手共享服务/legacy/拾界插件/插件程序/edge/psd-native.js
 var import_svgpath = __toESM(require_svgpath2());
 var knot = (x, y, ix = x, iy = y, ox = x, oy = y) => ({ linked: false, points: [ix, iy, x, y, ox, oy] });
 var rgb8 = (c) => ({ r: Math.round((c?.r || 0) * 255), g: Math.round((c?.g || 0) * 255), b: Math.round((c?.b || 0) * 255) });
@@ -19080,10 +19081,10 @@ function pathData(d, transform = "") {
   return { paths: paths.filter((p2) => p2.knots.length > 1), d: p.toString() };
 }
 
-// legacy/拾界插件/开发源码/图像重建/layer-style.js
+// AI拆图助手共享服务/legacy/拾界插件/开发源码/图像重建/layer-style.js
 var { normalizeStyle, normalizeGradient, normalizeMask, maskPath, gradientData, nativeEffects, stylePadding, gradientPaint, styleCanvas, displayMaskCanvas, nativeMask, nativeToStyle, styleSvg, applyDom, alphaBounds, fitGradientEffects, validatePath, definitionId } = import_style_runtime.default;
 
-// legacy/拾界插件/开发源码/图像重建/scene-export.js
+// AI拆图助手共享服务/legacy/拾界插件/开发源码/图像重建/scene-export.js
 var import_ag_psd = __toESM(require_dist());
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var color = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
@@ -19513,6 +19514,51 @@ function svg(s) {
   const nodes = allNodes(s);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, nodes.map(nodeSvg), (g, parts) => layerHidden(g) ? "" : styleSvg('<g data-group="' + esc(g.id) + '" data-name="' + esc(g.name) + '" opacity="' + (g.opacity ?? 1) + '">' + parts.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
 }
+async function figmaSvg(s) {
+  validate(s);
+  assertRenderCapacity(s);
+  const nodes = allNodes(s), parts = [];
+  for (const n of nodes) {
+    let markup;
+    if (n.type !== "text") markup = nodeSvg(n);
+    else {
+      const box = textInkBounds(n), pad = Math.ceil(n.strokeWidth || 0) + 3, left = Math.floor(box.x) - pad, top = Math.floor(box.y) - pad, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
+      const scale = Math.min(3, 6e3 / Math.max(w, h), Math.sqrt(16e6 / (w * h)));
+      if (scale < 1) throw Error("Figma\u6587\u5B57\u5916\u89C2\u5C3A\u5BF8\u8D85\u8FC7\u5B89\u5168\u8303\u56F4\uFF0C\u8BF7\u5206\u6279\u5BFC\u51FA");
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(w * scale);
+      canvas.height = Math.ceil(h * scale);
+      try {
+        const c = canvas.getContext("2d"), m = textMatrix(n);
+        c.setTransform(m[0] * scale, m[1] * scale, m[2] * scale, m[3] * scale, (m[4] - left) * scale, (m[5] - top) * scale);
+        c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
+        c.letterSpacing = `${n.letterSpacing || 0}px`;
+        c.wordSpacing = `${n.wordSpacing || 0}px`;
+        c.fillStyle = n.fill;
+        if (n.strokeWidth && n.stroke) {
+          c.strokeStyle = n.stroke;
+          c.lineWidth = n.strokeWidth * 2;
+          c.lineJoin = "round";
+          textLines(n).forEach((line, i) => c.strokeText(line, 0, i * textLeading(n)));
+        }
+        textLines(n).forEach((line, i) => c.fillText(line, 0, i * textLeading(n)));
+        if (n.gradient) {
+          c.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
+          c.globalCompositeOperation = "source-in";
+          c.fillStyle = gradientPaint(c, n.gradient, n);
+          c.fillRect(left, top, w, h);
+        }
+        const image = `<image data-id="${esc(n.id)}" opacity="${n.opacity ?? 1}" x="${left}" y="${top}" width="${w}" height="${h}" href="${canvas.toDataURL("image/png")}" preserveAspectRatio="none"/>`;
+        markup = styleSvg(image, n, { x: n.x, y: n.y, width: n.width, height: n.height });
+      } finally {
+        canvas.width = canvas.height = 1;
+      }
+    }
+    const label = esc(String(n.name || n.text || n.id).replace(/[^\p{L}\p{N}_-]+/gu, "_") + "_" + n.id);
+    parts.push(`<g id="${label}"><title>${esc(n.name || n.text || n.id)}</title>${markup}</g>`);
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, parts, (g, children) => layerHidden(g) ? "" : styleSvg('<g id="' + esc(String(g.name || g.id).replace(/[^\p{L}\p{N}_-]+/gu, "_") + "_" + g.id) + '" data-group="' + esc(g.id) + '" opacity="' + (g.opacity ?? 1) + '"><title>' + esc(g.name || g.id) + "</title>" + children.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
+}
 function figma(s) {
   validate(s);
   const visible = allNodes(s), layers = visible.map((n) => {
@@ -19637,6 +19683,7 @@ async function compactPsdImages(scene) {
   return s;
 }
 async function psd(s) {
+  const masters = new Map((s.nodes || []).filter((n) => n.type === "image").map((n) => [n.id, { src: n.src, x: n.x, y: n.y, width: n.width, height: n.height }])), linkedFiles = [], linkedBySource = /* @__PURE__ */ new Map();
   s = await compactPsdImages(s);
   assertExportCapacity(s);
   const decodedImages = /* @__PURE__ */ new Map();
@@ -19721,8 +19768,19 @@ async function psd(s) {
       const canvas = factory(w, h), c = canvas.getContext("2d");
       c.translate(n.x - left, n.y - top);
       const layer = { id: index + 1, name: n.name || n.text || n.id, left, top, canvas, opacity: n.opacity ?? 1, hidden: layerHidden(n), ...n.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, blendMode: normalizeStyle(n.layerStyle)?.blendMode || "normal" };
-      if (n.type === "image") c.drawImage(await exportImage(n.src), 0, 0, n.width, n.height);
-      else if (n.type === "text") {
+      if (n.type === "image") {
+        c.drawImage(await exportImage(n.src), 0, 0, n.width, n.height);
+        const master = masters.get(n.id), info = imageMetadata(master.src);
+        let linked = linkedBySource.get(master.src);
+        if (!linked) {
+          const raw = atob(master.src.slice(master.src.indexOf(",") + 1)), data = Uint8Array.from(raw, (ch) => ch.charCodeAt(0)), extension = master.src.startsWith("data:image/jpeg;") ? "jpg" : master.src.startsWith("data:image/webp;") ? "webp" : "png";
+          linked = { id: "00000000-0000-4000-8000-" + String(linkedFiles.length + 1).padStart(12, "0"), name: (n.name || n.id) + "." + extension, data };
+          linkedBySource.set(master.src, linked);
+          linkedFiles.push(linked);
+        }
+        const { x, y, width, height } = master;
+        layer.placedLayer = { id: linked.id, placed: "00000000-0001-4000-8000-" + String(index + 1).padStart(12, "0"), type: "raster", width: info.width, height: info.height, resolution: { value: 72, units: "Density" }, transform: [x, y, x + width, y, x + width, y + height, x, y + height] };
+      } else if (n.type === "text") {
         const matrix = textMatrix(n);
         c.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4] - left, matrix[5] - top);
         c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
@@ -19778,7 +19836,7 @@ async function psd(s) {
     const children = grouped(s, exportNodes, layers, (g, children2) => ({ id: 1e4 + (s.groups || []).indexOf(g), name: g.name || "\u5206\u7EC4", children: children2, opened: true, hidden: layerHidden(g), ...g.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, opacity: g.opacity ?? 1, blendMode: normalizeStyle(g.layerStyle)?.blendMode || "normal", ...g.layerStyle ? { effects: nativeEffects(g.layerStyle) } : {}, ...g.displayMask ? { mask: nativeMask(g.displayMask, s.width, s.height, factory, Path2D) } : {}, _target: g }));
     children.forEach((l) => paint(l, cc));
     children.forEach(clean);
-    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: false });
+    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children, linkedFiles }, { noBackground: true, trimImageData: false });
   } finally {
     for (const image of decodedImages.values()) releaseDecodedImage(image);
     decodedImages.clear();
@@ -19940,6 +19998,7 @@ function resizePath(n, width, height) {
   edgeNode,
   esc,
   figma,
+  figmaSvg,
   geometry,
   gradientData,
   groupBounds,

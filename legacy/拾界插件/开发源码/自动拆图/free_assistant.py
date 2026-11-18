@@ -20,7 +20,7 @@ def validate_request(body):
  if 'annotationOnly' in body and type(body['annotationOnly']) is not bool:raise ValueError('自动标注开关无效')
  if 'annotationAllowExpand' in body and type(body['annotationAllowExpand']) is not bool:raise ValueError('自动标注向外补全开关无效')
  if 'annotationLimit' in body and (type(body['annotationLimit']) is not int or not 1<=body['annotationLimit']<=128):raise ValueError('自动标注数量必须为1至128')
- if body['provider'] not in ('codex','tygpt','auto') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
+ if body['provider'] not in ('codex','tygpt') and not (body.get('annotationOnly') is True and body['provider']=='auto') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
  from selected_dialogue import validate_dialogue
  validate_dialogue({'action':'discuss','messages':body['messages']})
  workspace=body.get('workspace')
@@ -77,7 +77,22 @@ def validate_request(body):
   validate_snapshot(body)
  return copy.deepcopy(body)
 
+def normalize_explicit_correction(result,body):
+ """A current explicit generate command may execute a complete selected-image spec.
+
+ Discussion, recovery and stale/unselected targets never authorize execution.
+ """
+ if not isinstance(result,dict):return result
+ messages=body.get('messages') or []
+ if not messages or messages[-1].get('role')!='user' or messages[-1].get('content','').strip().rstrip('。！!') not in ('生成','生成吧','开始生成','确认生成','确认并生成','可以生成'):return result
+ ids=result.get('targetIds') or []
+ if result.get('action')!='discuss' or result.get('nextStep') not in (None,'none','confirm') or result.get('layers') or result.get('choices') or result.get('reference')!='selection' or len(ids)!=1 or ids!=body.get('selectedIds') or not result.get('instruction','').strip():return result
+ node=next((n for n in body.get('scene',{}).get('nodes',[]) if n.get('id')==ids[0]),None)
+ if not node or node.get('type')!='image' or not node.get('src') or node.get('versionArchived') or node.get('pendingGeneration'):return result
+ return {**copy.deepcopy(result),'action':'correct','nextStep':'none','choices':[]}
+
 def validate_plan(result,body):
+ result=normalize_explicit_correction(result,body)
  issues=result.get('planIssues') if isinstance(result,dict) else None
  if issues is not None:
   if not isinstance(issues,list) or len(issues)>256 or any(not isinstance(i,dict) or set(i)!={'index','name','reason'} or type(i['index']) is not int or not isinstance(i['name'],str) or len(i['name'])>100 or not isinstance(i['reason'],str) or len(i['reason'])>240 for i in issues):raise ValueError('待修复对象记录无效')
@@ -122,7 +137,7 @@ def validate_plan(result,body):
  from marked_scope import validate as validate_marked_scope
  result=validate_marked_scope(copy.deepcopy(result),body)
  if result['action']=='outpaint':result['outpaintSource']={'id':ids[0],'sourceHash':hashlib.sha256(src.encode()).hexdigest(),'width':width,'height':height}
- if issues:result['planIssues']=copy.deepcopy(issues)
+ if issues:result['planIssues']=[*copy.deepcopy(issues),*result.get('planIssues',[])]
  return result
 
 def reply_prefix(text):
@@ -144,7 +159,7 @@ def _plan_one(body,folder,cancelled,on_status,on_reply=None,number_map=None):
  if body.get('layerPlan') and latest.get('role')=='user' and latest.get('content','').startswith('确认按上一条助手分析方案执行生成候选，'):
   title=(body.get('workspace') or {}).get('title','标注分层')
   if not re.search('[\u4e00-\u9fff]',title) or re.search(r'\.(png|jpg|jpeg|webp)$',title,re.I):title='标注分层'
-  result={'action':'split','reply':'按已确认的分类与样式方案创建图层，结果仍需校对。','instruction':'沿用已确认标注分层方案，原生文字、矢量及图层样式保持可编辑。','targetIds':[body['annotationTargetId']] if body.get('annotationTargetId') else [],'reference':'selection' if body.get('annotationTargetId') else 'original','name':title,'layers':copy.deepcopy(body['layerPlan']['layers']),'nextStep':'none','choices':[]}
+  result={'action':'split','reply':'方案已确认，正在提交生成任务。','instruction':'沿用已确认标注分层方案，原生文字、矢量及图层样式保持可编辑。','targetIds':[body['annotationTargetId']] if body.get('annotationTargetId') else [],'reference':'selection' if body.get('annotationTargetId') else 'original','name':title,'layers':copy.deepcopy(body['layerPlan']['layers']),'nextStep':'none','choices':[]}
   return validate_plan(result,body)
  from engine import load_source
  from assistant_models import analyze
@@ -224,7 +239,12 @@ def stage_kind(kind):
 
 def stage_annotations(marks,kind):
  if not marks or not kind:return marks
- state=copy.deepcopy(marks);state['items']=[i for i in state['items'] if stage_kind(i.get('layerType','auto'))==kind and i.get('purpose','keep')=='keep']
+ state=copy.deepcopy(marks)
+ active=[i for i in state['items'] if i.get('strokes') and i.get('purpose','keep')=='keep']
+ # A single explicitly requested image may still be unclassified in the editor.
+ # Interpret the request copy only; never rewrite the user's annotation types.
+ if kind=='image' and len(active)==1 and active[0].get('layerType','auto')=='auto':active[0]['layerType']='image'
+ state['items']=[i for i in state['items'] if stage_kind(i.get('layerType','auto'))==kind and i.get('purpose','keep')=='keep']
  colors={i['color'] for i in state['items']}
  if 'order' in state:state['order']=[c for c in state['order'] if c in colors]
  return state

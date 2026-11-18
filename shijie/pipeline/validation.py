@@ -109,4 +109,7 @@ def validate_job(data):
 def requires_generation(value):
     # Selected-layer refinement can regenerate an image after review, so check before dispatch.
     if value['mode']=='assistant-plan' or (value.get('dialogue') or {}).get('action')=='discuss':return False
+    if value['mode']=='assistant-split' and isinstance(value.get('body'),dict):
+        from generation_stages import requires_images
+        return requires_images(value.get('validated_body',value['body']))
     return value['mode'] in ('codex', 'replace-image', 'refine-selected', 'assistant-split')

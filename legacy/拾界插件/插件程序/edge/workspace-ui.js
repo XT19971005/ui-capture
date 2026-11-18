@@ -29,7 +29,7 @@
   finally{nav.removeAttribute('aria-busy')}
  });
  if(imageMode){
-  const controls=document.createElement('div');controls.className='history-tools';for(const id of ['undo','reset-initial','redo'])controls.append(document.getElementById(id));const history=document.querySelector('[data-action=history]');if(history)controls.append(history);document.querySelector('.document-bar').append(controls);document.querySelector('.bar-hint')?.remove();
+  const controls=document.createElement('div');controls.className='history-tools';for(const id of ['undo','reset-initial','save-initial','redo'])controls.append(document.getElementById(id));const history=document.querySelector('[data-action=history]');if(history)controls.append(history);document.querySelector('.document-bar').append(controls);document.querySelector('.bar-hint')?.remove();
  }
  const args=new URLSearchParams(location.search);if(args.has('library')){args.delete('library');history.replaceState(null,'',location.pathname+(args.size?'?'+args:''));window.addEventListener('load',()=>window.studio?.run('projects'),{once:true})}
 })();
@@ -39,7 +39,7 @@
  const paths={select:'<path d="m5 3 14 10-7 1-3 7z"/>',hand:'<path d="M8 12V7a1.5 1.5 0 0 1 3 0v4-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v6-3a1.5 1.5 0 0 1 3 0v6c0 4-2.5 7-6 7h-1c-2 0-3.3-1-4.5-2.5L4 14a1.5 1.5 0 0 1 2.2-2L8 14"/>',undo:'<path d="m8 5-5 5 5 5M3 10h10a6 6 0 0 1 6 6v3"/>',redo:'<path d="m16 5 5 5-5 5m5-5H11a6 6 0 0 0-6 6v3"/>',reset:'<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',history:'<path d="M3 11a9 9 0 1 1 2.5 7.5M3 5v6h6"/><path d="M12 7v5l3 2"/>'};
  const extraPaths={image:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="m3 17 5-5 4 4 3-3 6 6M12 2v6m-3-3h6"/>',text:'<path d="M5 5h14M12 5v14m-4 0h8M5 5v3m14-3v3"/>',rectangle:'<rect x="4" y="5" width="16" height="14" rx="2"/>',export:'<path d="M12 15V3m-4 4 4-4 4 4M4 14v6h16v-6"/>',sparkle:'<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM20 2v4m-2-2h4"/>'};Object.assign(paths,extraPaths);
  function decorateButton(button,key,label){button.classList.add('workspace-icon-button');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+paths[key]+'</svg><span>'+label+'</span>';}
- for(const [selector,key,label] of [['[data-tool="select"],#select-tool','select','选择'],['[data-tool="hand"],#hand-tool','hand','平移'],['#undo','undo','撤销'],['#redo','redo','重做'],['#reset-initial','reset','回到初始'],['[data-action="history"]','history','历史']]){
+ for(const [selector,key,label] of [['[data-tool="select"],#select-tool','select','选择'],['[data-tool="hand"],#hand-tool','hand','平移'],['#undo','undo','撤销'],['#redo','redo','重做'],['#reset-initial','reset','回到初始'],['#save-initial','rectangle','保存为初始'],['[data-action="history"]','history','历史']]){
   for(const button of document.querySelectorAll(selector))decorateButton(button,key,label);
  }
  function remaining(){for(const [id,key,label] of [['upload','image','导入图片'],['add-text','text','文字'],['add-box','rectangle','矩形'],['tab-export','export','导出'],['assistant-toggle','sparkle','AI助手']]){const button=document.getElementById(id);if(button)decorateButton(button,key,label);}const heading=document.querySelector('#free-assistant h3');if(heading&&!heading.querySelector('svg'))heading.insertAdjacentHTML('afterbegin','<span class="assistant-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24">'+paths.sparkle+'</svg></span>');}

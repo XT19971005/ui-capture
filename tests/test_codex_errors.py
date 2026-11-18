@@ -225,3 +225,18 @@ class CodexErrors(SimpleTestCase):
             result=json.loads((root/'finished.json').read_text())
             self.assertEqual(result['status'],'failed');self.assertIn('IP',result['message']);self.assertNotIn('private',result['message']);self.assertNotIn('额度',result['message'])
             self.assertEqual(read_scene(root/'input.json')['image'],png());self.assertEqual(read_scene(root/'partial.json')['nodes'],[{'id':'kept'}]);self.assertFalse((root/'result.json').exists())
+
+    def test_opaque_generated_candidate_never_overwrites_prior_file(self):
+        from PIL import Image
+        client=CodexClient();client.ensure_ready=Mock();client.model=Mock(return_value='test-model')
+        buffer=io.BytesIO();Image.new('RGB',(4,4),(100,80,60)).save(buffer,format='PNG')
+        def rpc(method,params=None,**kwargs):
+            if method=='thread/start':return {'thread':{'id':'opaque-test'}}
+            if method=='turn/start':
+                state=client.turns['opaque-test'];state['images'].append({'type':'imageGeneration','result':base64.b64encode(buffer.getvalue()).decode()});state['turn']={'status':'completed'};state['done'].set();return {'turn':{'id':'turn'}}
+            return {}
+        client.call=Mock(side_effect=rpc)
+        with tempfile.TemporaryDirectory() as folder:
+            target=Path(folder)/'kept.png';target.write_bytes(b'prior asset')
+            with self.assertRaisesRegex(RuntimeError,'透明通道'):client.generate('test',[],target,transparent=True)
+            self.assertEqual(target.read_bytes(),b'prior asset')

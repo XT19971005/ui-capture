@@ -9,6 +9,7 @@ require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(__dirname,'sc
 
 require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(__dirname,'scene-export.js')],bundle:true,format:'cjs',platform:'node',nodePaths:[nm],outfile:path.join(root,'开发源码/自动拆图/scene-native.cjs'),legalComments:'eof'});
 
+require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(__dirname,'figma-web.js')],bundle:true,format:'iife',globalName:'ShijieFigmaWeb',platform:'browser',target:'chrome110',minify:true,nodePaths:[nm],outfile:path.join(edge,'figma-web-runtime.js'),legalComments:'eof'});
 interfaces.syncInterfaces(root);
 require(path.join(nm,'esbuild')).buildSync({entryPoints:[path.join(root,'../../tools/browser_compression.cjs')],bundle:true,format:'iife',globalName:'ShijieCompression',platform:'browser',target:['chrome80','firefox98','safari15.4'],minify:true,nodePaths:[nm],outfile:path.join(root,'../../shijie/static/server/compression.js'),legalComments:'eof'});
 console.log('PASS: image import/editor/export and interface modules built.');

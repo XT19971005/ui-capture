@@ -14,7 +14,7 @@
       const response = await fetch(SHIJIE.prefix + '/api/' + route, {...options, ...(controller?{signal:controller.signal}:{}), headers: headers(), cache: 'no-store'});
       let data;
       try { data = await response.json(); } catch { throw Error('服务暂不可用，请重试'); }
-      if (!response.ok) throw Error(data.error || '请求未完成');
+      if (!response.ok) { const error = Error(data.error || '请求未完成'); error.status = response.status; throw error; }
       return data;
     } catch(error) {
       if(controller?.signal.aborted)throw Error(options.method==='POST'?'连接请求超时，保存或授权结果尚未确认；请检查已有连接后再操作':'连接检查超时，请稍后重试；已有连接保留');

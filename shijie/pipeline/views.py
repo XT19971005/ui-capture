@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import UUID
 from django.conf import settings
 from django.db import connection, transaction
+from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import render, redirect
@@ -241,8 +242,7 @@ def engine(request, route):
             validated = {'mode':'assistant-plan', 'title':'AI 助手分析', 'resume':None}
         elif route == 'assistant/split':
             from assistant_split import validate
-            validate(value)
-            validated = {'mode':'assistant-split', 'title':value['title'], 'resume':None}
+            validated = {'mode':'assistant-split', 'title':value['title'], 'resume':None, 'body':validate(value)}
         else:
             validated = validate_job(value)
         from codex_client import LOGIN_REQUIRED_MESSAGE, IMAGE_GENERATION_REQUIRED_MESSAGE
@@ -350,8 +350,15 @@ def job_data(job, include_result=False, include_input=True):
     pending=job.status=='delivery-pending'
     value = {'id': str(job.pk), 'title': job.title, 'mode': job.mode, 'status': 'failed' if pending else job.status,
              'progress': job.progress, 'message': job.message, 'partialRevision': job.partial_revision,
-             'created': job.created_at.isoformat()}
+             'created': job.created_at.isoformat(),
+             'startedAt': job.started_at.isoformat() if getattr(job, 'started_at', None) else None}
     if job.status=='queued' and job.executor=='desktop':
+        # Only counts leave this owner's boundary; never reveal other users' tasks.
+        ahead = Job.objects.filter(executor='desktop').filter(
+            Q(status='running') | Q(status='queued', cancel_requested=False, created_at__lt=job.created_at) |
+            Q(status='queued', cancel_requested=False, created_at=job.created_at, pk__lt=job.pk)).count()
+        value.update(queuedAhead=ahead, queuePosition=ahead+1)
+        value['message'] = '正在等待共享电脑接单；支持同时处理，无需重复提交'
         from .desktop_service import public
         health=public()
         if not health.get('enabled') or not health.get('ready'):

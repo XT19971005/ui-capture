@@ -39,17 +39,17 @@
       tx.onerror = tx.onabort = () => reject(Error('本地目录设置保存或读取失败，请重试；原工程与当前编辑保留。'));
     });
   }
-  async function permission(handle) {
+  async function permission(handle, mode = 'readwrite') {
     if (!handle || handle.kind !== 'directory') throw Error('请先在“打开工程”中选择自己电脑上的工程文件夹。');
-    let state = await handle.queryPermission({mode: 'readwrite'});
+    let state = await handle.queryPermission({mode});
     // Renew only from an explicit user gesture; refresh and progress stay quiet.
     if (state === 'prompt' && navigator.userActivation?.isActive && typeof handle.requestPermission === 'function') {
-      try { state = await handle.requestPermission({mode: 'readwrite'}); } catch {}
+      try { state = await handle.requestPermission({mode}); } catch {}
     }
     if (state !== 'granted')
-      throw Error('本地文件夹的读写权限已失效，请点击“选择本地文件夹”重新授权；当前编辑保留。');
+      throw Error(mode === 'read' ? '浏览器未允许读取此文件夹，请重新选择文件夹并允许读取；当前工程保留。' : '尚未获得此文件夹的写入权限；仍可打开工程。请点击“保存工程”申请写入授权；如被公司策略禁止，请联系 IT。当前编辑保留。');
   }
-  async function current(expected, required = true) {
+  async function current(expected, required = true, mode = 'read') {
     available();
     const value = await setting();
     if (expected && value?.id !== expected) throw directoryChanged();
@@ -58,26 +58,43 @@
       if (required) throw Error('请先在“打开工程”中选择自己电脑上的工程文件夹；也可导出工程文件。');
       return null;
     }
-    await permission(value.handle);
+    await permission(value.handle, mode);
+    selection.writeState = await value.handle.queryPermission({mode: 'readwrite'});
     return value;
   }
   function pickDirectory() {
     // Must run directly in the click stack, before queues, IDB or other awaits.
-    try { available(); return window.showDirectoryPicker({id: 'shijie-projects', mode: 'readwrite'}); }
+    try { available(); return window.showDirectoryPicker({id: 'shijie-projects', mode: 'read'}); }
     catch (error) { return Promise.reject(error); }
   }
   async function setDirectory(handle) {
     available();
     return navigator.locks.request(lockName, async () => {
-      await permission(handle);
+      await permission(handle, 'read');
       const previous = await setting();
       const same = previous && await handle.isSameEntry(previous.handle);
       const next = {id: same ? previous.id : 'browser-folder:' + crypto.randomUUID(), handle};
       // Only an opaque identifier and directory handle enter IndexedDB, never project bodies.
       await setting(next);
       selection = next;
+      selection.writeState = await handle.queryPermission({mode: 'readwrite'});
       return {directory: next.id, directoryName: handle.name};
     });
+  }
+  function authorizeWrite() {
+    // Start permission in the explicit Save click, before compression/queues.
+    try {
+      available();
+      if (!selection?.handle) throw Error('请先选择本机工程文件夹。');
+      return permission(selection.handle, 'readwrite');
+    } catch (error) { return Promise.reject(error); }
+  }
+  function pickerError(error) {
+    const name = error?.name || 'Error', detail = String(error?.message || '').slice(0,240);
+    if (name === 'SecurityError') return '浏览器拦截了文件夹窗口。请在独立的 Edge / Chrome 标签页直接打开 HTTPS 入口，再点击“选择文件夹”。如仍失败，请检查公司浏览器策略。['+name+'] '+detail;
+    if (name === 'NotAllowedError') return '浏览器或公司策略未允许读取本机文件夹，未弹出选择窗口。请检查此网站的文件访问权限，或联系 IT。['+name+'] '+detail;
+    if (name === 'AbortError') return '文件夹选择未完成（窗口被取消或浏览器拒绝打开）；原目录和工程保留，可重试。';
+    return '文件夹连接未完成：['+name+'] '+detail;
   }
   function validId(id) {
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(id)) throw Error('工程标识无效。');
@@ -161,6 +178,7 @@
       throw Error('保存工程参数无效。');
     const listing = await entries(folder.handle), previous = listing.projects.get(ident);
     checkVersion(previous, record._expectedVersion);
+
     const now = Math.max(Date.now(), (previous?.meta.updated || 0) + 1);
     const meta = {id: ident, kind: record.kind, title: record.title, updated: now, savedAt: now, persistedAt: now,
       persistedVersion: crypto.randomUUID(), revision: record.revision || crypto.randomUUID(), saveMode: 'saved', source: 'local-disk', storageVersion: 'local-disk-v1'};
@@ -180,9 +198,10 @@
     const compressed = await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
     const output = new Blob([header, compressed]);
     // Recheck after compression; an external editor can have changed the file meanwhile.
-    await current(folder.id);
+    await current(folder.id, true, 'readwrite');
     const latest = await entries(folder.handle);
     checkVersion(latest.projects.get(ident), record._expectedVersion);
+
     const name = filename(record.title, latest.names, latest.projects.get(ident), ['manual', 'ai'].includes(record.doc._titleSource) && record.title !== previous?.meta.title);
     const created = !latest.names.has(name.toLocaleLowerCase());
     const target = await folder.handle.getFileHandle(name, {create: true});
@@ -191,18 +210,18 @@
       writer = await target.createWritable();
       await writer.write(output);
       // Permission revocation or account/directory changes never get a save acknowledgement.
-      await current(folder.id);
-      checkVersion((await entries(folder.handle)).projects.get(ident), record._expectedVersion);
+      await current(folder.id, true, 'readwrite');
+
       await writer.close();
       writer = null;
       const written = await target.getFile();
       const digest = async blob => new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())).join(',');
       if (written.size !== output.size || await digest(written) !== await digest(output)) throw Error('本地工程写入后核对失败；当前编辑保留，请重试或导出工程。');
       if (previous && previous.name !== name) {
-        checkVersion({meta: (await readHeader(await previous.handle.getFile())).meta}, record._expectedVersion);
+
         await folder.handle.removeEntry(previous.name);
       }
-      await current(folder.id);
+      await current(folder.id, true, 'readwrite');
       return {project: meta, directory: folder.id, directoryName: folder.handle.name};
     } catch (error) {
       if (writer) await writer.abort().catch(() => {});
@@ -218,7 +237,7 @@
     if (url.pathname === '/saved-projects/settings/location') throw Error('请点击“选择本地文件夹”，不能输入服务器路径。');
     return navigator.locks.request(lockName, async () => {
       const expected = body._expectedDirectory || url.searchParams.get('directory');
-      const folder = await current(expected, url.pathname !== '/saved-projects');
+      const folder = await current(expected, url.pathname !== '/saved-projects', method === 'GET' ? 'read' : 'readwrite');
       if (url.pathname === '/saved-projects' && method === 'GET') {
         const listing = folder ? await entries(folder.handle) : {projects: new Map(), unreadable: 0};
         return {directory: folder?.id || null, directoryName: folder?.handle.name || '',
@@ -245,6 +264,7 @@
       throw Error('此本地工程操作不受支持；工程不会改存服务器。');
     });
   }
-  window.ShijieBrowserProjects = {supported, pickDirectory, setDirectory, request,
+  window.ShijieBrowserProjects = {supported, pickDirectory, setDirectory, request, authorizeWrite, pickerError,
+    writePermission: () => selection?.writeState || 'unknown',
     directoryName: () => selection?.handle.name || '', unsupportedMessage: unsupported};
 })();

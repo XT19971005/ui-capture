@@ -114,7 +114,7 @@ def effective_locked_ids(scene):
 
 def review_or_pending(review):
  try:return review()
- except InterruptedError:raise
+ except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
  except Exception as error:
   note='最终画面复核未完成：'+str(error)[:240]
   return {'status':'NEEDS_REVIEW','summary':note,'issues':[note],'repair_assets':[],'asset_checks':[],'file_checks':[],'color_checks':[],'acceptance_checks':[]}
@@ -199,6 +199,13 @@ def extract_checked(source,node,assets,structure,cancelled,original,on_status,*,
   try:
    generated=complete_asset(source,node,assets,structure,cancelled,original_source=original,force_repair=bool(attempt),on_status=on_status)
    candidate=generated
+   if candidate.get('resolutionReviewRequired') or candidate.get('assetResolution',{}).get('status')=='LOW_RESOLUTION':
+    # Pixel shortfall is a delivered paid result, never consent to regenerate.
+    candidate.update(assetReviewStatus='NEEDS_REVIEW',review=True)
+    candidate.pop('pendingGeneration',None)
+    for key in ('_automaticCompletion','_repairNotes','_repairSource','_otherLayers'):candidate.pop(key,None)
+    if structure is not None:remember_record(candidate,structure)
+    return candidate
    candidate.update(assetReviewStatus='NOT_REVIEWED',assetReviewChecks=[])
    candidate.pop('pendingGeneration',None)
    if structure is not None:remember_record(candidate,structure)
@@ -294,7 +301,7 @@ def check_resume_assets(source,scene,previous,assets,structure,source_sha,cancel
    reusable[key]=candidate;continue
   if on_status:on_status('正在检查已有素材：'+current['name'])
   try:quality=review_asset(source,candidate,structure,cancelled,on_status=on_status)
-  except InterruptedError:raise
+  except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
   except Exception as error:
    candidate.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='续拆复核未完成，保留原素材：'+str(error)[:200])
    reusable[key]=candidate;continue
@@ -319,7 +326,7 @@ def check_resume_native(source,scene,cancelled,on_status,user_request=""):
   result,warnings=apply_patches(scene,response.get('patches'))
   result.setdefault('recognition',{}).setdefault('warnings',[]).extend(warnings+[n for n in response.get('notes',[]) if isinstance(n,str)])
   return result
- except InterruptedError:raise
+ except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
  except Exception as error:
   scene.setdefault('recognition',{}).setdefault('warnings',[]).append('已有文字检查未完成，保留原参数：'+str(error)[:200])
   return scene

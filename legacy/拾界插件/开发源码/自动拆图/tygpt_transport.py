@@ -13,6 +13,10 @@ class _TygptError(ValueError):
  """Static, credential-free errors that must survive JSON parsing guards."""
 
 
+class TygptConnectionError(_TygptError):pass
+class TygptResponseError(_TygptError):pass
+
+
 def _http_error(code,action):
  detail={401:'PAT无效或已过期，请重新配置本人的PAT',403:'当前PAT没有所需能力或模型权限',429:'服务限流或当前额度受限，请稍后检查'}.get(code,'服务未接受请求，请检查连接与模型配置')
  raise _TygptError('TYGPT'+action+'失败（HTTP '+str(code)+'）：'+detail+'；未自动重试')
@@ -100,8 +104,9 @@ def tygpt_analyze(prompt,images,schema,model,cancelled,on_status,on_text=None):
    data=response.json()
  except _TygptError:raise
  except requests.Timeout:raise _TygptError('TYGPT对话请求超时，服务可能已接收请求；未自动重试，工程未修改') from None
- except requests.RequestException:raise ValueError('TYGPT连接中断，未自动重试，工程未修改') from None
- except (ValueError,TypeError):raise ValueError('TYGPT请求或同步回复未完成，未自动重试') from None
+ except requests.exceptions.JSONDecodeError:raise TygptResponseError('TYGPT未返回有效回复，未自动重试，工程未修改') from None
+ except requests.RequestException:raise TygptConnectionError('TYGPT连接中断，未自动重试，工程未修改') from None
+ except (ValueError,TypeError):raise TygptResponseError('TYGPT请求或同步回复未完成，未自动重试') from None
  if cancelled():raise InterruptedError('已停止对话')
  text=_reply_text(data)
  if len(text)>32000:raise ValueError('TYGPT回复超过长度限制')

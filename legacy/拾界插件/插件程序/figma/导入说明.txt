@@ -1,0 +1,27 @@
+AI拆图助手 · Figma 导入（桌面与网页版）
+
+直接导入SVG：桌面和网页都可用
+在AI拆图助手选择“Figma（直接导入SVG）”或SVG导出，把SVG拖到Figma Design画布。无需插件；SVG不是原生.fig，文字和复杂效果的还原以实际导入为准。
+
+原生文字与分层：桌面导入，网页继续编辑
+本地开发插件的安装和运行需要Figma桌面版，网页版不能安装本ZIP。
+1. 将ZIP完整解压到固定文件夹。
+2. 在Figma桌面版打开Design文件，Plugins → Development → New plugin…（有的版本显示Create new plugin），创建Figma Design插件，选择带UI的模板并保存到本机。
+3. 打开Figma生成的manifest.json，保留它真实生成的id。把本包manifest.json里的name、api、main、ui、editorType、documentAccess、networkAccess字段合并进去：main必须为code.js，ui必须为ui.html。不要使用他人ID，不需要发布插件。
+4. 用本包code.js和ui.html替换刚生成目录里的同名文件。不要用本包无id的manifest覆盖Figma生成的manifest。
+5. 从 Plugins → Development 运行“AI拆图助手 · Figma 导入”。若未出现在列表，用 Import new plugin from manifest… 选择合并后的manifest.json。
+6. 在插件中选择AI拆图助手导出的 .figma.json / Figma数据JSON，点击“导入到当前页面”。普通工程.scene.json不能代替。
+7. 导入后等待Figma文件同步完成，复制文件链接；在网页版登录同一账号并打开该链接，即可继续编辑已建立的原生文字、图层和分组。网页版无需重新安装此本地插件。
+
+为什么需要先创建插件
+随包manifest没有预置id。Figma官方说明id由Figma创建插件时分配；本包未验证无id清单可直接安装，因此采用保留本人真实id的安装步骤，不杜撰id。
+
+限制与排错
+图片仍是位图，不会自动矢量化；缺少字体时会替代，复杂样式需要对照原图检查。仅支持嵌入图片，不会联网下载外链。
+文件上限35MB，图层上限6000，画布边长上限30000。文件过大请改为所选图层分批导出。导入提示占位框表示对应图片或SVG失败，不是完整成功，须回到源工程检查资源后重导。
+JSON是本插件专用数据，不是原生.fig；不要通过Figma文件导入菜单直接打开JSON。
+已执行两份发布脚本的离线Figma API契约检查；未操作真实Figma账号，桌面安装、实际建层、网页同文件编辑及视觉还原尚未完成实测。
+
+官方参考
+https://developers.figma.com/docs/plugins/plugin-quickstart-guide/
+https://developers.figma.com/docs/plugins/manifest/

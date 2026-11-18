@@ -147,7 +147,13 @@ def analyze(config, prompt, images, schema, cancelled=lambda: False, timeout=420
     if content.startswith('```json\n') and content.endswith('\n```'): content = content[8:-4]
     try:
         value = json.loads(content)
-        validate_result(value, schema)
+        try:
+            validate_result(value, schema)
+        except CompanyError as error:
+            # Private parsed data for callers which independently validate each
+            # object. The exception text and public diagnostics remain safe.
+            error.structured_value = value
+            raise
         return value
     except (ValueError, UnicodeError, RecursionError):
         raise CompanyError('公司 Agent 未返回有效的完整 JSON，已有图层已保留；请检查分析模型') from None

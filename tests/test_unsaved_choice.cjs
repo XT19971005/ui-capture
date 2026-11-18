@@ -90,6 +90,16 @@ function setup(){
  const api=c.ShijieBrowserProjects;
  return {c,api,files,record,fixture,connect:()=>api.setDirectory(directory),save:(value,folder,version=null)=>api.request('/saved-projects/'+value.id,{method:'PUT',body:JSON.stringify({...value,_expectedDirectory:folder,_expectedVersion:version})})};
 }
+test('只读文件夹可以选择和打开，写入未授权时保留原文件',async()=>{
+ const h=setup(),old=h.fixture('只读工程.aisplit-project',h.record('read-only'));
+ const directory=await h.c.showDirectoryPicker();directory.queryPermission=async({mode})=>mode==='read'?'granted':'denied';
+ const folder=(await h.connect()).directory;
+ const list=await h.api.request('/saved-projects');assert.equal(list.projects.length,1);
+ const opened=await h.api.request('/saved-projects/read-only');assert.equal(opened.project.id,'read-only');
+ await assert.rejects(h.save(h.record('read-only'),folder),/写入权限/);
+ assert.equal(h.files.get('只读工程.aisplit-project'),old);
+});
+
 test('AI拆图助手工程列表同时读取新旧后缀，外部导入仍按内容兼容',async()=>{
  const h=setup();h.fixture('旧工程.shijie-project',h.record('old'));h.fixture('新工程.aisplit-project',h.record('new'));h.files.set('忽略.txt',new Blob(['not a project']));
  await h.connect();const list=await h.api.request('/saved-projects');assert.deepEqual(Array.from(list.projects,p=>p.id).sort(),['new','old']);
@@ -154,7 +164,7 @@ test('unknown-origin manual recovery creates a same-title disk version and failu
  const h=setup(),original=h.fixture('准确中文标题.aisplit-project',h.record('old'));await h.connect();
  let fail=false;const c={...h.c,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),projects:async()=>({items:[]}),saveProject:record=>{if(fail)throw Error('disk full');return h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}}};c.window=c;
  vm.runInNewContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);const lib=c.StudioBase.library,doc=h.record('old').doc,before=structuredClone(doc);lib.restoreOrigin(doc);
- assert.equal(lib.unknownOrigin(doc),true);await assert.rejects(lib.put(doc,'image',{checkpoint:true}),/保存版本/);assert.equal(h.files.size,1);
+ assert.equal(lib.unknownOrigin(doc),true);await assert.rejects(lib.put(doc,'image',{checkpoint:true}),/保存版本|另存副本/);assert.equal(h.files.size,1);assert.equal(h.files.get('准确中文标题.aisplit-project'),original);
  fail=true;await assert.rejects(lib.saveRecoveredCopy(doc,'image'),/disk full/);assert.deepEqual(doc,before);assert.equal(h.files.size,1);
  fail=false;const saved=await lib.saveRecoveredCopy(doc,'image');assert.notEqual(saved.id,'old');assert.equal(saved.title,'准确中文标题');assert.deepEqual(doc,before);assert.equal(h.files.get('准确中文标题.aisplit-project'),original);assert(h.files.has('准确中文标题（2）.aisplit-project'));assert.equal(lib.snapshotOrigin(saved.doc).version,saved.persistedVersion);
 });
@@ -172,14 +182,14 @@ test('工程库明确改名记录manual来源，后续AI不得覆盖用户标题
 
 test('active rename refresh cache follows the acknowledged disk version after a slow save',async()=>{
  const h=setup();h.fixture('旧工程.shijie-project',h.record('old'));await h.connect();
- const c={...h.c,setTimeout,clearTimeout,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),savedProject:(id,directory)=>h.api.request('/saved-projects/'+id+'?directory='+encodeURIComponent(directory)),saveProject:record=>h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}};c.window=c;
+ const c={...h.c,setTimeout,clearTimeout,AbortController,ShijieSession:{library:new Map(),legacySaved:async()=>[]},ShijieSmartSplit:{savedProjects:()=>h.api.request('/saved-projects'),savedProject:(id,directory)=>h.api.request('/saved-projects/'+id+'?directory='+encodeURIComponent(directory)),saveProject:record=>h.api.request('/saved-projects/'+record.id,{method:'PUT',body:JSON.stringify(record)})}};c.window=c;
  vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(edge,'studio-base.js'),'utf8'),c);vm.runInContext(source.slice(0,source.indexOf('/* One interaction model')),c);
  const doc=(await c.StudioBase.library.get('old')).doc;let cached,release,closed=false,failed=false;
  const cache=c.ShijieReloadRecovery.create({key:'rename',session:{getItem:()=> 'tab',setItem(){}},storage:async(k,value,write)=>write?(cached=structuredClone(value)):cached,delay:60000,snapshotOrigin:d=>c.StudioBase.library.snapshotOrigin(d)});
- Object.assign(c,{B:c.StudioBase,input:{value:'用户新名称'},edit:{querySelector:()=>({}),close(){closed=true}},a:{get:()=>doc,kind:'image',flush:async()=>{},status(){}},p:{id:'old'},saveTimer:null,commit:async(_label,fn)=>{fn();cache.schedule(doc)},show(){},rememberTabProject(){},reloadRecovery:cache,recoveryState:{style:{}},recoverySaved(){},recoveryError(){failed=true},save(){}});
+ Object.assign(c,{B:c.StudioBase,input:{value:'用户新名称'},edit:{querySelector:()=>({}),close(){closed=true}},a:{get:()=>doc,kind:'image',flush:async()=>{},status(message){c.renameStatus=message}},p:{id:'old'},saveTimer:null,commit:async(_label,fn)=>{fn();cache.schedule(doc)},show(){},rememberTabProject(){},reloadRecovery:cache,recoveryState:{style:{}},recoverySaved(){},recoveryError(){failed=true},save(){}});
  vm.runInContext(source.slice(source.indexOf(' async function persistRecovery('),source.indexOf('\n function save(){')),c);
  const start=source.indexOf('const apply=async()=>{const name=input.value.trim();'),end=source.indexOf(";edit.querySelector('#project-name-save').onclick=apply;",start);vm.runInContext(source.slice(start,end)+';this.rename=apply',c);
- c.ProjectThumbnail={render:()=>new Promise(resolve=>release=resolve)};const saving=c.rename();while(!release)await new Promise(resolve=>setImmediate(resolve));await cache.flush();assert.equal(cached.origin.version,'disk-v1');release(undefined);await saving;await cache.flush();
+ c.ProjectThumbnail={render:()=>new Promise(resolve=>release=resolve)};const saving=c.rename();const deadline=Date.now()+2000;while(!release&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,1));assert.equal(typeof release,'function',c.renameStatus||'thumbnail render timeout');await cache.flush();assert.equal(cached.origin.version,'disk-v1');release(undefined);await saving;await cache.flush();
  const disk=await h.api.request('/saved-projects/old');assert.equal(closed,true);assert.equal(cached.origin.version,disk.project.persistedVersion);assert.equal(cached.doc._titleSource,'manual');
  c.ProjectThumbnail=undefined;c.StudioBase.library.restoreOrigin(doc,cached.origin);await c.StudioBase.library.put(doc,'image',{manual:true});
  // A genuine external update must still fail and keep the rename dialog retryable.
@@ -242,3 +252,5 @@ test('imported owned candidates rebind to the fresh project while unrelated cand
  const old={_projectId:'source',nodes:[],_assistantCandidates:[{version:1,id:'own',projectId:'source',base:{_projectId:'source',nodes:[]},candidate:{_projectId:'source',nodes:[]}},{version:1,id:'foreign',projectId:'other',base:{_projectId:'other'},candidate:{_projectId:'other'}}]};
  const imported=c.StudioBase.prepareImportedProject(old),record=imported._assistantCandidates[0];assert.equal(record.projectId,imported._projectId);assert.equal(record.base._projectId,imported._projectId);assert.equal(record.candidate._projectId,imported._projectId);assert.equal(imported._assistantCandidates[1].projectId,'other');assert.equal(old._assistantCandidates[0].projectId,'source');
 });
+
+test('manual save restores the remembered folder before deciding to open a picker',async()=>{let picks=0,saves=0;const owner={_projectId:'saved-owner'},ctx={a:{get:()=>owner},clearTimeout(){},saveTimer:null,window:{SHIJIE:{sharedCodex:true}},autoDirectories:new Map(),persistRecovery:async()=>{saves++},B:{library:{requiresManualExport:false,directory:()=>null,resolveDirectory:async()=> 'restored-folder',setDirectory:async()=>{picks++;throw Error('unexpected picker')}}}};const snippet=source.slice(source.indexOf(' async function saveProject(){'),source.indexOf(' async function saveBeforeLeaving(){'));vm.runInNewContext(snippet+';this.saveProject=saveProject;',ctx);await ctx.saveProject();assert.equal(picks,0);assert.equal(saves,1);assert.equal(ctx.autoDirectories.get(owner._projectId),'restored-folder');});

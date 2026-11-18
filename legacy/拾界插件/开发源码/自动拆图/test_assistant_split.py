@@ -5,6 +5,77 @@ from PIL import Image
 from engine import png
 
 class AssistantSplitTests(unittest.TestCase):
+ def test_plan_review_note_preserves_actual_asset_issues_without_duplicates(self):
+  import assistant_split as s
+  for prior,note,expected in [('素材触边；位置校准失败','标注 01；需核对脚蹬','素材触边；位置校准失败；标注 01；需核对脚蹬'),('素材触边；需核对脚蹬','需核对脚蹬','素材触边；需核对脚蹬')]:
+   with self.subTest(prior=prior,note=note):
+    body=self.body();body['layers']=body['layers'][:1];body['layers'][0]['reviewNote']=note
+    def extract(source,node,*args):
+     return {**node,'src':body['image'],'reviewIssue':prior,'boundaryReviewRequired':True,'positionReviewRequired':True,'provenance':'generated-complete-asset','generationRecord':{'actualImageGeneration':True}}
+    with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract),patch('image_provider.settings',return_value={'provider':'codex'}):
+     result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+    actual=result['nodes'][0]
+    self.assertEqual(actual['reviewIssue'],expected)
+    self.assertTrue(actual['boundaryReviewRequired']);self.assertTrue(actual['positionReviewRequired'])
+    self.assertEqual(actual['assetReviewStatus'],'NEEDS_REVIEW')
+ def test_regenerate_four_of_one_hundred_preserves_other_completed_images(self):
+  import assistant_split as s
+  from generation_stages import token
+  body=self.body();body['layers']=[dict(body['layers'][0],name='素材'+str(i)) for i in range(100)]
+  stamp=token(body);retained=[{'id':'old-'+str(i),'name':body['layers'][i]['name'],'type':'image','src':body['image'],'x':10,'y':10,'width':80,'height':80,'_generationPlanIndex':i,'_generationPlanToken':stamp} for i in range(4,100)]
+  body.update(completed=copy.deepcopy(retained),imageIndices=[0,1,2,3],stage='image');calls=[]
+  def extract(source,node,*args):
+   calls.append(node['name']);return {**node,'src':body['image'],'assetReviewStatus':'PASS','provenance':'generated-complete-asset','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(calls,['素材0','素材1','素材2','素材3']);self.assertEqual(len(result['nodes']),100);self.assertEqual(result['_generationStage']['imageRequests'],4)
+  self.assertEqual([n for n in result['nodes'] if n['_generationPlanIndex']>=4],retained)
+ def test_image_indices_keep_completed_master_and_retry_only_remaining_instance(self):
+  import assistant_split as s
+  from generation_stages import token
+  body=self.body();body['layers'][1]=dict(body['layers'][1],reuseOf=0)
+  master={'id':'new-master','type':'image','name':body['layers'][0]['name'],'x':10,'y':10,'width':80,'height':80,'src':png(Image.new('RGBA',(1536,1536),(1,2,3,255))),'assetReviewStatus':'PASS','generationRecord':{'actualImageGeneration':True},'_generationPlanIndex':0,'_generationPlanToken':token(body)}
+  body.update(completed=[master],imageIndices=[1]);before=copy.deepcopy(body)
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=AssertionError('已完成新底稿不得再次生成')):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual([n['_generationPlanIndex'] for n in result['nodes']],[0,1]);self.assertEqual(result['nodes'][0],master);self.assertEqual(result['_generationStage']['imageRequests'],0);self.assertEqual(body,before)
+  with self.assertRaisesRegex(ValueError,'已完成'):s.validate({**body,'imageIndices':[0,1]})
+ def test_explicit_image_indices_leave_other_pending_objects_untouched(self):
+  import assistant_split as s
+  body=self.body();body['layers'].append({'name':'普通文字','instruction':'保持原生文字','layerType':'text','box':{'x':1,'y':1,'width':20,'height':10},'native':{'text':'TEXT','fontFamily':'Arial','fontSize':10,'fontWeight':400,'fill':'#111111'}})
+  body['imageIndices']=[1];before=copy.deepcopy(body);calls=[]
+  def extract(source,node,*args):
+   calls.append(node['name']);return {**node,'src':body['image'],'assetReviewStatus':'PASS','provenance':'generated-complete-asset','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertEqual(calls,['鱼']);self.assertEqual([n['_generationPlanIndex'] for n in result['nodes']],[1]);self.assertEqual(body,before)
+  self.assertEqual(len(result['recognition']['pendingLayers']),3)
+  body['layers'][-1]={'name':'未选择矢量','instruction':'原生轮廓','layerType':'path','box':{'x':1,'y':1,'width':20,'height':10},'native':{'fill':'#111111','d':'M0 0 L20 0 L20 10 L0 10 Z'}}
+  with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=extract),patch('source_vector.reconstruct',side_effect=AssertionError('未选择的矢量不应处理')):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None)
+  self.assertFalse(result['recognition'].get('vectorReviewWarnings'))
+
+ def test_image_indices_are_strict_and_require_pending_same_resource_members(self):
+  import assistant_split as s
+  body=self.body()
+  for values in ([],[True],[1,1],[-1],[3],['1']):
+   with self.subTest(values=values),self.assertRaises(ValueError):s.validate({**body,'imageIndices':values})
+  with self.assertRaises(ValueError):s.validate({**body,'imageIndices':[0],'stage':'vector'})
+  body['layers'][1]=dict(body['layers'][1],reuseOf=0)
+  with self.assertRaises(ValueError):s.validate({**body,'imageIndices':[1]})
+  self.assertEqual(s.validate({**body,'imageIndices':[0,1]})['imageIndices'],[0,1])
+ def test_image_capability_tracks_stage_completed_and_reusable_results(self):
+  from generation_stages import requires_images
+  image={'name':'图片','box':{'x':0,'y':0,'width':20,'height':20}}
+  for stage in ('text','vector'):
+   self.assertFalse(requires_images({'layers':[image],'stage':stage}))
+  self.assertFalse(requires_images({'layers':[dict(image,layerType='text'),dict(image,layerType='rect')]}))
+  self.assertTrue(requires_images({'layers':[image]}))
+  self.assertFalse(requires_images({'layers':[image],'completed':[{'_generationPlanIndex':0}]}))
+  layers=[image,dict(image,name='实例',reuseOf=0)]
+  for index in (0,1):
+   self.assertFalse(requires_images({'layers':layers,'completed':[{'_generationPlanIndex':index}]}))
+  self.assertTrue(requires_images({'layers':layers}))
  def test_shared_project_id_is_validated_without_changing_the_request(self):
   import assistant_split as s
   body={**self.body(),'projectId':'shared-project_123'};before=copy.deepcopy(body)
@@ -70,6 +141,23 @@ class AssistantSplitTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as folder,patch('incremental_assets.extract_once',side_effect=lambda source,node,*args:{**node,'provenance':'source-crop-fallback'}):
    result=s.generate(self.body(),Path(folder),lambda:False,lambda *_:None)
   self.assertEqual(result['nodes'],[]);self.assertTrue(result['_partial']);self.assertEqual(len(result['recognition']['pendingLayers']),3);self.assertEqual(len(result['recognition']['vectorReviewWarnings']),3)
+ def test_extraction_failure_preserves_upload_reason_without_publishing_fallback_or_retry(self):
+  import assistant_split as s
+  body=self.body();before=copy.deepcopy(body);calls=[];snapshots=[]
+  reason='参考图上传失败：HTTP 429 Too Many Requests'
+  def complete(source,node,*args,**kwargs):
+   calls.append(node['name'])
+   if node['name']=='勋章':raise RuntimeError(reason)
+   return {**node,'src':body['image'],'provenance':'generated-complete-asset','generationRecord':{'actualImageGeneration':True}}
+  with tempfile.TemporaryDirectory() as folder,patch('image_provider.settings',return_value={'provider':'test'}),patch('workflow_assets.complete_asset',side_effect=complete):
+   result=s.generate(body,Path(folder),lambda:False,lambda *_:None,on_scene=lambda scene:snapshots.append(copy.deepcopy(scene)))
+  self.assertEqual(calls,['勋章','鱼','特级大师'])
+  self.assertEqual([n['name'] for n in result['nodes']],['鱼','特级大师'])
+  self.assertTrue(result['_partial']);self.assertEqual(body,before)
+  warnings=result['recognition']['vectorReviewWarnings'];self.assertEqual(len(warnings),1)
+  self.assertEqual(warnings[0]['index'],0);self.assertEqual(warnings[0]['name'],'勋章')
+  self.assertIn(reason,warnings[0]['reason']);self.assertIn('没有自动重试',warnings[0]['reason'])
+  self.assertTrue(all(n.get('provenance')!='source-crop-fallback' for scene in snapshots+[result] for n in scene['nodes']))
  def test_invalid_boxes_and_too_many_layers_never_submit(self):
   import assistant_split as s
   for change in ({'layers':[]},{'layers':self.body()['layers']*8},{'width':float('nan')}):

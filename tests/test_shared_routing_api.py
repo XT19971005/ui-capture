@@ -50,6 +50,27 @@ class SharedRoutingAPI(TestCase):
  def test_no_task_is_created_while_worker_offline(self):
   self.service.heartbeat=None;self.service.save()
   response=self.client.post('/api/engine/assistant/jobs',self.plan(),content_type='application/json');self.assertEqual(response.status_code,503);self.assertFalse(Job.objects.exists())
+ def test_native_split_does_not_require_image_generation(self):
+  self.service.capabilities.update(imageGeneration=False,imageProvider='codex');self.service.save()
+  for kind in ('text','rect'):
+   with self.subTest(kind=kind):
+    value={'image':png(),'width':4,'height':3,'title':'native','layers':[{'name':'原生层','instruction':'按原图保留','layerType':kind,'box':{'x':0,'y':0,'width':4,'height':3}}]}
+    response=self.client.post('/api/engine/assistant/split',value,content_type='application/json')
+    self.assertEqual(response.status_code,202,response.content)
+    snapshot=json.loads((job_root(Job.objects.get(pk=response.json()['id']))/'connection.json').read_text())
+    self.assertFalse(snapshot['needsCodex']);self.assertFalse(snapshot['requiresImages'])
+ def test_pending_image_still_requires_image_generation(self):
+  self.service.capabilities.update(imageGeneration=False,imageProvider='codex');self.service.save()
+  value={'image':png(),'width':4,'height':3,'title':'image','layers':[{'name':'图片','instruction':'完整提取','box':{'x':0,'y':0,'width':4,'height':3}}]}
+  response=self.client.post('/api/engine/assistant/split',value,content_type='application/json')
+  self.assertEqual(response.status_code,422);self.assertFalse(Job.objects.exists())
+ def test_regeneration_preserves_full_plan_indices_and_limits_request(self):
+  value={'image':png(),'width':4,'height':3,'title':'regenerate','stage':'image','imageIndices':[1],
+         'layers':[{'name':name,'instruction':'完整提取','box':{'x':0,'y':0,'width':4,'height':3}} for name in ('保留待办','重生目标','另一个待办')]}
+  response=self.client.post('/api/engine/assistant/split',value,content_type='application/json')
+  self.assertEqual(response.status_code,202,response.content)
+  job=Job.objects.get(pk=response.json()['id']);self.assertEqual(read_scene(job_root(job)/'input.json'),value)
+  snapshot=json.loads((job_root(job)/'connection.json').read_text());self.assertTrue(snapshot['requiresImages']);self.assertFalse(snapshot['nativeOnly'])
  def test_public_server_uses_saved_tygpt_and_aimake_without_desktop(self):
   import sys,types
   from shijie.pipeline import providers

@@ -1,7 +1,7 @@
 /* Portable project files share image bytes without changing document metadata. */
 (()=>{
  'use strict';
- const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:200000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource','bindingSource']);
+ const MiB=1024*1024,LIMITS=Object.freeze({uniqueImageBytes:256*MiB,metadataBytes:16*MiB,logicalBytes:1024*MiB,fileBytes:276*MiB,imageBytes:36000000,imageCount:4096,items:1000000,depth:40}),IMAGE_KEYS=new Set(['image','original','src','source','originalSource','comparisonSource','bindingSource']);
  const utf8=value=>/^[\x00-\x7f]*$/.test(value)?value.length:new TextEncoder().encode(value).byteLength;
  const jsonBytes=value=>utf8(JSON.stringify(value));
  const fail=message=>{throw Error(message)};

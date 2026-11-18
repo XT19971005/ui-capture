@@ -117,8 +117,6 @@ def enqueue(owner, value, validated, root, size, service):
     from .validation import requires_generation
     if requires_generation(validated) and not state['imageGeneration']:
         return JsonResponse({'error':'共享 Codex 当前未提供生图能力，任务未提交','code':'DESKTOP_IMAGES_UNAVAILABLE'},status=422)
-    if Job.objects.filter(owner=owner,status__in=['queued','running']).count()>=settings.MAX_QUEUED_PER_USER or Job.objects.filter(executor='desktop',status__in=['queued','running']).count()>=50:
-        return JsonResponse({'error':'共享任务队列已满，请稍后提交'},status=429)
     ids=[m['id'] for m in state['models']]
     requested=value.get('model') if validated['mode']=='assistant-plan' else owner.codex_model
     model=requested if requested in ids else state['model']
@@ -126,19 +124,22 @@ def enqueue(owner, value, validated, root, size, service):
     check_space(root,size)
     job=Job.objects.create(owner=owner,title=validated['title'],mode=validated['mode'],executor='desktop',message='等待共享电脑处理')
     write_scene(job_root(job)/'input.json',value)
-    write_json(job_root(job)/'connection.json',{'provider':state['analysisProvider'],'analysisProvider':state['analysisProvider'],'imageProvider':state['imageProvider'],'imageModel':state['imageModel'],'needsCodex':state['analysisProvider']=='codex' or state['imageProvider']=='codex','codexModel':model})
+    from generation_stages import has_pending_images
+    native_only=validated['mode']=='assistant-split' and not has_pending_images(validated['body'])
+    needs_codex=not native_only and (state['analysisProvider']=='codex' or state['imageProvider']=='codex')
+    write_json(job_root(job)/'connection.json',{'provider':state['analysisProvider'],'analysisProvider':state['analysisProvider'],'imageProvider':state['imageProvider'],'imageModel':state['imageModel'],'needsCodex':needs_codex,'requiresImages':requires_generation(validated),'nativeOnly':native_only,'codexModel':model})
     if validated.get('resume'):
         write_scene(job_root(job)/'partial.json',validated['resume'])
         Job.objects.filter(pk=job.pk).update(partial_revision=1)
     return JsonResponse({'id':str(job.pk)},status=202)
 
 
-def claim(service):
+def claim(service, active_ids=()):
     # Returning the same lease after an ambiguous HTTP response never creates a new execution.
-    job=Job.objects.select_for_update().filter(executor='desktop',status='running').order_by('created_at').first()
+    job=Job.objects.select_for_update().filter(executor='desktop',status='running').exclude(pk__in=active_ids).order_by('created_at').first()
     if job is None:
         if not service.enabled or not public(service)['ready']:return {'job':None}
-        for candidate in Job.objects.select_for_update().select_related('owner').filter(executor='desktop',status='queued').order_by('created_at'):
+        for candidate in Job.objects.select_for_update().select_related('owner').filter(executor='desktop',status='queued').order_by('created_at','pk'):
             if candidate.cancel_requested or not allowed(candidate.owner):
                 candidate.status='cancelled';candidate.message='已取消';candidate.finished_at=timezone.now();candidate.save();continue
             job=candidate;job.status='running';job.started_at=job.heartbeat=timezone.now()
@@ -146,7 +147,7 @@ def claim(service):
     if job is None:return {'job':None}
     snapshot=json.loads((job_root(job)/'connection.json').read_text())
     return {'job':{'id':str(job.pk),'lease':job.relay_lease,'mode':job.mode,'model':snapshot['codexModel'],
-                   'analysisProvider':snapshot.get('analysisProvider','codex'),'imageProvider':snapshot.get('imageProvider','codex'),'imageModel':snapshot.get('imageModel','gpt-image-2'),'input':read_scene(job_root(job)/'input.json'),'cancel':job.cancel_requested or not allowed(job.owner)}}
+                   'analysisProvider':snapshot.get('analysisProvider','codex'),'imageProvider':snapshot.get('imageProvider','codex'),'imageModel':snapshot.get('imageModel','gpt-image-2'),'requiresImages':snapshot.get('requiresImages'),'nativeOnly':snapshot.get('nativeOnly'),'input':read_scene(job_root(job)/'input.json'),'cancel':job.cancel_requested or not allowed(job.owner)}}
 
 
 def start(data):
@@ -282,9 +283,10 @@ def relay(request, action):
                 service.capabilities=capabilities(data);service.heartbeat=timezone.now();service.save()
                 response=JsonResponse({'ok':True,'enabled':service.enabled})
             elif action=='claim':
-                if data!={}:raise ValueError('接单参数无效')
+                if not isinstance(data,dict) or set(data)-{'activeIds'} or not isinstance(data.get('activeIds',[]),list):raise ValueError('接单参数无效')
+                active_ids=[UUID(value) for value in data.get('activeIds',[])]
                 from local_project_store import pack_record
-                response=JsonResponse(pack_record(claim(service)))
+                response=JsonResponse(pack_record(claim(service,active_ids)))
             elif action=='start':response=start(data)
             elif action=='update':response=update(data)
             else:return JsonResponse({'error':'接口不存在'},status=404)

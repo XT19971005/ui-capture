@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -167,7 +168,14 @@ class DesktopWorker:
         modes=('codex','refine-ui','refine-selected','repair-order','replace-image','assistant-plan','assistant-split')
         if job.get('mode') not in modes or not isinstance(job.get('model'),str):raise ValueError('不支持的远程任务')
         from desktop_connections import credentials as desktop_credentials
-        credentials=desktop_credentials(BASE,job.get('analysisProvider','codex'),{'provider':job.get('imageProvider','codex'),'model':job.get('imageModel','gpt-image-2')},job['mode'])
+        images={'provider':job.get('imageProvider','codex'),'model':job.get('imageModel','gpt-image-2')}
+        native_only=False
+        if job['mode']=='assistant-split':
+            from generation_stages import has_pending_images
+            # Keep algorithm/runtime imports inside the isolated child process.
+            native_only=job.get('nativeOnly') is True or not has_pending_images(job['input'])
+        credentials=({'mode':job['mode'],'analysisProvider':job.get('analysisProvider','codex'),'image':images,'needsCodex':False}
+                     if native_only else desktop_credentials(BASE,job.get('analysisProvider','codex'),images,job['mode']))
         process=subprocess.Popen([sys.executable,str(BASE/'tools/run_job.py'),job['id'],job['model']],cwd=folder,env=self.environment(folder),stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         tree=ProcessTree(process)
         try:process.stdin.write(json.dumps(credentials).encode());process.stdin.close()
@@ -210,9 +218,10 @@ class DesktopWorker:
                 if response.status_code==413:return False
                 if response.status_code!=200 or not response.json().get('ack'):raise RuntimeError('PSD 尚未回传成功，已保存在本机等待重传')
         return True
-    def recover_outbox(self):
+    def recover_outbox(self, active_ids=()):
         waiting=[]
         for receipt in (self.state/'jobs').glob('*/receipt.json'):
+            if receipt.parent.name in active_ids:continue
             value=json.loads(receipt.read_text('utf8'))
             waiting.append((value.get('retryAfter',0),str(receipt),receipt,value))
         # One due result per cycle bounds recovery work. Oldest retry first also
@@ -287,21 +296,34 @@ class DesktopWorker:
         from host_lock import exclusive
         with exclusive(self.state/'worker.lock'):
             (self.state/'stop').unlink(missing_ok=True)
+            active={}
+            def execute(job):
+                # Requests sessions and mutable transport state belong to one task.
+                worker=DesktopWorker({'url':self.url,'token':self.token},self.state)
+                worker.capabilities=dict(self.capabilities)
+                try:worker.handle(job)
+                except (requests.RequestException,ValueError,RuntimeError,OSError):pass  # Receipt stays available for delivery retry.
+                finally:worker.session.close()
             while not (self.state/'stop').exists():
+                active={key:thread for key,thread in active.items() if thread.is_alive()}
                 try:
                     if time.monotonic()-self.last_probe>30:
                         try:self.probe()
                         except (ValueError,OSError,subprocess.SubprocessError):
                             self.capabilities={'ready':False,'models':[],'model':'','imageGeneration':False};self.last_probe=time.monotonic()
                     self.remote('heartbeat',self.capabilities)
-                    self.recover_outbox()
-                    response=self.remote('claim',{})
-                    if response.get('job'):self.handle(response['job'])
+                    self.recover_outbox(active)
+                    response=self.remote('claim',{'activeIds':list(active)})
+                    while response.get('job') and not (self.state/'stop').exists():
+                        job=response['job'];thread=threading.Thread(target=execute,args=(job,),name='job-'+job['id'])
+                        active[job['id']]=thread;thread.start()
+                        response=self.remote('claim',{'activeIds':list(active)})
                     atomic_json(self.state/'status.json',{'connected':True,'ready':self.capabilities['ready'],'heartbeat':time.time(),
                         'pendingDelivery':sum(1 for _ in (self.state/'jobs').glob('*/receipt.json'))})
                 except (requests.RequestException,ValueError,RuntimeError,OSError):
                     atomic_json(self.state/'status.json',{'connected':False,'ready':False,'heartbeat':time.time()})
                 time.sleep(3)
+            for thread in active.values():thread.join()
 
 
 def login_cache():

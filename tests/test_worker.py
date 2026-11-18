@@ -175,6 +175,18 @@ class DesktopDelivery(TransactionTestCase):
             raise RuntimeError('fake transport HTTP '+str(response.status_code))
         return decode_job(response.json())
 
+    def test_parallel_claims_keep_active_tasks_and_leases_independent(self):
+        for client in self.clients:
+            response=client.post('/api/engine/jobs',{'image':png(),'title':'并行任务'},content_type='application/json')
+            self.assertEqual(response.status_code,202,response.content)
+        first=self.remote('claim',{})['job']
+        second=self.remote('claim',{'activeIds':[first['id']]})['job']
+        self.assertNotEqual(first['id'],second['id'])
+        self.assertNotEqual(first['lease'],second['lease'])
+        self.assertIsNone(self.remote('claim',{'activeIds':[first['id'],second['id']]})['job'])
+        self.assertEqual(self.remote('claim',{})['job']['lease'],first['lease'])
+        self.assertEqual(Job.objects.filter(status='running').count(),2)
+
     def pending_job(self):
         from uuid import uuid4
         for client in self.clients:
@@ -317,8 +329,10 @@ class DesktopQueueHealthTests(SimpleTestCase):
         from types import SimpleNamespace
         from django.utils import timezone
         from shijie.pipeline.views import job_data
-        job=SimpleNamespace(pk='retained',title='test',mode='replace-image',executor='desktop',status='queued',progress=0,message='等待共享电脑处理',partial_revision=1,created_at=timezone.now())
-        with patch('shijie.pipeline.desktop_service.public',return_value={'enabled':True,'ready':False}):
+        job=SimpleNamespace(pk='00000000-0000-0000-0000-000000000001',title='test',mode='replace-image',executor='desktop',status='queued',progress=0,message='等待共享电脑处理',partial_revision=1,created_at=timezone.now())
+        with patch('shijie.pipeline.desktop_service.public',return_value={'enabled':True,'ready':False}), patch('shijie.pipeline.views.Job.objects.filter') as jobs:
+            jobs.return_value.filter.return_value.count.return_value=2
             value=job_data(job)
         self.assertIn('暂未连接',value['message']);self.assertIn('无需重复提交',value['message'])
         self.assertEqual(job.message,'等待共享电脑处理');self.assertEqual(value['status'],'queued')
+        self.assertEqual(value['queuedAhead'],2);self.assertEqual(value['queuePosition'],3)
