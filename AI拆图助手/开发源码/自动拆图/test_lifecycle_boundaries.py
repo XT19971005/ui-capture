@@ -60,7 +60,7 @@ class LifecycleBoundaries(unittest.TestCase):
     state=client.turns['final-validation'];state.update(images=[{'type':'imageGeneration','result':base64.b64encode(png.getvalue()).decode()}],turn={'status':'completed'});state['done'].set();return {'turn':{'id':'t'}}
    return {}
   def image_open(*a,**kw):cancel.set();return real_open(*a,**kw)
-  with tempfile.TemporaryDirectory(dir=TEMP) as home,patch.object(client,'call',side_effect=call),patch.object(client,'model',return_value='mock'),patch.object(client,'close',return_value=True),patch.object(Image,'open',side_effect=image_open):
+  with tempfile.TemporaryDirectory(dir=TEMP) as home,patch.object(client,'call',side_effect=call),patch.object(client,'model',return_value='mock'),patch.object(client,'ensure_ready'),patch.object(client,'close',return_value=True),patch.object(Image,'open',side_effect=image_open):
    with self.assertRaises(InterruptedError):client.generate('fixture',[],Path(home)/'generated.png',cancelled=cancel.is_set)
  def test_interrupt_error_cannot_change_cancel_to_failure(self):
   for kind in ('analyze','generate'):self.run_cancel(kind,interrupt_fails=True)

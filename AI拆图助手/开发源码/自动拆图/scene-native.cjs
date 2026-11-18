@@ -33,9 +33,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/path_parse.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/path_parse.js
 var require_path_parse = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
     "use strict";
     var paramCounts = { a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0 };
     var SPECIAL_SPACES = [
@@ -274,9 +274,9 @@ var require_path_parse = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/matrix.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/matrix.js
 var require_matrix = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
     "use strict";
     function combine(m1, m2) {
       return [
@@ -379,9 +379,9 @@ var require_matrix = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/transform_parse.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/transform_parse.js
 var require_transform_parse = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
     "use strict";
     var Matrix = require_matrix();
     var operations = {
@@ -452,9 +452,9 @@ var require_transform_parse = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/a2c.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/a2c.js
 var require_a2c = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
     "use strict";
     var TAU = Math.PI * 2;
     function unit_vector_angle(ux, uy, vx, vy) {
@@ -552,9 +552,9 @@ var require_a2c = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/ellipse.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/ellipse.js
 var require_ellipse = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
     "use strict";
     var epsilon = 1e-10;
     var torad = Math.PI / 180;
@@ -605,9 +605,9 @@ var require_ellipse = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/lib/svgpath.js
+// 技能包/依赖/Node/node_modules/svgpath/lib/svgpath.js
 var require_svgpath = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
     "use strict";
     var pathParse = require_path_parse();
     var transformParse = require_transform_parse();
@@ -1044,17 +1044,17 @@ var require_svgpath = __commonJS({
   }
 });
 
-// ../技能包/依赖/Node/node_modules/svgpath/index.js
+// 技能包/依赖/Node/node_modules/svgpath/index.js
 var require_svgpath2 = __commonJS({
-  "../\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/index.js"(exports2, module2) {
+  "\u6280\u80FD\u5305/\u4F9D\u8D56/Node/node_modules/svgpath/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_svgpath();
   }
 });
 
-// ../技能包/game-ui-to-psd/scripts/style_runtime.cjs
+// 技能包/game-ui-to-psd/scripts/style_runtime.cjs
 var require_style_runtime = __commonJS({
-  "../\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
+  "\u6280\u80FD\u5305/game-ui-to-psd/scripts/style_runtime.cjs"(exports2, module2) {
     var svgpath2 = require_svgpath2();
     var blends = ["normal", "multiply", "screen", "overlay"];
     var effects = ["stroke", "dropShadow", "innerShadow", "outerGlow", "innerGlow", "colorOverlay", "gradientOverlay"];
@@ -1482,9 +1482,9 @@ var require_style_runtime = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/path_parse.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/path_parse.js
 var require_path_parse2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/path_parse.js"(exports2, module2) {
     "use strict";
     var paramCounts = { a: 7, c: 6, h: 1, l: 2, m: 2, r: 4, q: 4, s: 4, t: 2, v: 1, z: 0 };
     var SPECIAL_SPACES = [
@@ -1723,9 +1723,9 @@ var require_path_parse2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/matrix.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/matrix.js
 var require_matrix2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/matrix.js"(exports2, module2) {
     "use strict";
     function combine(m1, m2) {
       return [
@@ -1828,9 +1828,9 @@ var require_matrix2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/transform_parse.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/transform_parse.js
 var require_transform_parse2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/transform_parse.js"(exports2, module2) {
     "use strict";
     var Matrix = require_matrix2();
     var operations = {
@@ -1901,9 +1901,9 @@ var require_transform_parse2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/a2c.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/a2c.js
 var require_a2c2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/a2c.js"(exports2, module2) {
     "use strict";
     var TAU = Math.PI * 2;
     function unit_vector_angle(ux, uy, vx, vy) {
@@ -2001,9 +2001,9 @@ var require_a2c2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/ellipse.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/ellipse.js
 var require_ellipse2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/ellipse.js"(exports2, module2) {
     "use strict";
     var epsilon = 1e-10;
     var torad = Math.PI / 180;
@@ -2054,9 +2054,9 @@ var require_ellipse2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/lib/svgpath.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/lib/svgpath.js
 var require_svgpath3 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/lib/svgpath.js"(exports2, module2) {
     "use strict";
     var pathParse = require_path_parse2();
     var transformParse = require_transform_parse2();
@@ -2493,17 +2493,17 @@ var require_svgpath3 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/svgpath/index.js
+// 拾界插件/依赖/构建工具/node_modules/svgpath/index.js
 var require_svgpath4 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/index.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/svgpath/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_svgpath3();
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/trees.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/trees.js
 var require_trees = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/trees.js"(exports2, module2) {
     "use strict";
     var Z_FIXED = 4;
     var Z_BINARY = 0;
@@ -3139,9 +3139,9 @@ var require_trees = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/adler32.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/adler32.js
 var require_adler32 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/adler32.js"(exports2, module2) {
     "use strict";
     var adler32 = (adler, buf, len, pos) => {
       let s1 = adler & 65535 | 0, s2 = adler >>> 16 & 65535 | 0, n = 0;
@@ -3161,9 +3161,9 @@ var require_adler32 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/crc32.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/crc32.js
 var require_crc32 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/crc32.js"(exports2, module2) {
     "use strict";
     var makeTable = () => {
       let c, table = [];
@@ -3190,9 +3190,9 @@ var require_crc32 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/messages.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/messages.js
 var require_messages = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/messages.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       2: "need dictionary",
@@ -3217,9 +3217,9 @@ var require_messages = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/constants.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/constants.js
 var require_constants = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/constants.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       /* Allowed flush values; see deflate() and inflate() below for details */
@@ -3264,9 +3264,9 @@ var require_constants = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/deflate.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/deflate.js
 var require_deflate = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/deflate.js"(exports2, module2) {
     "use strict";
     var { _tr_init, _tr_stored_block, _tr_flush_block, _tr_tally, _tr_align } = require_trees();
     var adler32 = require_adler32();
@@ -4404,9 +4404,9 @@ var require_deflate = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/utils/common.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/utils/common.js
 var require_common = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/common.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/common.js"(exports2, module2) {
     "use strict";
     var _has = (obj, key) => {
       return Object.prototype.hasOwnProperty.call(obj, key);
@@ -4445,9 +4445,9 @@ var require_common = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/utils/strings.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/utils/strings.js
 var require_strings = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/strings.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/utils/strings.js"(exports2, module2) {
     "use strict";
     var STR_APPLY_UIA_OK = true;
     try {
@@ -4574,9 +4574,9 @@ var require_strings = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/zstream.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/zstream.js
 var require_zstream = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/zstream.js"(exports2, module2) {
     "use strict";
     function ZStream() {
       this.input = null;
@@ -4596,9 +4596,9 @@ var require_zstream = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/deflate.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/deflate.js
 var require_deflate2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/deflate.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/deflate.js"(exports2, module2) {
     "use strict";
     var zlib_deflate = require_deflate();
     var utils = require_common();
@@ -4757,9 +4757,9 @@ var require_deflate2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/inffast.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inffast.js
 var require_inffast = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inffast.js"(exports2, module2) {
     "use strict";
     var BAD = 16209;
     var TYPE = 16191;
@@ -4985,9 +4985,9 @@ var require_inffast = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/inftrees.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inftrees.js
 var require_inftrees = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inftrees.js"(exports2, module2) {
     "use strict";
     var MAXBITS = 15;
     var ENOUGH_LENS = 852;
@@ -5297,9 +5297,9 @@ var require_inftrees = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/inflate.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/inflate.js
 var require_inflate = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/inflate.js"(exports2, module2) {
     "use strict";
     var adler32 = require_adler32();
     var crc32 = require_crc32();
@@ -6548,9 +6548,9 @@ var require_inflate = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/zlib/gzheader.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/zlib/gzheader.js
 var require_gzheader = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/zlib/gzheader.js"(exports2, module2) {
     "use strict";
     function GZheader() {
       this.text = 0;
@@ -6568,9 +6568,9 @@ var require_gzheader = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/lib/inflate.js
+// 拾界插件/依赖/构建工具/node_modules/pako/lib/inflate.js
 var require_inflate2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/inflate.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/lib/inflate.js"(exports2, module2) {
     "use strict";
     var zlib_inflate = require_inflate();
     var utils = require_common();
@@ -6743,9 +6743,9 @@ var require_inflate2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/pako/index.js
+// 拾界插件/依赖/构建工具/node_modules/pako/index.js
 var require_pako = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/index.js"(exports2, module2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/pako/index.js"(exports2, module2) {
     "use strict";
     var { Deflate, deflate, deflateRaw, gzip } = require_deflate2();
     var { Inflate, inflate, inflateRaw, ungzip } = require_inflate2();
@@ -6762,9 +6762,9 @@ var require_pako = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/jpeg.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/jpeg.js
 var require_jpeg = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/jpeg.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/jpeg.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeJpeg = decodeJpeg;
@@ -7783,9 +7783,9 @@ var require_jpeg = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/helpers.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/helpers.js
 var require_helpers = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/helpers.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/helpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createImageData = exports2.createCanvas = exports2.MaskParams = exports2.LayerMaskFlags = exports2.ColorSpace = exports2.largeAdditionalInfoKeys = exports2.layerColors = exports2.toBlendMode = exports2.fromBlendMode = exports2.RAW_IMAGE_DATA = exports2.MOCK_HANDLERS = void 0;
@@ -8152,9 +8152,9 @@ var require_helpers = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/base64-js/index.js
+// 拾界插件/依赖/构建工具/node_modules/base64-js/index.js
 var require_base64_js = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/base64-js/index.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/base64-js/index.js"(exports2) {
     "use strict";
     exports2.byteLength = byteLength;
     exports2.toByteArray = toByteArray;
@@ -8253,9 +8253,9 @@ var require_base64_js = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/utf8.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/utf8.js
 var require_utf8 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/utf8.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/utf8.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.stringLengthInBytes = stringLengthInBytes;
@@ -8409,9 +8409,9 @@ var require_utf8 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/descriptor.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/descriptor.js
 var require_descriptor = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/descriptor.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/descriptor.js"(exports2) {
     "use strict";
     var __rest = exports2 && exports2.__rest || function(s, e) {
       var t = {};
@@ -10694,9 +10694,9 @@ var require_descriptor = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/imageResources.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/imageResources.js
 var require_imageResources = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/imageResources.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/imageResources.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.resourceHandlersMap = exports2.resourceHandlers = void 0;
@@ -11851,9 +11851,9 @@ var require_imageResources = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/psdReader.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psdReader.js
 var require_psdReader = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdReader.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdReader.js"(exports2) {
     "use strict";
     var __rest = exports2 && exports2.__rest || function(s, e) {
       var t = {};
@@ -13165,9 +13165,9 @@ var require_psdReader = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/effectsHelpers.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/effectsHelpers.js
 var require_effectsHelpers = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/effectsHelpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readEffects = readEffects;
@@ -13483,9 +13483,9 @@ var require_effectsHelpers = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/engineData.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/engineData.js
 var require_engineData = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.parseEngineData = parseEngineData;
@@ -13815,9 +13815,9 @@ var require_engineData = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/text.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/text.js
 var require_text = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/text.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/text.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeEngineData = decodeEngineData;
@@ -14402,9 +14402,9 @@ var require_text = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/engineData2.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/engineData2.js
 var require_engineData2 = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData2.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/engineData2.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.decodeEngineData2 = decodeEngineData2;
@@ -14823,9 +14823,9 @@ var require_engineData2 = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/additionalInfo.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/additionalInfo.js
 var require_additionalInfo = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/additionalInfo.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.booleanOperations = exports2.infoHandlersMap = exports2.infoHandlers = void 0;
@@ -18366,9 +18366,9 @@ var require_additionalInfo = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/psdWriter.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psdWriter.js
 var require_psdWriter = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdWriter.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psdWriter.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createWriter = createWriter;
@@ -19214,9 +19214,9 @@ var require_psdWriter = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/abr.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/abr.js
 var require_abr = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/abr.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/abr.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readAbr = readAbr;
@@ -19568,9 +19568,9 @@ var require_abr = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/csh.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/csh.js
 var require_csh = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/csh.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/csh.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readCsh = readCsh;
@@ -19608,9 +19608,9 @@ var require_csh = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/psd.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/psd.js
 var require_psd = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psd.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/psd.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Compression = exports2.ChannelID = exports2.LayerCompCapturedInfo = exports2.SectionDividerType = exports2.ColorMode = void 0;
@@ -19659,9 +19659,9 @@ var require_psd = __commonJS({
   }
 });
 
-// 依赖/构建工具/node_modules/ag-psd/dist/index.js
+// 拾界插件/依赖/构建工具/node_modules/ag-psd/dist/index.js
 var require_dist = __commonJS({
-  "\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/index.js"(exports2) {
+  "\u62FE\u754C\u63D2\u4EF6/\u4F9D\u8D56/\u6784\u5EFA\u5DE5\u5177/node_modules/ag-psd/dist/index.js"(exports2) {
     "use strict";
     var __createBinding = exports2 && exports2.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -19746,7 +19746,7 @@ var require_dist = __commonJS({
   }
 });
 
-// 开发源码/图像重建/scene-export.js
+// 拾界插件/开发源码/图像重建/scene-export.js
 var scene_export_exports = {};
 __export(scene_export_exports, {
   SCENE_CAPACITY_LIMITS: () => SCENE_CAPACITY_LIMITS,
@@ -19760,6 +19760,7 @@ __export(scene_export_exports, {
   edgeNode: () => edgeNode,
   esc: () => esc,
   figma: () => figma,
+  figmaSvg: () => figmaSvg,
   geometry: () => geometry,
   gradientData: () => gradientData2,
   groupBounds: () => groupBounds,
@@ -19784,10 +19785,10 @@ __export(scene_export_exports, {
 });
 module.exports = __toCommonJS(scene_export_exports);
 
-// 开发源码/图像重建/layer-style.js
+// 拾界插件/开发源码/图像重建/layer-style.js
 var import_style_runtime = __toESM(require_style_runtime());
 
-// 插件程序/edge/psd-native.js
+// 拾界插件/插件程序/edge/psd-native.js
 var import_svgpath = __toESM(require_svgpath4());
 var knot = (x, y, ix = x, iy = y, ox = x, oy = y) => ({ linked: false, points: [ix, iy, x, y, ox, oy] });
 var rgb8 = (c) => ({ r: Math.round((c?.r || 0) * 255), g: Math.round((c?.g || 0) * 255), b: Math.round((c?.b || 0) * 255) });
@@ -19872,10 +19873,10 @@ function pathData(d, transform = "") {
   return { paths: paths.filter((p2) => p2.knots.length > 1), d: p.toString() };
 }
 
-// 开发源码/图像重建/layer-style.js
+// 拾界插件/开发源码/图像重建/layer-style.js
 var { normalizeStyle, normalizeGradient, normalizeMask, maskPath, gradientData, nativeEffects, stylePadding, gradientPaint, styleCanvas, displayMaskCanvas, nativeMask, nativeToStyle, styleSvg, applyDom, alphaBounds, fitGradientEffects, validatePath, definitionId } = import_style_runtime.default;
 
-// 开发源码/图像重建/scene-export.js
+// 拾界插件/开发源码/图像重建/scene-export.js
 var import_ag_psd = __toESM(require_dist());
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var color = (h) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
@@ -20084,6 +20085,7 @@ function validate(s) {
     normalizeMask(n.displayMask);
     if (n.strokeWidth !== void 0 && (!Number.isFinite(n.strokeWidth) || n.strokeWidth < 0 || n.strokeWidth > 30)) throw Error("\u6587\u5B57\u63CF\u8FB9\u5BBD\u5EA6\u65E0\u6548");
     if (n.stroke !== void 0 && !/^#[\da-f]{6}$/i.test(n.stroke)) throw Error("\u6587\u5B57\u63CF\u8FB9\u989C\u8272\u65E0\u6548");
+    for (const key of ["letterSpacing", "wordSpacing"]) if (n[key] !== void 0 && (!Number.isFinite(n[key]) || Math.abs(n[key]) > 1e3)) throw Error("\u6587\u5B57\u95F4\u8DDD\u65E0\u6548");
     if (n.rotation !== void 0 && ![0, 90].includes(n.rotation)) throw Error("\u6587\u5B57\u65CB\u8F6C\u65B9\u5411\u65E0\u6548");
     if (n.fontFamily !== void 0 && !["Arial", "Microsoft YaHei", "SimHei", "Impact", "Arial Narrow", "Haettenschweiler", "Noto Sans CJK SC", "Noto Serif CJK SC", "Liberation Sans", "Liberation Serif"].includes(n.fontFamily)) throw Error("\u5B57\u4F53\u65E0\u6548");
     if (n.fontStyle !== void 0 && !["normal", "italic"].includes(n.fontStyle)) throw Error("\u5B57\u4F53\u6837\u5F0F\u65E0\u6548");
@@ -20193,8 +20195,15 @@ var textLeading = (n) => n.lineHeight ?? n.fontSize * 1.2;
 function metrics(n) {
   const c = ctx();
   c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}",sans-serif`;
-  const lines = textLines(n), rows = lines.map((t) => c.measureText(t || ""));
-  if (rows.length === 1) return c.measureText(n.text || "\u6587\u5B57");
+  c.letterSpacing = "0px";
+  c.wordSpacing = "0px";
+  const measure = (t) => {
+    const m = c.measureText(t), gaps = Math.max(0, [...new Intl.Segmenter().segment(t)].length - 1);
+    const extra = gaps * (n.letterSpacing || 0) + (t.match(/[ \u00a0]/g) || []).length * (n.wordSpacing || 0);
+    return { width: m.width + extra, actualBoundingBoxLeft: m.actualBoundingBoxLeft, actualBoundingBoxRight: m.actualBoundingBoxRight + extra, actualBoundingBoxAscent: m.actualBoundingBoxAscent, actualBoundingBoxDescent: m.actualBoundingBoxDescent, fontBoundingBoxAscent: m.fontBoundingBoxAscent, fontBoundingBoxDescent: m.fontBoundingBoxDescent };
+  };
+  const lines = textLines(n), rows = lines.map((t) => measure(t || ""));
+  if (rows.length === 1) return measure(n.text || "\u6587\u5B57");
   const first = rows[0], last = rows.at(-1), leading = textLeading(n);
   return { width: Math.max(...rows.map((r) => r.width)), actualBoundingBoxLeft: Math.max(0, ...rows.map((r) => r.actualBoundingBoxLeft || 0)), actualBoundingBoxRight: Math.max(0, ...rows.map((r) => r.actualBoundingBoxRight || r.width)), actualBoundingBoxAscent: first.actualBoundingBoxAscent || n.fontSize * 0.85, actualBoundingBoxDescent: (rows.length - 1) * leading + (last.actualBoundingBoxDescent || 0), firstLineAscent: first.actualBoundingBoxAscent || n.fontSize * 0.85, firstLineDescent: first.actualBoundingBoxDescent || 0, fontBoundingBoxAscent: first.fontBoundingBoxAscent, fontBoundingBoxDescent: last.fontBoundingBoxDescent, lineHeight: leading, lineCount: rows.length };
 }
@@ -20245,7 +20254,7 @@ function nodeSvgBase(n) {
   }
   const a = `data-id="${esc(n.id)}" pointer-events="${n.locked ? "none" : "visiblePainted"}" opacity="${n.opacity ?? 1}"`;
   if (n.type === "text") {
-    return `<text ${a} transform="matrix(${textMatrix(n).join(" ")})" fill="${n.fill}" stroke="${n.stroke || n.fill}" stroke-width="${(n.strokeWidth || 0) * 2}" stroke-linejoin="round" paint-order="stroke fill" font-family="${esc(n.fontFamily || "Microsoft YaHei")},sans-serif" font-size="${n.fontSize}" font-style="${n.textSkew ? "normal" : n.fontStyle || "normal"}" font-weight="${n.fontWeight || 400}" xml:space="preserve">${textLines(n).map((line, i) => `<tspan x="0" y="${i * textLeading(n)}">${esc(line)}</tspan>`).join("")}</text>`;
+    return `<text ${a} transform="matrix(${textMatrix(n).join(" ")})" fill="${n.fill}" stroke="${n.stroke || n.fill}" stroke-width="${(n.strokeWidth || 0) * 2}" stroke-linejoin="round" paint-order="stroke fill" font-family="${esc(n.fontFamily || "Microsoft YaHei")},sans-serif" font-size="${n.fontSize}" font-style="${n.textSkew ? "normal" : n.fontStyle || "normal"}" font-weight="${n.fontWeight || 400}" letter-spacing="${n.letterSpacing || 0}" word-spacing="${n.wordSpacing || 0}" xml:space="preserve">${textLines(n).map((line, i) => `<tspan x="0" y="${i * textLeading(n)}">${esc(line)}</tspan>`).join("")}</text>`;
   }
   if (n.type === "image") return `<image ${a} x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" href="${esc(n.src)}" preserveAspectRatio="none"/>`;
   return `<path ${a} transform="translate(${n.x} ${n.y})" d="${geometry(n)}" fill="${n.fill}" fill-rule="evenodd"/>`;
@@ -20296,6 +20305,51 @@ function svg(s) {
   assertRenderCapacity(s);
   const nodes = allNodes(s);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, nodes.map(nodeSvg), (g, parts) => layerHidden(g) ? "" : styleSvg('<g data-group="' + esc(g.id) + '" data-name="' + esc(g.name) + '" opacity="' + (g.opacity ?? 1) + '">' + parts.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
+}
+async function figmaSvg(s) {
+  validate(s);
+  assertRenderCapacity(s);
+  const nodes = allNodes(s), parts = [];
+  for (const n of nodes) {
+    let markup;
+    if (n.type !== "text") markup = nodeSvg(n);
+    else {
+      const box = textInkBounds(n), pad = Math.ceil(n.strokeWidth || 0) + 3, left = Math.floor(box.x) - pad, top = Math.floor(box.y) - pad, w = Math.ceil(box.width) + pad * 2, h = Math.ceil(box.height) + pad * 2;
+      const scale = Math.min(3, 6e3 / Math.max(w, h), Math.sqrt(16e6 / (w * h)));
+      if (scale < 1) throw Error("Figma\u6587\u5B57\u5916\u89C2\u5C3A\u5BF8\u8D85\u8FC7\u5B89\u5168\u8303\u56F4\uFF0C\u8BF7\u5206\u6279\u5BFC\u51FA");
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(w * scale);
+      canvas.height = Math.ceil(h * scale);
+      try {
+        const c = canvas.getContext("2d"), m = textMatrix(n);
+        c.setTransform(m[0] * scale, m[1] * scale, m[2] * scale, m[3] * scale, (m[4] - left) * scale, (m[5] - top) * scale);
+        c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
+        c.letterSpacing = `${n.letterSpacing || 0}px`;
+        c.wordSpacing = `${n.wordSpacing || 0}px`;
+        c.fillStyle = n.fill;
+        if (n.strokeWidth && n.stroke) {
+          c.strokeStyle = n.stroke;
+          c.lineWidth = n.strokeWidth * 2;
+          c.lineJoin = "round";
+          textLines(n).forEach((line, i) => c.strokeText(line, 0, i * textLeading(n)));
+        }
+        textLines(n).forEach((line, i) => c.fillText(line, 0, i * textLeading(n)));
+        if (n.gradient) {
+          c.setTransform(scale, 0, 0, scale, -left * scale, -top * scale);
+          c.globalCompositeOperation = "source-in";
+          c.fillStyle = gradientPaint(c, n.gradient, n);
+          c.fillRect(left, top, w, h);
+        }
+        const image = `<image data-id="${esc(n.id)}" opacity="${n.opacity ?? 1}" x="${left}" y="${top}" width="${w}" height="${h}" href="${canvas.toDataURL("image/png")}" preserveAspectRatio="none"/>`;
+        markup = styleSvg(image, n, { x: n.x, y: n.y, width: n.width, height: n.height });
+      } finally {
+        canvas.width = canvas.height = 1;
+      }
+    }
+    const label = esc(String(n.name || n.text || n.id).replace(/[^\p{L}\p{N}_-]+/gu, "_") + "_" + n.id);
+    parts.push(`<g id="${label}"><title>${esc(n.name || n.text || n.id)}</title>${markup}</g>`);
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s, nodes, parts, (g, children) => layerHidden(g) ? "" : styleSvg('<g id="' + esc(String(g.name || g.id).replace(/[^\p{L}\p{N}_-]+/gu, "_") + "_" + g.id) + '" data-group="' + esc(g.id) + '" opacity="' + (g.opacity ?? 1) + '"><title>' + esc(g.name || g.id) + "</title>" + children.join("") + "</g>", g, groupBounds(s, g))).join("")}</svg>`;
 }
 function figma(s) {
   validate(s);
@@ -20421,6 +20475,7 @@ async function compactPsdImages(scene) {
   return s;
 }
 async function psd(s) {
+  const masters = new Map((s.nodes || []).filter((n) => n.type === "image").map((n) => [n.id, { src: n.src, x: n.x, y: n.y, width: n.width, height: n.height }])), linkedFiles = [], linkedBySource = /* @__PURE__ */ new Map();
   s = await compactPsdImages(s);
   assertExportCapacity(s);
   const decodedImages = /* @__PURE__ */ new Map();
@@ -20505,11 +20560,24 @@ async function psd(s) {
       const canvas = factory(w, h), c = canvas.getContext("2d");
       c.translate(n.x - left, n.y - top);
       const layer = { id: index + 1, name: n.name || n.text || n.id, left, top, canvas, opacity: n.opacity ?? 1, hidden: layerHidden(n), ...n.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, blendMode: normalizeStyle(n.layerStyle)?.blendMode || "normal" };
-      if (n.type === "image") c.drawImage(await exportImage(n.src), 0, 0, n.width, n.height);
-      else if (n.type === "text") {
+      if (n.type === "image") {
+        c.drawImage(await exportImage(n.src), 0, 0, n.width, n.height);
+        const master = masters.get(n.id), info = imageMetadata(master.src);
+        let linked = linkedBySource.get(master.src);
+        if (!linked) {
+          const raw = atob(master.src.slice(master.src.indexOf(",") + 1)), data = Uint8Array.from(raw, (ch) => ch.charCodeAt(0)), extension = master.src.startsWith("data:image/jpeg;") ? "jpg" : master.src.startsWith("data:image/webp;") ? "webp" : "png";
+          linked = { id: "00000000-0000-4000-8000-" + String(linkedFiles.length + 1).padStart(12, "0"), name: (n.name || n.id) + "." + extension, data };
+          linkedBySource.set(master.src, linked);
+          linkedFiles.push(linked);
+        }
+        const { x, y, width, height } = master;
+        layer.placedLayer = { id: linked.id, placed: "00000000-0001-4000-8000-" + String(index + 1).padStart(12, "0"), type: "raster", width: info.width, height: info.height, resolution: { value: 72, units: "Density" }, transform: [x, y, x + width, y, x + width, y + height, x, y + height] };
+      } else if (n.type === "text") {
         const matrix = textMatrix(n);
         c.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4] - left, matrix[5] - top);
         c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}"`;
+        c.letterSpacing = `${n.letterSpacing || 0}px`;
+        c.wordSpacing = `${n.wordSpacing || 0}px`;
         c.fillStyle = n.fill;
         const intrinsicStroke = n.strokeWidth && n.stroke && n.layerStyle?.enabled === false;
         if (intrinsicStroke) {
@@ -20560,16 +20628,149 @@ async function psd(s) {
     const children = grouped(s, exportNodes, layers, (g, children2) => ({ id: 1e4 + (s.groups || []).indexOf(g), name: g.name || "\u5206\u7EC4", children: children2, opened: true, hidden: layerHidden(g), ...g.locked ? { protected: { transparency: true, composite: true, position: true } } : {}, opacity: g.opacity ?? 1, blendMode: normalizeStyle(g.layerStyle)?.blendMode || "normal", ...g.layerStyle ? { effects: nativeEffects(g.layerStyle) } : {}, ...g.displayMask ? { mask: nativeMask(g.displayMask, s.width, s.height, factory, Path2D) } : {}, _target: g }));
     children.forEach((l) => paint(l, cc));
     children.forEach(clean);
-    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children }, { noBackground: true, trimImageData: false });
+    return (0, import_ag_psd.writePsd)({ width: s.width, height: s.height, canvas: composite, children, linkedFiles }, { noBackground: true, trimImageData: false });
   } finally {
     for (const image of decodedImages.values()) releaseDecodedImage(image);
     decodedImages.clear();
   }
 }
+function portableHtmlRuntime(original, edge) {
+  const board = document.getElementById("board"), wrap = document.getElementById("wrap");
+  const initialSvg = board.firstElementChild.cloneNode(true);
+  const dialog = document.getElementById("text-editor"), input = document.getElementById("edit-text");
+  let scene, root, editing, fitMode = true;
+  function fit() {
+    root.style.width = (fitMode ? scene.width * Math.min(1, Math.max(1, wrap.clientWidth - 32) / scene.width, Math.max(1, wrap.clientHeight - 32) / scene.height) : scene.width) + "px";
+    root.style.height = "auto";
+  }
+  function render() {
+    scene = structuredClone(original);
+    board.replaceChildren(initialSvg.cloneNode(true));
+    root = board.firstElementChild;
+    const elements = new Map([...root.querySelectorAll("[data-id]")].map((el) => [el.dataset.id, el]));
+    const parents = new Map((scene.groups || []).flatMap((g) => g.children.map((id) => [id, g])));
+    function locked(n) {
+      for (let item = n; item; item = parents.get(item.id)) if (item.locked) return true;
+      return false;
+    }
+    function drawEdges() {
+      (scene.edges || []).forEach((e, i) => {
+        const n = edge(scene, e, i), el = elements.get("edge-" + i);
+        if (n && el) el.setAttribute("d", n.d);
+      });
+    }
+    for (const n of scene.nodes) {
+      const el = elements.get(n.id);
+      if (!el) continue;
+      if (n.type === "image" && !n.src) n.src = el.getAttribute("href") || el.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+      if (locked(n)) continue;
+      let styled = el;
+      while (styled.parentElement !== root && styled.parentElement.tagName.toLowerCase() === "g" && !styled.parentElement.hasAttribute("data-group")) styled = styled.parentElement;
+      const holder = document.createElementNS(root.namespaceURI, "g");
+      styled.before(holder);
+      holder.append(styled);
+      holder.setAttribute("tabindex", "0");
+      holder.setAttribute("aria-label", n.name || n.text || n.type);
+      holder.style.cursor = "move";
+      const ox = n.x, oy = n.y;
+      const move = () => {
+        holder.setAttribute("transform", "translate(" + (n.x - ox) + " " + (n.y - oy) + ")");
+        drawEdges();
+      };
+      const point = (e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(root.getScreenCTM().inverse());
+      holder.onpointerdown = (e) => {
+        if (e.button !== 0 || dialog.open) return;
+        const start = point(e), x = n.x, y = n.y;
+        holder.setPointerCapture(e.pointerId);
+        holder.onpointermove = (event) => {
+          const p = point(event);
+          n.x = x + p.x - start.x;
+          n.y = y + p.y - start.y;
+          move();
+        };
+        const finish = () => {
+          holder.onpointermove = holder.onpointerup = holder.onpointercancel = null;
+        };
+        holder.onpointerup = finish;
+        holder.onpointercancel = () => {
+          n.x = x;
+          n.y = y;
+          move();
+          finish();
+        };
+        e.preventDefault();
+        holder.focus();
+      };
+      holder.onkeydown = (e) => {
+        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+        if (!delta || dialog.open) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        n.x += delta[0] * step;
+        n.y += delta[1] * step;
+        move();
+      };
+      if (n.type === "text") holder.ondblclick = () => {
+        editing = { n, el };
+        input.value = n.text;
+        dialog.showModal();
+        input.focus();
+        input.select();
+      };
+    }
+    fit();
+  }
+  document.getElementById("text-save").onclick = () => {
+    if (!editing) return;
+    const { n, el } = editing;
+    n.text = input.value;
+    el.replaceChildren();
+    n.text.split(/\r?\n/).forEach((line, i) => {
+      const span = document.createElementNS(root.namespaceURI, "tspan");
+      span.setAttribute("x", "0");
+      span.setAttribute("y", String(i * (n.lineHeight || n.fontSize * 1.2)));
+      span.textContent = line || " ";
+      el.append(span);
+    });
+    if (n.fitWidth) {
+      const m = el.transform.baseVal.consolidate()?.matrix;
+      if (m) {
+        el.setAttribute("textLength", String(n.width / Math.hypot(m.a, m.b)));
+        el.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
+    }
+    dialog.close();
+    editing = null;
+  };
+  document.getElementById("text-cancel").onclick = () => dialog.close();
+  document.getElementById("fit").onclick = () => {
+    fitMode = true;
+    fit();
+  };
+  document.getElementById("actual").onclick = () => {
+    fitMode = false;
+    fit();
+  };
+  document.getElementById("reset").onclick = render;
+  document.getElementById("save").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(scene)], { type: "application/json" }));
+    a.download = (String(scene.title || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/g, "").trim().slice(0, 100) || "\u672A\u547D\u540D\u5DE5\u7A0B") + ".scene.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1e3);
+  };
+  window.addEventListener("resize", () => {
+    if (fitMode) fit();
+  });
+  render();
+}
 function html(s) {
   validate(s);
-  const data = JSON.stringify(s).replace(/</g, "\\u003c");
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(s.title)}</title><style>*{box-sizing:border-box}body{margin:0;background:#151b24;font-family:"Microsoft YaHei",sans-serif;color:#e8eff7}header{padding:14px 22px;display:flex;gap:12px;align-items:center}button{padding:8px 15px;background:#283a49;color:white;border:1px solid #647888;border-radius:6px;cursor:pointer}#wrap{overflow:auto;padding:20px}#board{position:relative;isolation:isolate;background:transparent;transform-origin:top left}.node{position:absolute;cursor:move}.text{white-space:pre;line-height:1;cursor:text}.node:focus{outline:2px solid #5ad7b7}svg{display:block}#connections{position:absolute;inset:0;pointer-events:none}</style><header><b>${esc(s.title)}</b><span>\u53CC\u51FB\u6587\u5B57\u4FEE\u6539 \xB7 \u62D6\u52A8\u56FE\u5C42 \xB7 \u6D41\u7A0B\u8FDE\u7EBF\u8DDF\u968F</span><button id="reset">\u6062\u590D</button><button id="save">\u4FDD\u5B58\u5DE5\u7A0B</button></header><div id="wrap"><div id="board"></div></div><script>const original=${data};let s=structuredClone(original);const board=document.getElementById('board');const geom=${geometry.toString()};const edge=${edgeNode.toString()};function drawEdges(){const el=document.getElementById('connections');el.replaceChildren();s.edges.forEach((e,i)=>{const n=edge(s,e,i);if(!n)return;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',n.d);p.setAttribute('fill',n.fill);el.append(p);});}function render(){board.replaceChildren();board.style.width=s.width+'px';board.style.height=s.height+'px';board.style.background=s.background||'transparent';for(const n of s.nodes){if(n.visible===false)continue;let el=document.createElement('div');el.className='node';el.dataset.id=n.id;Object.assign(el.style,{left:n.x+'px',top:n.y+'px',width:n.width+'px',height:n.height+'px',opacity:n.opacity??1});if(n.type==='text'){el.classList.add('text');el.textContent=n.text;Object.assign(el.style,{fontFamily:n.fontFamily||'Microsoft YaHei',fontSize:n.fontSize+'px',fontStyle:n.fontStyle||'normal',fontWeight:n.fontWeight||400,lineHeight:(n.lineHeight||n.fontSize*1.2)+'px',color:n.fill,WebkitTextStroke:(n.strokeWidth||0)*2+'px '+(n.stroke||n.fill),paintOrder:'stroke fill'});el.ondblclick=()=>{if(el.querySelector('textarea'))return;const editor=document.createElement('textarea');editor.value=n.text;editor.setAttribute('aria-label','\u7F16\u8F91\u540C\u4E00\u6587\u6848');editor.style.cssText='display:block;box-sizing:border-box;width:100%;height:100%;min-height:44px;resize:vertical;font:inherit;line-height:inherit;color:inherit;background:transparent;border:1px solid currentColor;outline:none;padding:0;margin:0';el.replaceChildren(editor);editor.onblur=()=>{n.text=editor.value;el.textContent=n.text};editor.focus();editor.select()};}else if(n.type==='image'){const im=new Image();im.src=n.src;im.style.width='100%';im.style.height='100%';im.draggable=false;el.append(im);}else{const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');svg.setAttribute('width','100%');svg.setAttribute('height','100%');svg.setAttribute('viewBox','0 0 '+n.width+' '+n.height);p.setAttribute('d',geom(n));p.setAttribute('fill',n.fill);p.setAttribute('fill-rule','evenodd');svg.append(p);el.append(svg);}el.onpointerdown=e=>{if(el.isContentEditable||el.querySelector('textarea')||n.locked)return;const x=e.clientX,y=e.clientY,nx=n.x,ny=n.y;el.setPointerCapture(e.pointerId);el.onpointermove=e=>{n.x=nx+e.clientX-x;n.y=ny+e.clientY-y;el.style.left=n.x+'px';el.style.top=n.y+'px';drawEdges()};el.onpointerup=()=>{el.onpointermove=null;};};board.append(el);}const lines=document.createElementNS('http://www.w3.org/2000/svg','svg');lines.id='connections';lines.setAttribute('width',s.width);lines.setAttribute('height',s.height);board.append(lines);drawEdges();}document.getElementById('reset').onclick=()=>{s=structuredClone(original);render()};document.getElementById('save').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(s)],{type:'application/json'}));a.download=(String(s.title||'\u672A\u547D\u540D\u5DE5\u7A0B').replace(/[\\\\/:*?"<>|]/g,'_').trim().slice(0,100)||'\u672A\u547D\u540D\u5DE5\u7A0B')+'.scene.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();</script></html>`;
+  const markup = svg(s);
+  const snapshot = structuredClone({ format: s.format, version: s.version, title: s.title, width: s.width, height: s.height, background: s.background, nodes: s.nodes, groups: s.groups || [], edges: s.edges || [] });
+  for (const n of snapshot.nodes) if (n.type === "image" && markup.includes('data-id="' + esc(n.id) + '"')) delete n.src;
+  const data = JSON.stringify(snapshot).replace(/</g, "\\u003c");
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(s.title)}</title><style>*{box-sizing:border-box}body{margin:0;background:#151b24;color:#e8eff7;font:14px system-ui,sans-serif}header{padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}header b{margin-right:auto}button{padding:8px 12px;background:#283a49;color:white;border:1px solid #647888;border-radius:6px;cursor:pointer}button:focus-visible,svg g:focus-visible{outline:2px solid #75dcca}#wrap{height:calc(100dvh - 110px);overflow:auto;padding:16px}#board>svg{display:block;overflow:hidden;margin:auto}p{margin:0;padding:0 16px 12px;color:#b4bfcb}dialog{max-width:min(480px,90vw);background:#202b38;color:white;border:1px solid #647888;border-radius:10px}dialog label{display:block}textarea{display:block;width:100%;min-height:110px;margin:12px 0;font:inherit}dialog::backdrop{background:#0009}</style></head><body><header><b>${esc(s.title)}</b><button id="fit">\u9002\u5E94\u7A97\u53E3</button><button id="actual">100%</button><button id="reset">\u6062\u590D</button><button id="save">\u4FDD\u5B58\u5DE5\u7A0B</button></header><p>\u53CC\u51FB\u6587\u5B57\u4FEE\u6539 \xB7 \u62D6\u52A8\u6216\u65B9\u5411\u952E\u79FB\u52A8\u56FE\u5C42 \xB7 \u5B8C\u6574\u539F\u56FE\u548C\u5386\u53F2\u8BF7\u53E6\u5B58\u5DE5\u7A0B\u6587\u4EF6</p><div id="wrap"><div id="board">${markup}</div></div><dialog id="text-editor"><label for="edit-text">\u4FEE\u6539\u6587\u5B57</label><textarea id="edit-text"></textarea><button id="text-cancel">\u53D6\u6D88</button><button id="text-save">\u4FDD\u5B58\u6587\u5B57</button></dialog><script>(${portableHtmlRuntime.toString()})(${data},${edgeNode.toString()});</script></body></html>`;
 }
 function resizePath(n, width, height) {
   n.d = pathData(n.d, `scale(${width / n.width},${height / n.height})`).d;
@@ -20589,6 +20790,7 @@ function resizePath(n, width, height) {
   edgeNode,
   esc,
   figma,
+  figmaSvg,
   geometry,
   gradientData,
   groupBounds,

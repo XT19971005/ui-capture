@@ -15,7 +15,10 @@ def translate(d,tx,ty):
         else:
             value=float(token)+(ty if cmd=='V' or (cmd not in ('H',) and index%2) else tx);out.append(str(round(value,3)));index+=1
     return ' '.join(out)
-def trace(alpha):
+class OutlineTooComplex(ValueError):pass
+
+def trace(alpha,precise=False):
+    if precise:return precise_outline(alpha)
     ink=np.asarray(alpha)>128
     if not np.any(ink):return ''
     # VTracer's spline simplification can emit an empty/zero-area path for a
@@ -50,6 +53,30 @@ def trace(alpha):
     result=' '.join(p for p in [*spline(tracing),*small] if p.strip())
     if result:return result
     return rectangles(ink)
+
+def precise_outline(alpha):
+    """Keep observed corners and counters instead of smoothing letter identity."""
+    array=np.asarray(alpha)
+    if array.ndim!=2 or array.dtype!=np.uint8 or not 1<=array.size<=6000000 or max(array.shape)>6000:raise ValueError('精确轮廓要求有效的有限灰度蒙版')
+    if not np.any(array>128):return ''
+    padded=np.pad(array,1)
+    factor=max(1,min(4,int((6000000/padded.size)**.5),6000//max(padded.shape)))
+    large=cv2.resize(padded,None,fx=factor,fy=factor,interpolation=cv2.INTER_LINEAR)
+    contours,_=cv2.findContours((large>128).astype('uint8'),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    # ponytail: bounded polygonal outlines preserve corners within a quarter
+    # pixel on small assets. Above 20k vertices, use an inspected smaller region.
+    paths=[];count=0
+    for contour in contours:
+        if cv2.contourArea(contour)==0:
+            count+=4
+            if count>20000:raise OutlineTooComplex('精确轮廓过于复杂，请缩小区域；未简化丢失笔画')
+            x,y,w,h=cv2.boundingRect(contour);x=(x+.5)/factor-1;y=(y+.5)/factor-1
+            paths.append(f'M{x:.3f} {y:.3f}h{w/factor:.3f}v{h/factor:.3f}h{-w/factor:.3f}Z');continue
+        points=(cv2.approxPolyDP(contour,.3,True).reshape(-1,2)+.5)/factor-1
+        count+=len(points)
+        if count>20000:raise OutlineTooComplex('精确轮廓过于复杂，请缩小区域；未简化丢失笔画')
+        paths.append('M'+'L'.join(f'{x:.3f} {y:.3f}' for x,y in points)+'Z')
+    return ' '.join(paths)
 
 def spline(ink):
     import vtracer

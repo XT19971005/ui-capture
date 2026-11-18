@@ -16,6 +16,11 @@ def estimate(patch,text):
  border_keys,border_counts=np.unique((border//16)*16,axis=0,return_counts=True)
  border_key=border_keys[np.argmax(border_counts)]
  if np.max(border_counts)/len(border)>=.35:key=border_key
+ # Textured paper spans buckets even when its border has a consistent colour.
+ # Its robust centre prevents a common dark glyph bucket becoming the background.
+ border_center=np.median(border,axis=0)
+ if np.mean(np.linalg.norm(border.astype(float)-border_center,axis=1)<60)>=.6:
+  key=(border_center//16)*16
  # A smooth or compressed material can straddle several 16-level buckets.
  # Treat nearby background colours as one material before applying the area
  # gate; a single exact bucket rejected real small text before glyph fitting.
@@ -48,7 +53,7 @@ def estimate(patch,text):
  if not node:raise RuntimeError('字体拟合需要与PSD相同的Node Canvas运行时')
  cjk=any('\u4e00'<=c<='\u9fff' for c in text)
  fonts=[{'family':family,'weight':weight,'file':str(Path('C:/Windows/Fonts')/file)} for family,weight,file in FONTS if (not cjk or family in ('Microsoft YaHei','SimHei')) and (Path('C:/Windows/Fonts')/file).is_file()]
- request={'text':text,'width':tw,'height':th,'mask':base64.b64encode(target.astype('uint8').tobytes()).decode(),'skew':skew,'skews':[skew] if skew else [0,.22],'fonts':fonts,'lineHeight':line_height,'uniformScale':True}
+ request={'text':text,'width':tw,'height':th,'mask':base64.b64encode(target.astype('uint8').tobytes()).decode(),'skew':skew,'skews':[0,skew] if skew else [0,.22],'fonts':fonts,'lineHeight':line_height,'uniformScale':True}
  native=subprocess.run([node,str(Path(__file__).with_name('text_candidates.cjs'))],input=json.dumps(request,ensure_ascii=False),capture_output=True,text=True,encoding='utf8',cwd=Path(__file__).resolve().parents[2],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
  if native.returncode:raise RuntimeError('真实导出字体拟合失败：'+native.stderr[-300:])
  fitted=json.loads(native.stdout)
@@ -56,7 +61,7 @@ def estimate(patch,text):
  # exists. Keep that approximation explicit rather than stretching its width.
  if fitted.get('styleMatch',0)>(.25 if skew else .35) and fitted.get('nativeDensityError',1)<.65:
   fill=np.median(patch[observed],axis=0);slope=float(fitted.get('textSkew',skew))
-  result={k:fitted[k] for k in ('fontFamily','fontWeight','fontSize','styleMatch','nativeDensityError','nativeAspectError')}
+  result={k:fitted[k] for k in ('fontFamily','fontWeight','fontSize','letterSpacing','wordSpacing','styleMatch','nativeDensityError','nativeAspectError')}
   result.update(fontStyle='italic' if slope else 'normal',textSkew=slope,fitWidth=False,fill='#'+''.join(f'{int(c):02x}' for c in fill),strokeWidth=0,offsetX=x0+fitted.get('baselineOffsetX',0),offsetY=y0,glyphWidth=tw,glyphHeight=th)
   result['fontMatchApproximate']=fitted['styleMatch']<.7 or fitted.get('nativeAspectError',0)>.08 or fitted['nativeDensityError']>.15
   if line_height is not None:result['lineHeight']=line_height

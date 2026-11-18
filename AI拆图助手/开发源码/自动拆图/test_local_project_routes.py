@@ -23,9 +23,15 @@ class LocalProjectRoutesTests(unittest.TestCase):
   meta=result.json['project'];self.assertNotIn('doc',meta)
   self.assertNotIn('doc',self.req('GET','/saved-projects',headers=self.headers).json['projects'][0])
   read=self.req('GET','/saved-projects/one',headers=self.headers);self.assertEqual(decode_job(read.json['project'])['doc'],record()['doc'])
-  self.assertEqual(self.req('PUT','/saved-projects/one',headers=self.headers,json=record()).status_code,409)
+  stale=self.req('PUT','/saved-projects/one',headers=self.headers,json=record());self.assertEqual(stale.status_code,409)
+  self.assertEqual(self.store.get('one')['persistedVersion'],meta['persistedVersion'])
+  value=record();value['_expectedVersion']=meta['persistedVersion']
+  saved=self.req('PUT','/saved-projects/one',headers=self.headers,json=value);self.assertEqual(saved.status_code,200);meta=saved.json['project']
   self.assertEqual(self.req('DELETE','/saved-projects/one',headers=self.headers,json={'_expectedVersion':meta['persistedVersion']}).status_code,200)
   self.assertEqual(self.req('GET','/saved-projects/one',headers=self.headers).status_code,404)
+  value['_expectedVersion']=meta['persistedVersion']
+  self.assertEqual(self.req('PUT','/saved-projects/one',headers=self.headers,json=value).status_code,409)
+  self.assertEqual(self.store.list(),[])
  def test_write_failure_never_returns_success(self):
   with patch.object(self.store,'save',side_effect=OSError('disk full')),self.assertLogs(level='ERROR'):
    response=self.req('PUT','/saved-projects/one',headers=self.headers,json=record())

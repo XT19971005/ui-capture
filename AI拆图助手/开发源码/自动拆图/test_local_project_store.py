@@ -77,11 +77,14 @@ class LocalProjectStoreTests(unittest.TestCase):
   with patch.object(self.module.os,'replace',side_effect=OSError('disk full')):
    with self.assertRaises(OSError):self.store.save('one',new,old['persistedVersion'])
   self.assertEqual(self.store.get('one')['doc']['source'],IMAGE);self.assertEqual(len(list((Path(self.temp.name)/'工程库').iterdir())),1)
- def test_stale_save_and_delete_cannot_overwrite_newer_project(self):
-  old=self.store.save('one',record(),None);new=record();new['revision']='rev2';self.store.save('one',new,old['persistedVersion'])
+ def test_stale_save_and_delete_preserve_current_and_deleted_project(self):
+  old=self.store.save('one',record(),None);new=record();new['revision']='rev2';current=self.store.save('one',new,old['persistedVersion'])
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),old['persistedVersion'])
   with self.assertRaises(self.module.ProjectConflict):self.store.delete('one',old['persistedVersion'])
   self.assertEqual(self.store.get('one')['revision'],'rev2')
+  self.store.delete('one',current['persistedVersion'])
+  with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),current['persistedVersion'])
+  self.assertEqual(self.store.list(),[])
  def test_invalid_id_and_oversize_leave_disk_unchanged(self):
   for ident in ('../escape','a/b','', 'x'*161):
    with self.assertRaises(ValueError):self.store.save(ident,record(),None)
@@ -144,7 +147,9 @@ class LocalProjectStoreTests(unittest.TestCase):
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),None)
   self.assertEqual(legacy.read_bytes(),old_bytes)
   newer=self.store.save('one',record(),old['persistedVersion'])
+  new_bytes=legacy.read_bytes()
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),old['persistedVersion'])
+  self.assertEqual(legacy.read_bytes(),new_bytes)
   self.assertEqual(self.store.path('one'),legacy);self.assertEqual(self.store.get('one')['persistedVersion'],newer['persistedVersion'])
 
  def test_explicit_manual_rename_changes_legacy_filename_once_to_new_extension(self):
@@ -156,8 +161,9 @@ class LocalProjectStoreTests(unittest.TestCase):
  def test_ai_semantic_title_change_migrates_only_its_legacy_file_with_cas(self):
   old=self.store.save('one',record(),None);legacy=self.store.root/'gd-hbimg-edge.shijie-project';self.store.path('one').rename(legacy)
   value=record();value['title']=value['doc']['title']='春日麻将活动';value['doc']['_titleSource']='ai'
+  original=legacy.read_bytes()
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',value,'stale-version')
-  self.assertTrue(legacy.exists())
+  self.assertEqual(legacy.read_bytes(),original)
   self.store.save('one',value,old['persistedVersion']);self.assertEqual(self.store.path('one').name,'春日麻将活动.aisplit-project');self.assertFalse(legacy.exists())
   legacy=self.store.root/'kept-legacy.shijie-project';self.store.path('one').rename(legacy);saved=self.store.list()[0]
   value['doc']['width']=100;self.store.save('one',value,saved['persistedVersion']);self.assertEqual(self.store.path('one'),legacy)
@@ -168,6 +174,7 @@ class LocalProjectStoreTests(unittest.TestCase):
   newest=self.store.root/'新版.aisplit-project';legacy.rename(newest);legacy.write_bytes(old_bytes)
   self.assertEqual(len(self.store.list()),1);self.assertEqual(self.store.list()[0]['persistedVersion'],second['persistedVersion'])
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),first['persistedVersion'])
+  self.assertEqual(self.store.get('one')['persistedVersion'],second['persistedVersion'])
   self.store.save('one',record(),second['persistedVersion']);self.assertEqual(legacy.read_bytes(),old_bytes);self.assertEqual(len(list(self.store.root.iterdir())),2)
 
  def test_rename_failure_after_moving_old_file_keeps_old_contents_and_version(self):
@@ -213,8 +220,10 @@ class LocalProjectStoreTests(unittest.TestCase):
   other=self.module.LocalProjectStore(self.store.root/'..'/self.store.root.name)
   self.assertIs(self.store.lock,other.lock)
   meta=self.store.save('one',record(),None)
-  other.save('one',record(),meta['persistedVersion'])
+  current=other.save('one',record(),meta['persistedVersion'])
   with self.assertRaises(self.module.ProjectConflict):self.store.save('one',record(),meta['persistedVersion'])
+  self.assertEqual(self.store.get('one')['persistedVersion'],current['persistedVersion'])
+  self.store.save('one',record(),current['persistedVersion'])
 
  def test_thumbnail_is_in_lightweight_index_and_does_not_change_doc(self):
   import base64,io

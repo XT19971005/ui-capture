@@ -5,7 +5,7 @@
  const note=document.getElementById('order-repair-note');let active=null;
  const omitted=(value,keys)=>Object.fromEntries(Object.entries(value||{}).filter(([k])=>!keys.includes(k)));
  function eligible(doc=scene){return !!(doc?.nodes?.length>=2&&(doc.comparisonSource||doc.source||doc.originalSource))}
- function sync(){button.disabled=busy||!!active||!eligible()||typeof ShijieSmartSplit.repairOrder!=='function';button.textContent=active?'正在修复层级…':'修复层级';button.title=!scene?'请先打开工程':!eligible()?'至少需要两个图层和原图':'对照原图遮挡关系，仅调整图层前后顺序；锁定项保持原位';const r=scene?.recognition?.orderRepair;if(note&&!active)note.textContent=r?[...(r.notes||[]),...(r.uncertain?.length?['有遮挡关系待校对，已保留未确定部分的顺序。']:[])].join(' ').slice(0,500):''}
+ function sync(){button.disabled=busy||!!active||!eligible()||typeof ShijieSmartSplit.repairOrder!=='function';button.textContent=active?'校对图层中…':'校对图层';button.title=!scene?'请先打开工程':!eligible()?'至少需要两个图层和原图':'对照原图遮挡关系，仅调整图层前后顺序；锁定项保持原位';const r=scene?.recognition?.orderRepair;if(note&&!active)note.textContent=r?[...(r.notes||[]),...(r.uncertain?.length?['有遮挡关系待校对，已保留未确定部分的顺序。']:[])].join(' ').slice(0,500):''}
  function validate(before,result){
   if(!result||!Array.isArray(result.nodes))throw Error('没有返回完整工程');S.validate(result);
   if(result.nodes.length!==before.nodes.length||new Set(result.nodes.map(n=>n.id)).size!==before.nodes.length)throw Error('返回结果改变了图层数量或身份');
@@ -43,5 +43,5 @@
  async function cancel(){const tx=active;if(!tx||task!==tx.id)return;tx.cancelling=true;const id=++task;stopSplitClock();$('cancel').disabled=true;status('正在取消层级修复并保存工程…');try{await ShijieSmartSplit.cancel()}catch(_){}if(active!==tx||task!==id)return;const saved=await restore(tx);if(active!==tx||task!==id)return;active=null;refineBefore=null;setBusy(false);window.studio.sync(false);feedback('cancelled','层级修复已取消，完整工程保留。'+(saved?'':'恢复保存失败，请下载工程文件。'))}
  button.addEventListener('click',()=>run().catch(e=>status('层级修复未完成：'+e.message)));
  $('cancel').addEventListener('click',event=>{if(!active||task!==active.id)return;event.preventDefault();event.stopImmediatePropagation();cancel().catch(e=>status('取消未完成：'+e.message))},true);
- const previous=updateButtons;updateButtons=function(...args){const result=previous.apply(this,args);sync();return result};window.ShijieLayerOrder={sync,isActive:()=>!!active};sync();
+ const previous=updateButtons;updateButtons=function(...args){const result=previous.apply(this,args);sync();return result};window.ShijieLayerOrder={sync,run,isActive:()=>!!active};sync();
 })();

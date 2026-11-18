@@ -62,6 +62,9 @@
  function restoreReplacementMetadata(before,result){
   const next=clone(result);let restored=false;
   function visit(a,b){if(!a||!b||typeof a!=='object'||typeof b!=='object')return;
+   // assistantWire omits these UI-only records; absence is not a scene edit.
+   // Restore only omitted values. A changed value must still fail validation.
+   for(const key of ['_autoAnnotationIssues','_retiredJobs'])if(Object.hasOwn(a,key)&&!Object.hasOwn(b,key)){b[key]=clone(a[key]);restored=true;}
    if(!Array.isArray(a)&&!Array.isArray(b)&&Object.hasOwn(a,'strokeWidths')&&!Object.hasOwn(b,'strokeWidths')&&equal(a.strokes,b.strokes)&&a.color===b.color){b.strokeWidths=clone(a.strokeWidths);restored=true;}
    if(Array.isArray(a)&&Array.isArray(b)){for(let i=0;i<Math.min(a.length,b.length);i++)visit(a[i],b[i])}else for(const key of Object.keys(a))if(Object.hasOwn(b,key))visit(a[key],b[key]);
   }
@@ -75,11 +78,32 @@
   const mutable=new Set(['src','provenance','review','assetReviewStatus','pendingGeneration','reviewIssue','generationRecord','imageReplacement']);
   if(expanded)for(const k of ['x','y','width','height'])mutable.add(k);
   for(let i=0;i<before.nodes.length;i++){const a=before.nodes[i],b=result.nodes[i];if(a.id!==b?.id)throw Error('返回结果改变了图层顺序');if(a.id!==id){if(!equal(a,b))throw Error('返回结果改变了未选图层')}else{for(const key of new Set([...Object.keys(a),...Object.keys(b)]))if(!mutable.has(key)&&!equal(a[key],b[key]))throw Error('返回结果改变了目标图层几何或属性');if(typeof b.src!=='string'||!b.src)throw Error('返回图片无效')}}
-  const transient=new Set(['nodes','recognition','_projectId','_splitBaseline','_splitDraftCore','_sessionId','delivery']);for(const key of new Set([...Object.keys(before),...Object.keys(result)]))if(!transient.has(key)&&!equal(before[key],result[key]))throw Error('返回结果改变了工程结构');
+  const transient=new Set(['nodes','recognition','_projectId','_splitBaseline','_splitDraftCore','_sessionId','delivery']);for(const key of new Set([...Object.keys(before),...Object.keys(result)]))if(!transient.has(key)&&!equal(before[key],result[key]))throw Error('返回结果改变了工程结构（字段：'+key+'），未应用到工程');
   return result;
  }
  async function paddedImage(src,width,height,x,y){const image=new Image();image.src=src;await image.decode();const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;canvas.getContext('2d').drawImage(image,x,y);return canvas.toDataURL('image/png')}
- async function growToFit(doc,{maxPixels=36000000}={}){const ns=doc.nodes.filter(n=>!n.versionArchived&&n.visible!==false&&!n.hidden),x=Math.min(0,...ns.map(n=>n.x)),y=Math.min(0,...ns.map(n=>n.y)),dx=Math.ceil(-x),dy=Math.ceil(-y),width=Math.ceil(Math.max(doc.width,...ns.map(n=>n.x+n.width))+dx),height=Math.ceil(Math.max(doc.height,...ns.map(n=>n.y+n.height))+dy);if(width===doc.width&&height===doc.height&&!dx&&!dy)return doc;if(width*height>maxPixels||Math.max(width,height)>6000)throw Error('完整部件需要更大的画布，超过当前尺寸上限；未裁切或应用');const src=doc.comparisonSource||doc.source;const padded=await paddedImage(src,width,height,dx,dy);for(const n of [...doc.nodes,...(doc.groups||[])]){if(n.x!==undefined){n.x+=dx;n.y+=dy}if(n.displayMask)n.displayMask=ShijieLayerStyle.transformMask(n.displayMask,{dx,dy})}const marks=doc._sourceAnnotations;if(marks?.version===1&&marks.width===doc.width&&marks.height===doc.height){const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,'0')).join('');if(marks.sourceHash===await hash(src)){const migrated=clone(marks);migrated.width=width;migrated.height=height;migrated.sourceHash=await hash(padded);for(const item of migrated.items)for(const stroke of item.strokes)for(const point of stroke){point[0]+=dx;point[1]+=dy}doc._sourceAnnotations=migrated}}if(doc.recognition?.sourceFrame){doc.recognition.sourceFrame.x+=dx;doc.recognition.sourceFrame.y+=dy}doc.width=width;doc.height=height;doc.source=doc.comparisonSource=padded;return doc}
+ async function growToFit(doc,{maxPixels=36000000,onlyIds=null}={}){
+  const wanted=onlyIds?new Set(onlyIds):null,entries=new Map([...doc.nodes,...(doc.groups||[])].map(n=>[n.id,n])),parents=new Map();
+  for(const g of doc.groups||[])for(const id of g.children||[])parents.set(id,g.id);
+  const ns=doc.nodes.filter(n=>{if(wanted&&!wanted.has(n.id))return false;const seen=new Set();while(n){if(seen.has(n.id)||n.versionArchived||n.visible===false||n.hidden&&n.visible===undefined||(n.opacity??1)<=0)return false;seen.add(n.id);n=entries.get(parents.get(n.id))}return true}),boxes=[];
+  // ponytail: inspect only out-of-canvas, plain rasters; styled layers retain
+  // their full bounds. Scan sequentially, bounded to one bounded pixel buffer at a time.
+  for(const n of ns){
+   let box=n;
+   if(n.type==='image'&&!n.rotation&&!n.layerStyle&&!n.displayMask&&(n.x<0||n.y<0||n.x+n.width>doc.width||n.y+n.height>doc.height)){
+    const im=new Image();im.src=n.src;await im.decode();const w=im.naturalWidth||im.width,h=im.naturalHeight||im.height;
+    if(!(w>0&&h>0)||Math.max(w,h)>6000||w*h>maxPixels)throw Error('素材像素尺寸无效或超过上限，未扩展画布');
+    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(im,0,0);
+    const ink=ShijieLayerStyle.alphaBounds(canvas,{x:0,y:0,width:0,height:0});
+    if(!ink.width||!ink.height)continue;
+    box={x:n.x+ink.x*n.width/w,y:n.y+ink.y*n.height/h,width:ink.width*n.width/w,height:ink.height*n.height/h};
+   }
+   boxes.push(box);
+  }
+  const x=Math.min(0,...boxes.map(n=>n.x)),y=Math.min(0,...boxes.map(n=>n.y)),dx=Math.ceil(-x),dy=Math.ceil(-y),width=Math.ceil(Math.max(doc.width,...boxes.map(n=>n.x+n.width))+dx),height=Math.ceil(Math.max(doc.height,...boxes.map(n=>n.y+n.height))+dy);
+  if(width===doc.width&&height===doc.height&&!dx&&!dy)return doc;
+  if(width*height>maxPixels||Math.max(width,height)>6000)throw Error('完整部件需要更大的画布，超过当前尺寸上限；未裁切或应用');
+  const src=doc.comparisonSource||doc.source;const padded=await paddedImage(src,width,height,dx,dy);for(const n of [...doc.nodes,...(doc.groups||[])]){if(n.x!==undefined){n.x+=dx;n.y+=dy}if(n.displayMask)n.displayMask=ShijieLayerStyle.transformMask(n.displayMask,{dx,dy})}const marks=doc._sourceAnnotations;if(marks?.version===1&&marks.width===doc.width&&marks.height===doc.height){const hash=async value=>Array.from(new Uint8Array(await (window.ShijieSession||crypto.subtle).digest('SHA-256',new TextEncoder().encode(value))),v=>v.toString(16).padStart(2,'0')).join('');if(marks.sourceHash===await hash(src)){const migrated=clone(marks);migrated.width=width;migrated.height=height;migrated.sourceHash=await hash(padded);for(const item of migrated.items)for(const stroke of item.strokes)for(const point of stroke){point[0]+=dx;point[1]+=dy}doc._sourceAnnotations=migrated}}if(doc.recognition?.sourceFrame){doc.recognition.sourceFrame.x+=dx;doc.recognition.sourceFrame.y+=dy}doc.width=width;doc.height=height;doc.source=doc.comparisonSource=padded;return doc}
  function createFlow(env){
   let state=null,sequence=0;
   const sameProject=(a,b)=>a===b||!!a?._projectId&&a._projectId===b?._projectId;
@@ -90,7 +114,7 @@
   async function generate(config,onProgress=()=>{}){
    const s=state;if(!s||s.running||env.busy())throw Error('请先完成当前操作');assertCurrent(s);
    const prompt=String(config.prompt||'').trim();if(!prompt&&!config.reference?.src)throw Error('请填写替换描述或上传参考图');const selection=config.selection==null?null:clone(config.selection),region=selection!==null?polygonBounds(selection):config.region?clone(config.region):null;if(selection!==null&&!region)throw Error('圈选区域无效，请重新圈选');invalidate();s.expansionAllowed=config.task==='remove'&&config.annotations?.allowExpand?{width:config.annotations.width,height:config.annotations.height}:null;const token=sequence;s.running=true;env.lock(true);
-   try{const doc=clone(s.before);delete doc._splitBaseline;delete doc._splitDraftCore;let result=await env.request(doc,{targetId:s.id,region,selection,prompt,reference:config.reference?clone(config.reference):null,...(config.task?{task:config.task}:{}),...(config.annotations?{annotations:clone(config.annotations)}:{})},(v,m)=>{if(state===s&&sequence===token)onProgress(v,m)});if(state!==s||sequence!==token){release(result,s);return null}try{if(!sameProject(env.get(),s.owner))throw Error('已切换工程，候选不能应用到当前工程');result=validateCandidate(s.before,result,s.id,s.expansionAllowed)}catch(e){release(result,s);throw e}s.result=result;return result}
+   try{const doc=clone(s.before);delete doc._splitBaseline;delete doc._splitDraftCore;let result=await env.request(doc,{targetId:s.id,region,selection,prompt,reference:config.reference?clone(config.reference):null,...(config.task?{task:config.task}:{}),...(config.annotations?{annotations:clone(config.annotations)}:{})},(v,m)=>{if(state===s&&sequence===token)onProgress(v,m)});if(state!==s||sequence!==token){release(result,s);return null}try{if(!sameProject(env.get(),s.owner))throw Error('已切换工程，候选不能应用到当前工程');result=validateCandidate(s.before,result,s.id,s.expansionAllowed)}catch(e){const matches=result?.nodes?.filter(n=>n.id===s.id)||[],image=matches.length===1?matches[0]:null;if(sameProject(env.get(),s.owner)&&image?.type==='image'&&image.generationRecord?.actualImageGeneration===true&&typeof image.src==='string'&&image.src.length<=48000000&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(image.src)&&image.src!==s.before.nodes.find(n=>n.id===s.id)?.src)e.rejectedImage={src:image.src,name:image.name||'未应用候选',reason:e.message};release(result,s);throw e}s.result=result;return result}
    finally{if(state===s){s.running=false;env.lock(false)}}
   }
   async function apply(){const s=state;if(!s?.result)throw Error('候选已失效，请先生成预览');if(s.running||env.busy())throw Error('请先完成当前操作');assertCurrent(s);validateCandidate(s.before,s.result,s.id,s.expansionAllowed);

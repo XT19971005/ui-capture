@@ -1,7 +1,7 @@
 /* Durable previews: stored with their base project, never applied during load. */
 (()=>{
  'use strict';
- const clone=v=>structuredClone(v),blankDrafts=new Map();
+ const clone=v=>structuredClone(v),blankDrafts=new Map();let applyingRecord=false;
  function content(doc){return JSON.stringify(doc,(key,value)=>['_assistantChat','_assistantCandidates','_sessionId','delivery','_studioStep'].includes(key)?undefined:value)}
  async function signature(doc){const bytes=new TextEncoder().encode(content(doc)),hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('')}
  function records(doc){return Array.isArray(doc?._assistantCandidates)?doc._assistantCandidates.filter(r=>r?.version===1&&typeof r.id==='string'&&['scene','image'].includes(r.kind)):[]}
@@ -65,7 +65,7 @@
   ShijieScene.validate(candidate);const after=record.kind==='image'?record.candidate.src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(ShijieScene.svg(candidate));
   let applying=false,applied=false;
   ShijieCanvasComparison.show({before:original,after,isCurrent:()=>studio.adapter.get()===owner,apply:async()=>{
-   if(applying||applied)throw Error(applied?'候选已应用':'候选正在应用中');applying=true;try{
+   if(applying||applied||applyingRecord||studio.isBusy())throw Error(applied?'候选已应用':'候选正在应用中');applying=applyingRecord=true;setBusy(true);studio.sync(false);try{
    const live=studio.adapter.get(),liveHash=await signature(live),candidate=await prepare(record,live);
    if(studio.adapter.get()!==live||await signature(live)!==liveHash)throw Error('工程正在改变，候选仍已保留，请重试应用');
    candidate._projectId=live._projectId;candidate._assistantChat=clone(live._assistantChat);candidate._assistantCandidates=records(live).filter(r=>r.id!==record.id);
@@ -73,7 +73,7 @@
    const rollback=clone(live);try{await studio.adapter.restore(candidate);await studio.adapter.finish(rollback,'应用已保存候选')}catch(error){try{await studio.adapter.restore(rollback)}catch(rollbackError){throw Error(error.message+'；恢复当前工程失败：'+rollbackError.message+'；候选仍保留在保存工程中')}throw error}applied=true;if(record.completeSplit)studio.setInitial(studio.adapter.get(),{completedSplit:true});
    try{await studio.saveCheckpoint('确认应用候选');studio.adapter.status('候选已应用并保存，可撤销')}catch(e){studio.adapter.status('候选已应用但保存失败：'+e.message+'；请重试保存')}
    ShijieCanvasComparison.close();render();
-   }finally{applying=false}
+   }finally{applying=applyingRecord=false;setBusy(false);studio.sync(false)}
   },discard:()=>ShijieCanvasComparison.close()});
  }
  async function retry(id){const blank=blankDrafts.get(id);if(blank){await StudioBase.library.put(blank,'image',{checkpoint:true});return records(blank).find(r=>r.id===id)}await window.studio.saveCheckpoint('重试保存候选');return records(window.studio.adapter.get()).find(r=>r.id===id)}

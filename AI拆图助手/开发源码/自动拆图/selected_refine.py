@@ -25,7 +25,7 @@ def process(source,title,progress,cancelled,original_source=None,on_scene=lambda
 def _process(source,title,progress,cancelled,original_source,home,resume_scene,selected_ids,region=None,dialogue=None):
  from engine import load_source
  from acceptance import review_asset
- from incremental_assets import extract_once,check_resume_native,effective_locked_ids
+ from incremental_assets import extract_once,extract_checked,check_resume_native,effective_locked_ids
  from region_refine import contains
  ids=validate_selection(resume_scene,selected_ids,region)
  scene=copy.deepcopy(resume_scene);original_scene=copy.deepcopy(scene);im=load_source(source)
@@ -87,13 +87,23 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
   if n['type']!='image' or n['id'] in joint_image_ids:continue
   try:
    if diagnostic_error:raise ValueError(diagnostic_error)
-   quality=next(c for c in diagnostic['assetChecks'] if c['id']==n['id']) if diagnostic is not None else review_asset(work,n,structure,cancelled,on_status=lambda m:progress(.05+.75*index/total,m),**({'user_request':user_request} if user_request else {}))
+   # A combined composition can hide clipped limbs and dirty edges. Unscoped
+   # repair still inspects each complete asset on its own contrasting sheets.
+   quality=next(c for c in diagnostic['assetChecks'] if c['id']==n['id']) if diagnostic is not None and region is not None else review_asset(work,n,structure,cancelled,on_status=lambda m:progress(.05+.75*index/total,m),**({'user_request':user_request} if user_request else {}))
   except InterruptedError:raise
   except Exception as error:
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='检查未完成，保留原素材：'+str(error)[:200]);notes.append(n['name']+'：'+n['reviewIssue']);continue
   if n.get('provenance')=='source-crop-fallback' or n.get('generationRecord',{}).get('actualImageGeneration') is False:
    quality={**quality,'status':'FAIL','issues':[*quality.get('issues',[]),'当前只是提取失败的原图裁片，须重新提取独立完整透明素材']}
   checked.append(n['id'])
+  if region is None:
+   from asset_completion import correct_reviewed_color
+   try:corrected,quality=correct_reviewed_color(work,n,quality,structure,cancelled,lambda m:progress(.05+.75*index/total,m))
+   except InterruptedError:raise
+   except Exception as error:
+    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='颜色检查未完成，保留原素材：'+str(error)[:200]);notes.append(n['name']+'：'+n['reviewIssue']);continue
+   if corrected is not n:
+    scene['nodes'][scene['nodes'].index(n)]=corrected;changed.append(n['id']);n=corrected
   placement=quality.get('placement')
   if placement is not None:
    try:
@@ -109,9 +119,21 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
    except ValueError as error:
     n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='尺寸校对未应用：'+str(error));notes.append(n['name']+'：'+n['reviewIssue']);continue
   if quality.get('status')=='PASS':
-   n.update(assetReviewStatus='PASS',review=False);n.pop('reviewIssue',None);continue
+   n.update(assetReviewStatus='PASS',review=False,assetReviewChecks=quality.get('checks',[]));n.pop('reviewIssue',None);continue
   if quality.get('status')=='NEEDS_REVIEW':
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='；'.join(quality.get('issues',[])) or '区域内证据不足，保留当前素材');notes.append(n['name']+'：'+n['reviewIssue']);continue
+  if region is None:
+   try:
+    from asset_completion import repair_local
+    local,rechecked=repair_local(work,n,quality,structure,cancelled,original,lambda m:progress(.1+.75*index/total,m))
+    if local is not n:
+     passed=rechecked['status']=='PASS';local.update(assetReviewStatus='PASS' if passed else 'NEEDS_REVIEW',review=not passed,assetReviewChecks=rechecked['checks'])
+     if passed:local.pop('reviewIssue',None)
+     else:local['reviewIssue']='；'.join(rechecked.get('issues',[]));notes.append(local['name']+'：'+local['reviewIssue'])
+     scene['nodes'][scene['nodes'].index(n)]=local;changed.append(n['id']);continue
+   except InterruptedError:raise
+   except Exception as error:
+    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='局部返修未完成，保留原素材：'+str(error)[:180]);notes.append(n['name']+'：'+n['reviewIssue']);continue
   issues=quality.get('issues',[]) or ['选中素材存在需要修正的问题'];n['_repairNotes']=issues+([user_request] if user_request else [])
   if region is not None:n['_repairNotes']=['仅修正当前已确认图层；ROI '+str(region)+'；保持完整实体，完整图层框不能跨出 ROI，不处理其他图层。',*issues]
   progress(.1+.75*index/total,'正在修正选中项：'+n['name'])
@@ -128,13 +150,21 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
   else:
    extraction=copy.deepcopy(n)
    if placement is not None:extraction['_placementBounds']={k:placement[k] for k in ('x','y','width','height')}
-   candidate=extract_once(work,extraction,assets,structure,cancelled,original,lambda m:progress(.1+.75*index/total,m))
+   extract=extract_once if region is not None else extract_checked
+   candidate=extract(work,extraction,assets,structure,cancelled,original,lambda m:progress(.1+.75*index/total,m))
   n.pop('_repairNotes',None)
   if candidate.get('provenance')=='source-crop-fallback':
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='修正未完成，保留原素材：'+candidate.get('reviewIssue',''));notes.append(n['name']+'：'+n['reviewIssue']);continue
+  if region is None and n.get('assetKind')!='background':
+   before_passed={c['name'] for c in quality.get('checks',[]) if c['status']=='PASS'}
+   after_passed={c['name'] for c in candidate.get('assetReviewChecks',[]) if c['status']=='PASS'}
+   if not before_passed<=after_passed:
+    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,assetReviewChecks=quality.get('checks',[]),reviewIssue='新素材未保留已通过项目，保留较好旧版：'+'；'.join(quality.get('issues',[])))
+    n.pop('_repairNotes',None);notes.append(n['name']+'：'+n['reviewIssue']);continue
   if region is not None and (candidate.get('id')!=n['id'] or candidate.get('type')!=n['type'] or not contains(region,candidate)):
    n.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='修正结果越过区域或更改图层身份，已保留原素材');notes.append(n['name']+'：'+n['reviewIssue']);continue
   candidate.pop('_repairNotes',None);scene['nodes'][scene['nodes'].index(n)]=candidate;changed.append(n['id'])
+  if candidate.get('assetReviewStatus')=='NEEDS_REVIEW':notes.append(candidate['name']+'：'+candidate.get('reviewIssue','补绘仍需校对'))
  native=[copy.deepcopy(n) for n in selected if n['type'] in ('text','rect','ellipse','path')]
  if native and not diagnostic_error:
   progress(.82,'正在校正选中文字与简单图形…')
@@ -183,7 +213,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,s
  replacement={i:(op['groupId'] if op['mode']=='vector-group' else op['anchorId']) for op in entity_changes for i in op['members']}
  active_ids={n['id'] for n in scene['nodes'] if not n.get('versionArchived')}
  result_ids=list(dict.fromkeys(replacement.get(i,i) for i in selected_ids if i in active_ids or i in replacement))
- scene.setdefault('recognition',{})['selectedRefine']={'selectedIds':list(selected_ids),'resultSelectedIds':result_ids,'effectiveSelectedIds':[i for i in selected_ids if i in active_ids],'entityChanges':entity_changes,'checkedIds':checked,'changedIds':list(dict.fromkeys(changed)),'notes':notes,'status':'NEEDS_REVIEW' if notes else 'COMPLETED','repairedAssetsNotRechecked':bool(changed)}
+ scene.setdefault('recognition',{})['selectedRefine']={'selectedIds':list(selected_ids),'resultSelectedIds':result_ids,'effectiveSelectedIds':[i for i in selected_ids if i in active_ids],'entityChanges':entity_changes,'checkedIds':checked,'changedIds':list(dict.fromkeys(changed)),'notes':notes,'status':'NEEDS_REVIEW' if notes else 'COMPLETED','repairedAssetsNotRechecked':any(n['id'] in changed and n.get('assetReviewStatus')!='PASS' for n in scene['nodes'])}
  if region is not None:scene['recognition']['selectedRefine']['region']=dict(region)
  # A partial or previously unchecked whole document never becomes PASS.
  if changed or notes:

@@ -28,62 +28,68 @@ def register_asset(target,reference_side,origin):
   'width':width*scale,'height':height*scale,'positionReviewRequired':mismatch,'boundaryReviewRequired':edge,
   'reviewIssue':'；'.join(issues),'registration':{'method':'reference-center-provisional' if mismatch else 'reference-canvas','scale':scale,'rawWidth':width,'rawHeight':height}}
 
-def extract(source,layer,assets,cancelled,on_status,annotations=None):
+def extract(source,layer,assets,cancelled,on_status,annotations=None,structure=None):
  from image_provider import CLIENT,settings
  from reference_fidelity import COLOR_PRESERVATION
- from engine import png
  with Image.open(source) as raw:original=raw.convert('RGBA')
  w,h=original.size
- from expansion_geometry import margins
- info=assets.parent/'02_结构/用户原画标注.json'
- marked_state=None
- if info.is_file():
-  import json
-  marked_state=json.loads(info.read_text('utf8'))
- allow_outside=bool(annotations and annotations.get('allowExpand') is True) or bool(isinstance(marked_state,dict) and marked_state.get('allowExpand') is True)
- budget=36000000
- if allow_outside:
-  from source_annotations import mark_margins
-  mx,my=mark_margins(w,h)
- else:
-  try:mx,my=margins(w,h,max_pixels=budget)
-  except ValueError:
-   bounds=original.getchannel('A').getbbox()
-   if bounds and (bounds[0]>0 or bounds[1]>0 or bounds[2]<w or bounds[3]<h):mx=my=0
-   else:raise
-  limit=min(6000,math.isqrt(budget))
-  if max(w,h)<limit:
-   mx=min(mx,(limit-w)//2);my=min(my,(limit-h)//2)
- ew,eh=w+2*mx,h+2*my
- if max(ew,eh)>6000 or ew*eh>budget:raise ValueError('完整部件扩展参考超过当前尺寸上限，未生成或裁切')
- side=max(ew,eh)
- # Preserve rectangular native references when a square would exceed budget.
- rw,rh=(side,side) if (not allow_outside or settings().get('provider')=='aimake') and side*side<=budget else (ew,eh)
- px=(rw-ew)//2;py=(rh-eh)//2
- canvas=Image.new('RGBA',(rw,rh));canvas.paste(original,(px+mx,py+my));reference=assets/(layer['id']+'_扩展参考.png');canvas.save(reference)
+ from asset_resolution import prepare_reference,resolution_prompt,apply_resolution,pad_reference_minimum
+ reference=assets/(layer['id']+'_高清局部参考.png')
  target=assets/(layer['id']+'_完整扩展.png')
- prompt=COLOR_PRESERVATION+'只提取并补全以下指定部件，其他实体和背景全部透明。'+layer['extractionBrief']+'。第一张是扩展参考画布，原图位于x='+str(px+mx)+',y='+str(py+my)+'，尺寸'+str(w)+'×'+str(h)+'。保持原对象在画布上的原位置、原大小、朝向和材质；不居中重排、不压缩塞进原框。只补缺失和遮挡，可延伸超出旧图片边界至新增透明区。完整形体不得贴边裁断。优先输出与参考'+str(rw)+'×'+str(rh)+'同宽高比、同构图的RGBA透明PNG；保持完整对象，不为适配画幅拉伸、裁断或重排。'
- if settings().get('provider')=='aimake':
-  prompt+='补全验收要求：原图边缘不是物体边缘。沿可见结构连续补出被截断的车轮、牛角、管道、火焰及其他主体外缘；火焰须有自然收束的完整尖端，不可沿原图上边缘平切。新增留白就是补全区域，不要把白底参考重新裁成旧横幅。完整主体与输出四边保持可见留白；若需要更多空间，保持主体比例并扩展画幅，禁止缩小原主体或裁断。'
- images=[reference]
- # The source box describes visible evidence, never the completed alpha extent.
- if all(k in layer for k in ('x','y','width','height')):
-  import json
-  from PIL import ImageDraw
-  x,y,bw,bh=(float(layer[k]) for k in ('x','y','width','height'))
-  marked=assets/(layer['id']+'_目标标注.png')
-  aligned=canvas.copy();draw=ImageDraw.Draw(aligned)
-  draw.rectangle((x+px+mx,y+py+my,x+bw+px+mx,y+bh+py+my),outline='#ffdf24',width=3)
-  aligned.save(marked);images.append(marked)
-  context=max(24,max(bw,bh)*.6)
-  bounds=(max(0,math.floor(x-context)),max(0,math.floor(y-context)),min(w,math.ceil(x+bw+context)),min(h,math.ceil(y+bh+context)))
-  if bounds[2]>bounds[0] and bounds[3]>bounds[1]:
-   crop=assets/(layer['id']+'_目标干净局部.png');original.crop(bounds).save(crop);images.append(crop)
-  prompt+='第二张仅用黄色矩形指出本次唯一目标，第三张（如有）为未经标注和调色的原图局部上下文，不是输出构图。目标原图可见参考框xywh='+json.dumps([x,y,bw,bh])+'；在第一/二张扩展画布中的可见框xywh='+json.dumps([x+px+mx,y+py+my,bw,bh])+'。此框只定位原图已经可见的部分，不约束补全后整体边界；补全部分可越框，禁止把完整外形缩入此框。只提取本次目标，不提取邻近实体，不生成黄色框。局部图不得取代第一张的落位坐标。'
- record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False)
+ config=settings();allowed_ratios=None
+ if config.get('provider')=='aimake':
+  from image_provider import model_schema
+  props=model_schema(config['model']).get('input',{}).get('properties',{})
+  allowed_ratios=[] if config['model'].startswith('gpt-image-') and 'width' in props and 'height' in props else props.get('aspect_ratio',{}).get('enum')
+ frame=prepare_reference(original,layer,reference,allowed_ratios=allowed_ratios)
+ rw,rh=frame['sourceCanvasSize']
+ prompt=COLOR_PRESERVATION+'只提取并补全指定独立部件：'+layer['extractionBrief']+'。'+resolution_prompt(frame)
+ if layer.get('layerStyle'):prompt+='外挂投影、发光与描边另由原生图层样式重建，不烘焙进底稿；主体内部材质光照保留。'
+ if layer.get('_otherLayers'):prompt+='其它对象仅供排除，不混入当前主体：'+'；'.join(str(item.get('name','')) for item in layer['_otherLayers'])
+ prompt+='第一张是高清局部参考，第二张是完整干净原图；以原图的外观和比例为准，额外标注图仅供定位。'
+ images=[reference,Path(source)];repair_reference=None;context_reference=None;marked_reference=None
+ nano=config.get('provider')=='aimake' and config.get('model','').startswith('nano-banana')
+ try:
+  if nano:
+   context_reference=assets/(layer['id']+'_全图上下文参考.png')
+   if pad_reference_minimum(source,context_reference):
+    images[1]=context_reference
+    prompt+='第二张原图语义参考仅补透明留白以满足模型最小尺寸，原像素没有缩放；新增留白不是主体或输出布局。'
+  if annotations and any(item.get('strokes') for item in annotations.get('items',[])):
+   from source_annotations import render,summary
+   import json
+   marked_reference=assets/(layer['id']+'_标注定位参考.png')
+   render(annotations,source,marked_reference)
+   if nano:pad_reference_minimum(marked_reference,marked_reference)
+   images.append(marked_reference)
+   prompt+='带编号与彩色标线的图是定位参考，仅解释目标归属和原图中的范围，不是成品外观，也不是完整形体的裁切边界。目标为'+layer['name']+'。原有可见形状、光影和比例依据前两张干净参考；只补全遮挡或出画的缺失部分，不把标线、编号、文字或其它对象生成进去。标注说明：'+json.dumps(summary(annotations),ensure_ascii=False)
+  elif structure is not None:
+   from source_annotations import append_reference
+   prompt,images=append_reference(prompt,images,structure)
+  if layer.get('_repairSource'):
+   prior=layer['_repairSource']
+   if not isinstance(prior,str) or not prior.startswith('data:image/png;base64,') or len(prior)>36000000:raise ValueError('返修底稿无效')
+   repair_reference=assets/(layer['id']+'_返修底稿参考.png');repair_reference.write_bytes(base64.b64decode(prior.split(',',1)[1],validate=True))
+   if nano:pad_reference_minimum(repair_reference,repair_reference)
+   images.append(repair_reference)
+   prompt+='最后一张是本次返修前的完整底稿，只修复已经指出的问题，保留正确身份、姿势及已补全结构；仍按高清独立画幅输出，不把旧低分辨率直接放大冒充新细节。'
+  if nano and repair_reference and marked_reference:
+   ref_key=next((key for key in ('input_images','ref_images') if key in props),None)
+   maximum=props.get(ref_key,{}).get('maxItems',3 if config['model']=='nano-banana' else 14)
+   if len(images)>maximum:
+    # Keep the clean target, marked full context and repair asset when the model accepts three references.
+    images.pop(1)
+  record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False)
+ finally:
+  reference.unlink(missing_ok=True)
+  if repair_reference:repair_reference.unlink(missing_ok=True)
+  if context_reference:context_reference.unlink(missing_ok=True)
+  if marked_reference:marked_reference.unlink(missing_ok=True)
  if cancelled():raise InterruptedError('已取消')
  if not isinstance(record,dict) or not record.get('actualImageGeneration'):raise ValueError('扩展素材未完成实际生成')
- registered=register_asset(target,(rw,rh),(-mx-px,-my-py))
+ registered=register_asset(target,(rw,rh),frame['sourceOrigin'])
+ if not all(k in layer for k in ('x','y','width','height')):
+  registered.update(positionReviewRequired=True,reviewIssue='；'.join(filter(None,[registered.get('reviewIssue'),'未提供目标几何，使用整张原图识别独立主体；当前仅为临时登记，请预览校对大小与位置'])))
  from asset_registration import calibrate
  if on_status:on_status('正在自动校对素材大小与位置…')
  registered=calibrate(source,registered,layer) if all(k in layer for k in ('x','y','width','height')) else registered
@@ -115,5 +121,7 @@ def extract(source,layer,assets,cancelled,on_status,annotations=None):
     note='自动位置校对未完成，保留已生成完整PNG及临时落位：'+str(estimate_error)[:240]
    registered['reviewIssue']='；'.join(filter(None,[registered.get('reviewIssue'),note]))
 
+ record['independentAssetRequest']={'referenceWidth':frame['referenceWidth'],'referenceHeight':frame['referenceHeight'],'referenceSide':max(frame['referenceWidth'],frame['referenceHeight']),'minimumSubjectLongEdge':1024,'referenceUpscaleOnly':True}
+ registered=apply_resolution(registered,target,record)
  src=registered['src']
- return {'id':layer['id'],'name':layer['name'],'type':'image',**registered,'provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','assetKind':'complete-asset','assetReviewStatus':'NEEDS_REVIEW' if registered['reviewIssue'] else 'NOT_REVIEWED','review':True,'generationRecord':{'actualImageGeneration':True,'transparent':True,'sourceOriginalSHA256':hashlib.sha256(Path(source).read_bytes()).hexdigest(),'generatedAssetSHA256':hashlib.sha256(base64.b64decode(src.split(',',1)[1])).hexdigest(),'expandedCanvas':True,**{k:record[k] for k in ('provider','model','genId','postprocessing') if k in record}}}
+ return {'id':layer['id'],'name':layer['name'],'type':'image',**registered,'provenance':'aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation','assetKind':'complete-asset','assetReviewStatus':'NEEDS_REVIEW' if registered['reviewIssue'] else 'NOT_REVIEWED','review':True,'generationRecord':{'actualImageGeneration':True,'transparent':True,'sourceOriginalSHA256':hashlib.sha256(Path(source).read_bytes()).hexdigest(),'generatedAssetSHA256':hashlib.sha256(base64.b64decode(src.split(',',1)[1])).hexdigest(),'expandedCanvas':True,**{k:record[k] for k in ('provider','model','genId','postprocessing','assetResolution','independentAssetRequest') if k in record}}}

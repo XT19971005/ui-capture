@@ -6,6 +6,21 @@ def kind(layer):
  t=layer.get('layerType','image')
  return 'vector' if t in ('path','rect','ellipse') else 'text' if t=='text' else 'image'
 
+def has_pending_images(body):
+ if body.get('stage','all') not in ('all','image'):return False
+ done={n['_generationPlanIndex'] for n in body.get('completed',[])}
+ selected=set(body['imageIndices']) if 'imageIndices' in body else None
+ return any(kind(layer)=='image' and i not in done and (selected is None or i in selected) for i,layer in enumerate(body['layers']))
+
+def requires_images(body):
+ """Inspect a validated plan using the same stage and reuse rules as generation."""
+ if body.get('stage','all') not in ('all','image'):return False
+ layers=body['layers'];done={n['_generationPlanIndex'] for n in body.get('completed',[])}
+ from resource_reuse import image_links
+ _,_,groups=image_links(layers,body.get('annotations'))
+ selected=set(body['imageIndices']) if 'imageIndices' in body else None
+ return any((selected is None or selected.intersection(members)) and not any(i in done for i in members) for members in groups.values())
+
 def token(body):
  value={'source':hashlib.sha256(str(body.get('image','')).encode()).hexdigest(),'width':body.get('width'),'height':body.get('height'),'layers':body.get('layers'),'annotations':body.get('annotations')}
  return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()

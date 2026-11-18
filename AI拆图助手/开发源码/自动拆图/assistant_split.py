@@ -7,7 +7,7 @@ class SceneDeliveryError(Exception):
  """A failed save/delivery stops the task rather than skipping an object."""
 
 def validate(body):
- if not isinstance(body,dict) or set(body)-{'image','width','height','title','layers','annotations','backgroundOnly','outpaint','projectId','stage','completed','imageLimit','previousPlan'} or not {'image','width','height','title','layers'}<=set(body):raise ValueError('指定拆层参数无效')
+ if not isinstance(body,dict) or set(body)-{'image','width','height','title','layers','annotations','backgroundOnly','outpaint','projectId','stage','completed','imageLimit','previousPlan','imageIndices'} or not {'image','width','height','title','layers'}<=set(body):raise ValueError('指定拆层参数无效')
  from generation_stages import token as plan_token,validate_completed
  stamp=plan_token(body)
  body=copy.deepcopy(body)
@@ -103,7 +103,37 @@ def validate(body):
    if raw.getchannel('A').getextrema()[0]!=255:raise ValueError('上下扩建需要完整不透明背景，请先提取背景或导入完整背景图')
  from source_annotations import validate as validate_annotations
  validate_annotations(body.get('annotations'),body['image'],body['width'],body['height'])
+ if 'imageIndices' in body:
+  indices=body['imageIndices']
+  if not isinstance(indices,list) or not 1<=len(indices)<=128 or any(type(i) is not int or not 0<=i<len(body['layers']) for i in indices) or len(set(indices))!=len(indices):raise ValueError('重新生成图片索引无效')
+  if body.get('stage','all') not in ('all','image') or any(body['layers'][i].get('layerType','image')!='image' for i in indices):raise ValueError('重新生成只接受图片对象')
+  done={n['_generationPlanIndex'] for n in body.get('completed',[])};targets=set(indices)
+  if targets&done:raise ValueError('重新生成目标仍在已完成清单中，未重复提交')
+  from resource_reuse import image_links
+  _,_,groups=image_links(body['layers'],body.get('annotations'))
+  if any(targets.intersection(members) and (set(members)-done)-targets for members in groups.values()):raise ValueError('同款图片须一并选择所有待生成位置')
  return copy.deepcopy(body)
+
+def progress_object_label(layer):
+ import re
+ name=str(layer.get('name') or '当前对象')
+ found=re.search(r'标注\s*[：:]?\s*0*(\d+)',str(layer.get('reviewNote',''))) or re.match(r'^\s*0*(\d+)[\s·、._]',name)
+ return ('标注 '+str(int(found.group(1))).zfill(2)+' · ' if found else '')+name
+
+def image_brief(layer):
+ # Older plans placed real inclusion/exclusion requirements in reviewNote.
+ # Preserve those requirements in the actual image request as well as the UI.
+ return layer['instruction']+('；本对象方案补充说明（不表示已经验收）：'+layer['reviewNote'] if layer.get('reviewNote') else '')
+
+def merge_review_issues(*notes):
+ """Keep observed quality failures alongside plan and instance review notes."""
+ import re
+ parts=[]
+ for note in notes:
+  for part in re.split('[；;]',note or ''):
+   part=part.strip()
+   if part and part not in parts:parts.append(part)
+ return '；'.join(parts)
 
 def generate(body,home,cancelled,progress,on_scene=None):
  import threading
@@ -117,6 +147,7 @@ def generate(body,home,cancelled,progress,on_scene=None):
  from generation_stages import token as plan_token,kind as phase_kind,groups as phase_groups
  stamp=plan_token(body)
  body=validate(body)
+ image_indices=set(body['imageIndices']) if 'imageIndices' in body else None
  source=home/'原图.png'
  from image_replace import _image
  with _image(body['image']) as image:image.save(source)
@@ -145,11 +176,12 @@ def generate(body,home,cancelled,progress,on_scene=None):
   return {'format':'shijie-scene','version':2,'title':body['title'],'width':body['width'],'height':body['height'],'source':body['image'],'originalSource':body['image'],'comparisonSource':body['image'],'background':None,'nodes':copy.deepcopy(nodes),'groups':phase_groups(body['layers'],nodes),'edges':[],'_partial':True,'_generationStage':{'imageRequests':image_requests,'reuseStats':reuse_statistics(body['layers'],nodes,body.get('annotations'))},'recognition':{'extractionStatus':'INCOMPLETE','reviewStatus':'NOT_REVIEWED','assistantDirected':True,'requestedLayers':copy.deepcopy(body['layers']),'vectorReviewWarnings':copy.deepcopy(vector_warnings),'pendingLayers':copy.deepcopy([layer for i,layer in enumerate(body['layers']) if i not in by_index]),'timing':{'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}}}
  def create_image(index,ident):
   layer=body['layers'][index];b=layer['box']
-  brief=layer['instruction']+'；用户明确指定的独立层，仅提取本层对象，其他对象和整图背景必须透明；补全被遮挡的完整形体，保持原图尺寸、位置、朝向与风格。本层仅保留主体材质；清除另成层子项并补全表面。已规划的外挂描边、投影与发光不烘焙进底稿，另挂原生样式。'
+  def report_object(value,message):progress(value,progress_object_label(layer)+'：'+str(message))
+  brief=image_brief(layer)+'；用户明确指定的独立层，仅提取本层对象，其他对象和整图背景必须透明；补全被遮挡的完整形体，保持原图尺寸、位置、朝向与风格。本层仅保留主体材质；清除另成层子项并补全表面。已规划的外挂描边、投影与发光不烘焙进底稿，另挂原生样式。'
   creation_index=image_sources.get(index,index);creation_layer=body['layers'][creation_index]
   if creation_index!=index:brief=creation_layer['instruction']+'；'+brief+'；同款只制作一个完整透明素材，以本次指定最大参考位置为准，其他位置由程序复制，不生成一群，不带数量文字。'
   node={'id':ident,'type':'image','name':creation_layer['name'],**creation_layer['box'],'sourceAssetId':ident,'assetKind':'complete-asset','extractionBrief':brief,'_repairNotes':[brief]}
-  progress(index/len(body['layers']),'正在提取第 '+str(index+1)+'/'+str(len(body['layers']))+' 层：'+layer['name'])
+  report_object(index/len(body['layers']),'正在提取第 '+str(index+1)+'/'+str(len(body['layers']))+' 层：'+layer['name'])
   if body.get('backgroundOnly') or layer.get('assetKind')=='background':
    from image_provider import CLIENT
    from reference_fidelity import BACKGROUND_PRESERVATION
@@ -167,7 +199,7 @@ def generate(body,home,cancelled,progress,on_scene=None):
     prompt='仅在第一张画布灰色新增区域向四周扩建（原宽不变时为上下扩建），不拉伸或重排已有内容。原图位于x='+str(offset_x)+',y='+str(offset_y)+'，原尺寸'+str(original.width)+'×'+str(original.height)+'；灰色不是成品。输出完整不透明画布 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
     if not body.get('outpaint'):
      prompt='一次生成同时完成去掉全部UI、补全遮挡背景及四周扩建。原截图位于x='+str(offset_x)+',y='+str(offset_y)+'，原尺寸'+str(original.width)+'×'+str(original.height)+'；保持未删除场景内容的位置、大小和朝向，新增区域续画自然背景，不粘回含UI原图，不重排。完整不透明目标尺寸 '+str(int(b['width']))+'×'+str(int(b['height']))+'。用户要求：'+layer['instruction']+'。'+BACKGROUND_PRESERVATION
-   record=CLIENT.generate(prompt,refs,target,transparent=False,cancelled=cancelled,on_status=lambda m:progress(0,m))
+   record=CLIENT.generate(prompt,refs,target,transparent=False,cancelled=cancelled,on_status=lambda m:report_object(0,m))
    if cancelled():raise InterruptedError('已停止背景提取')
    if not isinstance(record,dict) or not record.get('actualImageGeneration'):raise ValueError('背景未完成实际生成')
    with Image.open(target) as output:
@@ -192,18 +224,20 @@ def generate(body,home,cancelled,progress,on_scene=None):
   else:
    if (body.get('annotations') or {}).get('allowExpand') is True:
     from expanded_assets import extract
-    candidate=extract(source,node,assets,cancelled,lambda m:progress(index/len(body['layers']),m),annotations=body.get('annotations'))
-   else:candidate=extract_once(source,node,assets,structure,cancelled,source,lambda m:progress(index/len(body['layers']),m))
+    candidate=extract(source,node,assets,cancelled,lambda m:report_object(index/len(body['layers']),m),annotations=body.get('annotations'))
+   else:candidate=extract_once(source,node,assets,structure,cancelled,source,lambda m:report_object(index/len(body['layers']),m))
   if creation_index!=index:
    from annotation_plan import reuse_node
    original_provenance=candidate.get('provenance');original_issue=candidate.get('reviewIssue','')
    candidate=reuse_node(layer,candidate,creation_layer,ident,require_approved=False)
-   candidate.update(provenance=original_provenance,reviewIssue=original_issue)
+   candidate.update(provenance=original_provenance,reviewIssue=merge_review_issues(original_issue,candidate.get('reviewIssue')))
   candidate['sourceResourceId']=ident;candidate['resourceMaster']=True;candidate['resourceReferenceIndex']=creation_index
-  if candidate.get('provenance')=='source-crop-fallback' or not candidate.get('generationRecord',{}).get('actualImageGeneration'):raise ValueError(layer['name']+'未完整提取，未应用本轮结果；没有自动重试')
+  if candidate.get('provenance')=='source-crop-fallback' or not candidate.get('generationRecord',{}).get('actualImageGeneration'):
+   reason=str(candidate.get('reviewIssue') or '').strip()
+   raise ValueError((reason+'；' if reason else '')+layer['name']+'未完整提取，未应用本轮结果；没有自动重试')
   from design_properties import design_fields
   candidate.update(design_fields(layer))
-  if layer.get('reviewNote'):candidate.update(reviewIssue=layer['reviewNote'],review=True,assetReviewStatus='NEEDS_REVIEW')
+  if layer.get('reviewNote'):candidate.update(reviewIssue=merge_review_issues(candidate.get('reviewIssue'),layer['reviewNote']),review=True,assetReviewStatus='NEEDS_REVIEW')
   import re
   annotation_number=re.search(r'标注\s*[：:]?\s*0*(\d+)',layer.get('reviewNote',''))
   if annotation_number:candidate['annotationNumber']=int(annotation_number.group(1))
@@ -227,17 +261,17 @@ def generate(body,home,cancelled,progress,on_scene=None):
   wrong={m['number'] for m in annotation_summary(body.get('annotations')) if m['layerType']=='vector' and material_icon(m['name'],m.get('planNote',''))} if body.get('annotations') else set()
   import re
   for i,l in enumerate(body['layers']):
-   if i in by_index or body.get('stage','all') not in ('all',phase_kind(l)):continue
+   if i in by_index or image_indices is not None and i not in image_indices or body.get('stage','all') not in ('all',phase_kind(l)):continue
    try:native_node(l,'validation')
    except ValueError as error:native_errors[i]=str(error)
   for i,l in enumerate(body['layers']):
-   if body.get('stage','all') not in ('all','vector'):continue
+   if image_indices is not None or body.get('stage','all') not in ('all','vector'):continue
    number=re.match(r'^\s*0*(\d+)[\s·、._]',l['name'])
    if phase_kind(l)=='vector' and i not in by_index and (material_icon(l['name'],l['instruction']) or number and int(number.group(1)) in wrong):native_errors[i]='材质图标分类冲突：应完整提取图片，未发布近似矢量；请先修正图标分类，不会自动生图'
   with Image.open(source) as original:
    for index,layer in enumerate(body['layers']):
     if cancelled():raise InterruptedError('已停止指定拆层')
-    if index in native_errors or index in by_index or layer.get('layerType')!='path' or layer.get('reuseOf') is not None or body.get('stage','all') not in ('all','vector'):continue
+    if image_indices is not None or index in native_errors or index in by_index or layer.get('layerType')!='path' or layer.get('reuseOf') is not None or body.get('stage','all') not in ('all','vector'):continue
     progress(0,'正在按原图检查矢量轮廓：'+layer['name'])
     companions=[];component=False;b=layer['box']
     for other_index,part in enumerate(body['layers']):
@@ -256,14 +290,14 @@ def generate(body,home,cancelled,progress,on_scene=None):
   while changed:
    changed=False
    for index,part in enumerate(body['layers']):
-    if index in native_errors or index in by_index or part.get('layerType') not in ('path','rect','ellipse') or body.get('stage','all') not in ('all','vector'):continue
+    if image_indices is not None or index in native_errors or index in by_index or part.get('layerType') not in ('path','rect','ellipse') or body.get('stage','all') not in ('all','vector'):continue
     failed=next((j for j in native_errors if linked_parts(part,body['layers'][j]) or part.get('reuseOf')==j),None)
     if failed is not None:
      native_errors[index]='同一对象的另一色块“'+body['layers'][failed]['name']+'”未通过原图检查，暂不发布残缺对象'
      prepared_native.pop(index,None);changed=True
   vector_warnings[:]=[{'index':i,'name':body['layers'][i]['name'],'reason':reason} for i,reason in sorted(native_errors.items())]
   from image_provider import settings
-  roots=[i for i,l in enumerate(body['layers']) if i not in by_index and i not in native_errors and phase_kind(l)=='image' and body.get('stage','all') in ('all','image') and image_refs.get(i,l.get('reuseOf')) is None]
+  roots=[i for i,l in enumerate(body['layers']) if i not in by_index and (image_indices is None or i in image_indices) and i not in native_errors and phase_kind(l)=='image' and body.get('stage','all') in ('all','image') and image_refs.get(i,l.get('reuseOf')) is None]
   if body.get('imageLimit',0):roots=roots[:body['imageLimit']]
   if len(roots)>1 and settings()['provider']=='aimake':
    progress(0,'同时处理本次选择的'+str(len(roots))+'款亿创素材；各自提交、独立回传，同款只制作一次')
@@ -281,13 +315,14 @@ def generate(body,home,cancelled,progress,on_scene=None):
    yield from (i for i,l in enumerate(body['layers']) if phase_kind(l)=='image' and i not in futures)
   for index in selected_indices():
    layer=body['layers'][index]
+   if image_indices is not None and index not in image_indices:continue
    if cancelled():raise InterruptedError('已停止指定拆层')
    if index in native_errors:continue
    if index in by_index or body.get('stage','all')!='all' and phase_kind(layer)!=body['stage']:continue
    if index not in futures and phase_kind(layer)=='image' and layer.get('reuseOf') is None and index not in image_refs and body.get('imageLimit',0) and image_requests>=body['imageLimit']:continue
    try:
     ref=image_refs.get(index,layer.get('reuseOf'))
-    if ref is not None and ref not in by_index:raise ValueError('同款底稿未完成，保留实例待修复')
+    if ref is not None and ref not in by_index:raise ValueError('同款底稿尚未生成，本实例未生成')
     if phase_kind(layer)=='image' and ref is None and index not in futures:image_requests+=1
     b=layer['box'];ident='assistant-'+uuid.uuid4().hex
     from annotation_plan import native_node
@@ -314,7 +349,7 @@ def generate(body,home,cancelled,progress,on_scene=None):
    except InterruptedError:raise
    except (ValueError,RuntimeError,OSError) as error:
     vector_warnings.append({'index':index,'name':layer['name'],'reason':str(error)[:240]})
-    progress((index+1)/len(body['layers']),'本项待修复，继续其他对象：'+layer['name'])
+    progress((index+1)/len(body['layers']),'本项未生成，继续其他对象：'+layer['name'])
     if on_scene:on_scene(partial_scene())
  except Exception as error:
   if nodes:error.partial=partial_scene()
@@ -338,5 +373,5 @@ def generate(body,home,cancelled,progress,on_scene=None):
  if body.get('outpaint') and nodes and nodes[0].get('positionReviewRequired'):
   result['_partial']=True;result['recognition'].update(extractionStatus='INCOMPLETE',pendingLayers=copy.deepcopy(body['layers']))
  result['recognition']['timing']={'completedAt':datetime.now(timezone.utc).isoformat(),'elapsedMs':round((time.monotonic()-started)*1000)}
- progress(1,'部分对象待修复：参数、提取或分类检查失败，已保留完成层，请核对分类和范围' if vector_warnings else '所选阶段已完成，等待继续下一阶段' if result.get('_partial') else '指定素材层已生成，等待预览确认')
+ progress(1,'本轮未全部生成，原图和已有图层保留；具体原因见任务结果' if vector_warnings else '所选阶段已完成，等待继续下一阶段' if result.get('_partial') else '指定素材层已生成，等待预览确认')
  return result

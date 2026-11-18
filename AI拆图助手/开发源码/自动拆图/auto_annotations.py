@@ -108,6 +108,32 @@ def box_candidates(result,width,height,limit,expand,frames):
  return validate_objects({'objects':objects},width,height,limit,expand)
 
 
+def analyze_objects(prompt,references,body,frames,width,height,limit,expand,cancelled,on_status):
+ from assistant_models import analyze
+ try:
+  result=analyze(prompt,references,detection_schema(limit,len(frames)),body['provider'],body['model'],cancelled,on_status)
+ except RuntimeError as error:
+  if not hasattr(error,'structured_value'):raise
+  result=error.structured_value
+ if cancelled():raise InterruptedError('已停止自动标注')
+ if not isinstance(result,dict) or set(result)!={'objects'} or not isinstance(result['objects'],list) or len(result['objects'])>limit:raise ValueError('自动标注定位格式无效')
+ # Existing stored point fixtures remain strict and are never reinterpreted.
+ if result['objects'] and all(isinstance(o,dict) and 'points' in o and 'box' not in o for o in result['objects']):return result,[]
+ accepted=[];issues=[];seen=set()
+ for index,item in enumerate(result['objects']):
+  try:
+   candidate=box_candidates({'objects':[item]},width,height,1,expand,frames)[0]
+   identity=(candidate['name'],tuple(tuple(p) for p in candidate['points']))
+   if identity in seen:raise ValueError('自动标注对象轮廓重复')
+   seen.add(identity);accepted.append(item)
+  except (ValueError,KeyError,TypeError) as error:
+   name=item.get('name') if isinstance(item,dict) else None
+   name=''.join(c for c in name if ord(c)>=32)[:40] if isinstance(name,str) else ''
+   reason=str(error) if isinstance(error,ValueError) else '自动标注对象字段缺失或类型无效'
+   issues.append({'index':index,'name':name or '对象'+str(index+1),'reason':reason[:240]})
+ return {'objects':accepted},issues
+
+
 def _hull(points):
  points=sorted(set(tuple(p) for p in points))
  if len(points)<3:raise ValueError('主体外包围支撑点不足')
@@ -147,13 +173,20 @@ def refine_envelopes(objects,detections,body,references,frames,width,height,limi
   f'原图宽{width}高{height}，允许向外={expand}。每个目标6至32个支撑点通常足够，不以粗框四角代替可识别主体外围。'
   '\n要复核的主体及当前宽松范围（原图坐标）：'+json.dumps(requested,ensure_ascii=False)+
   '\n图0是完整原图，其余局部参考的[原图偏移x,原图偏移y,放大倍数]：'+json.dumps(frames))
- result=analyze(prompt,references,schema,body['provider'],body['model'],cancelled,on_status)
+ try:result=analyze(prompt,references,schema,body['provider'],body['model'],cancelled,on_status)
+ except RuntimeError as error:
+  if not hasattr(error,'structured_value'):raise
+  result=error.structured_value
  if cancelled():raise InterruptedError('已停止自动标注')
  if not isinstance(result,dict) or set(result)!={'outlines'} or not isinstance(result['outlines'],list) or len(result['outlines'])>32:raise ValueError('主体外包围复核格式无效')
  allowed={t['index'] for t in requested};revised=set();warnings=[]
- for item in result['outlines']:
-  if not isinstance(item,dict) or set(item)!={'index','points'} or type(item['index']) is not int or item['index'] not in allowed or item['index'] in revised:raise ValueError('主体外包围复核目标无效')
-  index=item['index'];revised.add(index)
+ for position,item in enumerate(result['outlines']):
+  index=item.get('index') if isinstance(item,dict) else None
+  if not isinstance(item,dict) or set(item)!={'index','points'} or type(index) is not int or index not in allowed or index in revised:
+   # A bad response entry cannot erase other validated subjects or outlines.
+   warnings.append(objects[index]['name'] if type(index) is int and index in allowed else '第'+str(position+1)+'项主体轮廓复核目标无效，未应用该项')
+   continue
+  revised.add(index)
   try:
    contour=support_envelope(item['points'],width,height,expand)
    old=objects[index]['points'];xs=[p[0] for p in old];ys=[p[1] for p in old];x0,x1=min(xs),max(xs);y0,y1=min(ys),max(ys)
@@ -162,7 +195,7 @@ def refine_envelopes(objects,detections,body,references,frames,width,height,limi
    objects[index]={**objects[index],'points':contour}
   except ValueError:warnings.append(objects[index]['name'])
  warnings.extend(t['name'] for t in targets if t['index'] not in revised)
- return validate_objects({'objects':objects},width,height,limit,expand),warnings
+ return validate_objects({'objects':objects},width,height,limit,expand),list(dict.fromkeys(warnings))
 
 def plan(body,folder,cancelled,on_status):
  from image_replace import _image
@@ -195,13 +228,15 @@ def plan(body,folder,cancelled,on_status):
  prompt+='\n自动标注现在必须逐项确定layerType：复杂纹理主体或场景背景=image（需生图）；完整主体也须按材质判断，简单多色图标不因完整主体而归生图，纯色剪影/标识/简单图形=vector（直接矢量），普通纯文字=text（原生可编辑），确实看不清才auto并在planNote写待确认原因。planNote同时记录可见描边/阴影/渐变等样式和另拆子项。每个实际位置仍返回一项独立box，禁止把分散的蝙蝠合成一个大box。确认造型、翅膀姿态、颜色、材质和状态相同的重复对象填写相同reuseKey和相同资源name，reuseEvidence说明具体同款依据；仅大小/位置/旋转差异可以复用。不同姿态、不同轮廓或仅同类不能共用reuseKey，不确定就空字符串。程序会让同款多处共用颜色与名称，但保留每个位置的独立圈线和实例；每种姿态分别用蝙蝠A/B命名。不要仅因颜色格只有24个就省略对象或乱合并。'
  prompt+='\n'+VECTOR_QUALITY_RULES+'\n'+STRICT_CLASSIFICATION_RULES
  prompt+='\n本轮只返回定位清单，不输出points。每项name、imageIndex、box、shape；box为[x,y,width,height]，必须包含整个对象而非仅露出部分。imageIndex=0。圆底/圆图标用ellipse，文字及底板用rect；车辆人物等完整主体用envelope，程序将画向外留白的完整包裹轮廓，不作像素抠图边界。'
- references=[source];frames=[(0,0,1)];warnings=[]
+ references=[source];frames=[(0,0,1)];warnings=[];issues=[];incomplete_review=False
  try:
-  result=analyze(prompt,[source],detection_schema(limit),body['provider'],body['model'],cancelled,on_status)
+  result,initial_issues=analyze_objects(prompt,[source],body,frames,width,height,limit,expand,cancelled,on_status)
+  issues.extend({**item,'phase':'initial'} for item in initial_issues)
   if cancelled():raise InterruptedError('已停止自动标注')
   # Keep accepting legacy point responses for existing stored engine fixtures.
   if result.get('objects') and all('box' in o for o in result['objects']):
-   box_candidates(result,width,height,limit,expand,frames)
+   initial_objects=box_candidates(result,width,height,limit,expand,frames)
+   on_status('已识别'+str(len(initial_objects))+'个候选，正在复核：'+'、'.join(item['name'] for item in initial_objects[:8]))
    with _image(body['image']) as image:
     for row in range(2):
      for col in range(2):
@@ -216,13 +251,24 @@ def plan(body,folder,cancelled,on_status):
       crop.save(path);crop.close()
    review=prompt.replace('imageIndex=0。','imageIndex按实际参考图片选择。')+'\n局部放大复核：图0仍为完整原图，图1至4为四个局部放大参考。逐项检查初稿定位与遗漏，尤其底部奖励和小控件，不因列完大物体提前结束。返回完整校正清单而非只返回新增项；不要重复同一个位置。跨区域的完整主体用图0坐标。局部对象可用对应imageIndex的图片自身像素坐标，程序将按比例和偏移映射回原图；不要自己再次换算后又标为局部图片。每个局部参考的[原图左偏移,原图上偏移,放大倍数]：'+json.dumps(frames)+'\n初稿（图0坐标）：'+json.dumps(result,ensure_ascii=False)
    initial_count=len(result['objects'])
-   result=analyze(review,references,detection_schema(limit,len(frames)),body['provider'],body['model'],cancelled,on_status)
-   if initial_count>=12 and isinstance(result,dict) and isinstance(result.get('objects'),list) and len(result['objects'])<initial_count*.7:raise ValueError('局部复核遗漏过多对象，本次标注未应用')
+   result,review_issues=analyze_objects(review,references,body,frames,width,height,limit,expand,cancelled,on_status)
+   issues.extend({**item,'phase':'review'} for item in review_issues)
    if cancelled():raise InterruptedError('已停止自动标注')
-   objects=box_candidates(result,width,height,limit,expand,frames)
-   objects,warnings=refine_envelopes(objects,result,body,references,frames,width,height,limit,expand,cancelled,on_status)
+   if initial_count and len(result['objects'])<initial_count*.7:
+    # A sparse second pass cannot erase an already validated inventory. Keep
+    # draft candidates explicitly unreviewed; do not retry or generate assets.
+    incomplete_review=True
+    note='待核对：局部复核遗漏过多，本对象保留初稿定位，尚未通过复核。'
+    objects=[{**item,'planNote':(note+item.get('planNote',''))[:1000]} for item in initial_objects]
+    warnings=[item['name'] for item in objects]
+   else:
+    objects=box_candidates(result,width,height,limit,expand,frames)
+    objects,warnings=refine_envelopes(objects,result,body,references,frames,width,height,limit,expand,cancelled,on_status)
   else:objects=validate_objects(result,width,height,limit,expand)
  finally:
   for path in references:path.unlink(missing_ok=True)
- return {'reply':(f'已识别{len(objects)}个对象，请核对并调整自动标注。'+('已达到本次数量上限，可能仍有遗漏。' if len(objects)>=limit else '')) if objects else '未识别到可标注的独立对象，请手动标注或调整识别要求。','action':'discuss','instruction':'','targetIds':[],'reference':'original','name':'自动标注','layers':[],'nextStep':'discuss','choices':[],
-  'annotationObjects':objects,'annotationReviewWarnings':warnings,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'width':width,'height':height}
+ reply=(f'已识别{len(objects)}个对象，请核对并调整自动标注。'+('已达到本次数量上限，可能仍有遗漏。' if len(objects)>=limit else '')) if objects else '未识别到可标注的独立对象，请手动标注或调整识别要求。'
+ if incomplete_review:reply+='局部复核遗漏过多，已保留有效初稿，所有对象均标记待核对；未重新分析或生成图片。'
+ if issues:reply+=f'{len(issues)}项参数不合格已单独列为待补标，未加入可用标注。'
+ return {'reply':reply,'action':'discuss','instruction':'','targetIds':[],'reference':'original','name':'自动标注','layers':[],'nextStep':'discuss','choices':[],
+  'annotationObjects':objects,'annotationReviewWarnings':warnings,'annotationIssues':issues,'sourceHash':hashlib.sha256(body['image'].encode()).hexdigest(),'width':width,'height':height}

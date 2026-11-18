@@ -8,7 +8,6 @@ from runtime import STATE
 
 BASE='https://api-matrix.tuyoo.com/api/matrix/aimake/v1'
 CONFIG=STATE/'image-provider.local.json'
-DRAMA_CONFIG=Path.home()/'.drama-studio/aimake.json'
 _settings_lock=threading.RLock()
 MODELS={'nano-banana-2':'Nano Banana 2','gpt-image-2':'GPT Image 2','nano-banana-pro':'Nano Banana Pro'}
 # GPT Image 2.5 advertises native transparency; always verify returned alpha.
@@ -26,7 +25,6 @@ def settings():
 def key(config=None):
  from assistant_models import protect
  value=config or settings()
- if not value.get('keyEncrypted') and DRAMA_CONFIG.exists():value=json.loads(DRAMA_CONFIG.read_text('utf-8'))
  if not isinstance(value.get('keyEncrypted'),str):raise ValueError('请先配置本人亿创Key')
  try:return protect(value['keyEncrypted'],True)
  except Exception:raise ValueError('本人亿创密钥无法读取，请在模型设置中重新配置') from None
@@ -35,7 +33,9 @@ def request(route,body=None,secret=None):
  if not route.startswith('/') or route.startswith('//'):raise ValueError('亿创接口路径无效')
  try:
   with requests.request('POST' if body is not None else 'GET',BASE+route,headers={'X-API-KEY':secret or key()},json=body,timeout=(10,60),allow_redirects=False) as response:
-   if response.status_code!=200:raise ValueError('亿创请求未完成（HTTP '+str(response.status_code)+'）')
+   if response.status_code!=200:
+    phase='提交生成' if route.endswith('/generate') else '读取生成进度' if route.endswith('/status') else '上传参考图' if route.startswith('/uploads/') else '读取模型参数'
+    raise ValueError('亿创请求未完成（HTTP '+str(response.status_code)+'）；阶段：'+phase)
    data=response.json()
  except requests.RequestException:raise ValueError('亿创连接中断；生成提交结果未知时不会自动重试') from None
  if data.get('code') not in (0,'0'):raise ValueError('亿创未接受请求，请检查本人连接、模型权限与额度')
@@ -49,14 +49,13 @@ _schema_lock=threading.RLock()
 
 def model_schema(model,secret=None):
  if not valid_model(model):raise ValueError('亿创模型标识无效')
- secret=secret or key()
- cache_key=(hashlib.sha256(secret.encode()).digest(),model)
+ cache_key=(hashlib.sha256((secret or '').encode()).digest(),model)
  with _schema_lock:
   cached=_schema_cache.get(cache_key)
   if cached and time.monotonic()-cached[0]<300:return cached[1]
- value=request('/models/'+model+'/schema',secret=secret)
- if not isinstance(value,dict) or not isinstance(value.get('input'),dict):raise ValueError('亿创模型参数说明暂不可读取，未提交生成')
- with _schema_lock:
+  # Single read shared by all objects in this process, before any paid submit.
+  value=request('/models/'+model+'/schema',secret=secret)
+  if not isinstance(value,dict) or not isinstance(value.get('input'),dict):raise ValueError('亿创模型参数说明暂不可读取，未提交生成')
   if len(_schema_cache)>=256:_schema_cache.pop(next(iter(_schema_cache)))
   _schema_cache[cache_key]=(time.monotonic(),value)
  return value
@@ -84,7 +83,7 @@ def catalog(secret=None):
 
 
 def status():
- value=settings();configured=bool(value.get('keyEncrypted') or DRAMA_CONFIG.exists())
+ value=settings();configured=bool(value.get('keyEncrypted'))
  models=catalog() if configured else []
  return {'provider':value['provider'],'model':value['model'],'configured':configured,'models':models,'catalogIncomplete':bool(getattr(models,'unavailable',[]))}
 
@@ -167,21 +166,21 @@ def upload(file,secret,cancelled):
  if cancelled():raise InterruptedError('已取消')
  file=Path(file);fingerprint=(hashlib.sha256(secret.encode()).digest(),hashlib.sha256(file.read_bytes()).digest())
  with _upload_lock:
+  if cancelled():raise InterruptedError('已取消；尚未上传参考图')
   cached=_uploads.get(fingerprint)
   if cached and time.monotonic()-cached[0]<600:return cached[1]
- data=request('/uploads/files',{'filename':file.name,'mime_type':'image/png'},secret)
- if not isinstance(data,dict) or data.get('method')!='PUT':raise ValueError('亿创上传回执无效')
- # Signed storage requests never carry the API key.
- with file.open('rb') as stream,requests.put(safe_https(data['upload_url']),headers=data.get('headers') or {},data=stream,timeout=(10,90),allow_redirects=False) as response:
-  if not 200<=response.status_code<300:raise ValueError('参考图片上传未完成，尚未生成')
- if cancelled():raise InterruptedError('已取消')
- confirmed=request('/uploads/files/complete',{'object_key':data['object_key'],'filename':file.name},secret)
- if cancelled():raise InterruptedError('已取消；参考已上传，尚未提交生成')
- url=safe_https(confirmed['url'])
- with _upload_lock:
+  data=request('/uploads/files',{'filename':file.name,'mime_type':'image/png'},secret)
+  if not isinstance(data,dict) or data.get('method')!='PUT':raise ValueError('亿创上传回执无效')
+  # Signed storage requests never carry the API key.
+  with file.open('rb') as stream,requests.put(safe_https(data['upload_url']),headers=data.get('headers') or {},data=stream,timeout=(10,90),allow_redirects=False) as response:
+   if not 200<=response.status_code<300:raise ValueError('参考图片上传未完成，尚未生成')
+  if cancelled():raise InterruptedError('已取消')
+  confirmed=request('/uploads/files/complete',{'object_key':data['object_key'],'filename':file.name},secret)
+  if cancelled():raise InterruptedError('已取消；参考已上传，尚未提交生成')
+  url=safe_https(confirmed['url'])
   _uploads[fingerprint]=(time.monotonic(),url)
   while len(_uploads)>64:_uploads.pop(next(iter(_uploads)))
- return url
+  return url
 
 def dimensions(images):
  if not images:return {'width':1024,'height':1024}
@@ -379,7 +378,7 @@ def generate_transparent(prompt,images,target,cancelled,timeout,on_status,**kwar
  notice=on_status or (lambda _:None)
  if cancelled():raise InterruptedError('已取消')
  secret=key()
- if not any(m.get('id')=='pixelcut-background-removal' for m in request('/models',secret=secret)):raise ValueError('本人亿创未提供Pixelcut抠图，尚未提交生图')
+ model_schema('pixelcut-background-removal',secret)
  target=Path(target)
  with tempfile.TemporaryDirectory(prefix='pixelcut-stage-',dir=target.parent) as folder:
   rgb=Path(folder)/'generated.png'
@@ -395,7 +394,6 @@ def generate(prompt,images,target,transparent=False,cancelled=lambda:False,timeo
  value=settings();model=value['model']
  if transparent and model not in NATIVE_TRANSPARENCY_MODELS:return generate_transparent(prompt,images,target,cancelled,timeout,on_status,**unused)
  secret=key(value);notice=on_status or (lambda _:None)
- if not any(m['id']==model for m in catalog(secret)):raise ValueError('所选亿创图片模型不可用')
  if cancelled():raise InterruptedError('已取消')
  instruction=prompt+('\n保真编辑优先级：可见原图的轮廓、内部孔洞、纹理、非对称细节、颜色和朝向是依据，不是风格灵感；只推断被遮挡或出画的缺失部分，不重新设计、不变成同类另一款。保持第一张参考画布中的相对位置和比例，不自动居中、放大主体或重新排版。其他参考只帮助定位目标，不把标线或其他对象画进结果。' if unused.get('allow_identity_change') is False else '')+('\n必须输出真正RGBA透明PNG，背景Alpha为0；禁止棋盘格、纯色底或彩笔标线。' if transparent else '')
  schema=model_schema(model,secret)

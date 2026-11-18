@@ -122,11 +122,20 @@ class SelectedEntityTests(unittest.TestCase):
   self.assertEqual(model.call_count,1);self.assertEqual(result['nodes'],before['nodes']);self.assertEqual(result['recognition']['selectedRefine']['notes'],[])
  def test_mixed_selection_schema_limits_image_checks_to_exact_image_ids(self):
   self.parts[-1].update(type='image',src=png(Image.new('RGBA',(8,8),'green')));self.parts[-1].pop('d');before=copy.deepcopy(self.scene)
+  schemas=[]
   def analyze(prompt,images,schema,*args,**kwargs):
+   schemas.append(schema)
+   if 'assetChecks' not in schema['properties']:
+    self.assertIn('checks',schema['properties']);self.assertIn('repairRegions',schema['properties'])
+    from acceptance import ASSET_CRITERIA
+    return {'status':'PASS','checks':[{'name':name,'status':'PASS','notes':'独立素材逐项复核'} for name in ASSET_CRITERIA],'issues':[],'placement':None,'repairRegions':[]}
    checks=schema['properties']['assetChecks'];self.assertEqual(checks['minItems'],1);self.assertEqual(checks['maxItems'],1);self.assertEqual(checks['items']['properties']['id']['enum'],['part-c'])
    return {'entities':[],'patches':[],'assetChecks':[{'id':'part-c','status':'PASS','issues':[]}],'notes':[]}
   with tempfile.TemporaryDirectory() as tmp,patch('codex_client.CLIENT.analyze',side_effect=analyze):result=selected_refine._process(self.raw,'mixed',lambda *_:None,lambda:False,self.raw,Path(tmp),self.scene,[n['id'] for n in self.parts])
-  self.assertEqual(result['recognition']['selectedRefine']['notes'],[]);self.assertEqual(result['nodes'][:3],before['nodes'][:3])
+  self.assertEqual(len(schemas),2);self.assertIn('assetChecks',schemas[0]['properties']);self.assertNotIn('assetChecks',schemas[1]['properties'])
+  self.assertEqual(result['recognition']['selectedRefine']['notes'],[])
+  self.assertEqual(result['nodes'][:3],before['nodes'][:3]);self.assertEqual(result['nodes'][3]['src'],before['nodes'][3]['src']);self.assertEqual(result['nodes'][3]['assetReviewStatus'],'PASS')
+  for key,value in before['nodes'][3].items():self.assertEqual(result['nodes'][3][key],value)
  def test_native_layer_in_image_checks_is_rejected_with_actionable_reason(self):
   reply={'entities':[],'patches':[],'assetChecks':[{'id':'part-a','status':'PASS','issues':[]}],'notes':[]}
   with tempfile.TemporaryDirectory() as tmp,patch('codex_client.CLIENT.analyze',return_value=reply):result=selected_refine._process(self.raw,'path-check',lambda *_:None,lambda:False,self.raw,Path(tmp),self.scene,[n['id'] for n in self.parts])

@@ -76,7 +76,7 @@ def text_nodes(rows,rgb,art_ids):
         if n.get('rotation')==90:continue
         b=n['sourceBox'];fitted=estimate(rgb[b['y0']:b['y1'],b['x0']:b['x1']],n['text'])
         if fitted:
-            n.update({k:fitted[k] for k in ('fontFamily','fontWeight','fontStyle','textSkew','fontSize','fitWidth','fill','strokeWidth','styleMatch')})
+            n.update({k:fitted[k] for k in ('fontFamily','fontWeight','fontStyle','textSkew','fontSize','letterSpacing','wordSpacing','fitWidth','fill','strokeWidth','styleMatch')})
             n.update(x=b['x0']+fitted['offsetX'],y=b['y0']+fitted['offsetY'],width=fitted['glyphWidth'],height=fitted['glyphHeight'])
             if 'lineHeight' in fitted:n['lineHeight']=fitted['lineHeight']
             n['fontMatchApproximate']=fitted.get('fontMatchApproximate',False)
@@ -106,6 +106,8 @@ def text_nodes(rows,rgb,art_ids):
         keys,counts=np.unique(buckets,axis=0,return_counts=True);dominant=keys[np.argmax(counts)]
         material=np.all(buckets==dominant,axis=1);bg=np.median(patch.reshape(-1,3)[material],axis=0)
         if np.mean(material)<.2:continue
+        ink_color=np.array([int(n['fill'][i:i+2],16) for i in (1,3,5)])
+        if n.get('fontFitStatus')!='FALLBACK' and np.linalg.norm(ink_color-bg)<30:continue
         contrast=np.linalg.norm(patch-bg,axis=2)
         cutoff,_=cv2.threshold(np.clip(contrast,0,255).astype('uint8'),0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         ys,xs=np.where(contrast>max(50,cutoff*.85))
@@ -132,6 +134,7 @@ def logo_background(patch,inner=None):
     """Fit the surrounding material, so its gradient inside letter holes stays empty."""
     h,w=patch.shape[:2];ys,xs=np.indices((h,w))
     left,top,right,bottom=inner or (0,0,w,h)
+    if inner:left,top,right,bottom=max(0,left-2),max(0,top-2),min(w,right+2),min(h,bottom+2)
     border=(((xs==left)|(xs==right-1))&(ys>=top)&(ys<bottom))|(((ys==top)|(ys==bottom-1))&(xs>=left)&(xs<right))
     coords=np.stack([np.ones((h,w)),xs/max(1,w),ys/max(1,h)],axis=-1)
     design=coords[border];colors=patch[border].astype(float)
@@ -149,6 +152,66 @@ def logo_background(patch,inner=None):
         if np.count_nonzero(selected)<6:break
         keep=selected
     return np.clip(coords@fit,0,255)
+
+def observed_ink_alpha(patch,background,ink,color=None):
+    """Keep subpixel source coverage when a single flat/gradient ink was proven."""
+    from scipy.ndimage import distance_transform_edt
+    core=cv2.erode(ink,np.ones((3,3),np.uint8))
+    if color is not None:core[np.linalg.norm(patch.astype(float)-color,axis=2)>60]=0
+    if not core.any():return ink
+    _,nearest=distance_transform_edt(core==0,return_indices=True)
+    hint=patch[nearest[0],nearest[1]].astype(float)
+    delta=hint-background;coverage=np.clip(np.sum((patch-background)*delta,axis=2)/np.maximum(1,np.sum(delta**2,axis=2)),0,1)
+    alpha=np.rint(coverage*255).astype('uint8')
+    # ponytail: a one-pixel highlight/bevel may leave the flat-ink mixing line.
+    # Reuse the core's 60 RGB tolerance; unrelated neighbouring colours stay out.
+    alpha[(np.linalg.norm(patch-(background+delta*coverage[:,:,None]),axis=2)>30)&
+          (np.linalg.norm(patch.astype(float)-hint,axis=2)>60)]=0
+    # ponytail: only the one-pixel boundary is estimated; keep solid interiors
+    # and counters. Complex translucent lettering still requires image assets.
+    alpha[core>0]=255
+    alpha[cv2.dilate(ink,np.ones((3,3),np.uint8))==0]=0
+    return alpha
+
+def observed_ink_gradient(patch,ink):
+    """A measured linear fill remains one editable shape, including its holes."""
+    ys,xs=np.where(cv2.erode(ink,np.ones((5,5),np.uint8))>0)
+    if len(xs)<100:return None
+    stride=max(1,len(xs)//4096);xs,ys=xs[::stride],ys[::stride]
+    design=np.column_stack((np.ones(len(xs)),xs,ys));colors=patch[ys,xs].astype(float)
+    keep=np.ones(len(colors),bool)
+    for _ in range(3):
+        fit=np.linalg.lstsq(design[keep],colors[keep],rcond=None)[0]
+        residual=np.linalg.norm(colors-design@fit,axis=1)
+        selected=residual<=max(4,float(np.percentile(residual,90)))
+        if selected.sum()<len(colors)*.9:break
+        keep=selected
+    # ponytail: accept only a single linear colour direction with <=8 RGB
+    # residual. Texture, bevels and genuinely discrete inks use the old path.
+    u,s,_=np.linalg.svd(fit[1:],full_matrices=False)
+    if s[0]<.001 or s[1]>s[0]*.1:return None
+    direction=u[:,0]
+    if direction[np.argmax(np.abs(direction))]<0:direction=-direction
+    yy,xx=np.where(ink>0);w,h=xx.max()-xx.min()+1,yy.max()-yy.min()+1
+    center=np.array([(xx.min()+xx.max()+1)/2,(yy.min()+yy.max()+1)/2])
+    span=np.abs(direction)@np.array([w,h])
+    ends=np.array([np.r_[1,center-direction*span/2]@fit,np.r_[1,center+direction*span/2]@fit])
+    if np.linalg.norm(ends[1]-ends[0])<8:return None
+    positions=np.array([0.,1.]);samples=np.clip(ends,0,255)
+    projection=(np.column_stack((xs,ys))-center)@direction/span+.5
+    if np.percentile(np.linalg.norm(colors-np.clip(design@fit,0,255),axis=1),90)>8:
+        # Eight native stops also preserve clamped highlights and gentle curves.
+        positions=np.linspace(0,1,8);samples=[]
+        for t in positions:
+            local=np.abs(projection-t)<=1/7
+            if local.sum()<8:return None
+            curve=np.linalg.lstsq(np.column_stack((np.ones(local.sum()),projection[local])),colors[local],rcond=None)[0]
+            samples.append(np.clip(np.array([1,t])@curve,0,255))
+        samples=np.array(samples)
+        predicted=np.column_stack([np.interp(projection,positions,samples[:,i]) for i in range(3)])
+        if np.percentile(np.linalg.norm(colors-predicted,axis=1),90)>8:return None
+    hexes=['#'+''.join(f'{v:02x}' for v in np.rint(c).astype(int)) for c in samples]
+    return {'kind':'linear','angle':float(np.degrees(np.arctan2(-direction[1],direction[0]))),'scale':1,'stops':[[float(t),c] for t,c in zip(positions,hexes)]}
 
 def flat_ink_parts(patch,ink):
     """Separate a small flat palette without merging holes or disconnected dots."""
@@ -179,21 +242,20 @@ def flat_ink_parts(patch,ink):
         # silhouette. A 5x5 interior test alone recolours such accents. Retain
         # stable components off the material-to-main-ink colour line; colours on that
         # line remain antialias transitions, not invented extra ink layers.
-        thin=False
+        thin=False;transition=False
         if background is not None and genuine:
             stable=part&(np.linalg.norm(patch.astype(float)-center,axis=2)<6)
             # Eight-connectivity keeps diagonal strokes and compact accents;
             # an axial run would still erase them before vector tracing starts.
             _,_,stable_stats,_=cv2.connectedComponentsWithStats(stable.astype('uint8'),connectivity=8)
             stable_component=np.any(stable_stats[1:,cv2.CC_STAT_AREA]>=4)
-            transition=False
             for main in genuine:
                 direction=main-background;length=float(direction@direction)
                 fraction=float((center-background)@direction)/max(1,length)
-                if 0<fraction<1 and np.linalg.norm(center-(background+fraction*direction))<12:
+                if 0<fraction<1 and np.linalg.norm(center-(background+fraction*direction))<20:
                     transition=True;break
             thin=stable_component and not transition
-        if index==0 or np.count_nonzero(core)>=8 or isolated or thin:
+        if index==0 or np.count_nonzero(core)>=8 or (isolated and not transition) or thin:
             genuine.append(np.median(patch[core],axis=0) if np.any(core) else center)
     palette=genuine
     nearest=np.argmin(np.linalg.norm(pixels[:,None,:]-np.array(palette)[None,:,:],axis=2),axis=1)
@@ -248,8 +310,10 @@ def expanded_logo_assets(rows,rgb,assets):
     return result
 
 def segment(image,assets,progress,cancelled,exclude_boxes=None):
+    from vector_trace import trace,OutlineTooComplex
     # Art text and flat marks must retain all disconnected strokes; SAM alone can select just one glyph.
-    logos=[a for a in assets if a['kind']=='logo'];assets=[a for a in assets if a['kind']!='logo'];logo_results=[]
+    logos=[a for a in assets if a['kind']=='logo' or (a['kind']=='decoration' and a.get('sourceTextParts'))]
+    assets=[a for a in assets if a not in logos];logo_results=[]
     h,w=image.shape[:2];owned_ink=np.zeros((h,w),bool)
     for a in logos:
         x0,y0,x1,y1=a['box'];px=max(3,round((x1-x0)*.08));py=max(3,round((y1-y0)*.08));x0=max(0,x0-px);y0=max(0,y0-py);x1=min(w,x1+px);y1=min(h,y1+py);patch=image[y0:y1,x0:x1]
@@ -271,16 +335,30 @@ def segment(image,assets,progress,cancelled,exclude_boxes=None):
         ink[owned_ink[y0:y1,x0:x1]]=0
         # A logo label does not establish a flat material. Printed white surfaces,
         # 3-D objects and multicolour banners must retain their whole silhouette.
-        parts=flat_ink_parts(patch,ink)
+        gradient=observed_ink_gradient(patch,ink)
+        parts=[(ink>0,np.array([int(gradient['stops'][0][1][i:i+2],16) for i in (1,3,5)]))] if gradient else flat_ink_parts(patch,ink)
         if parts is None:
             assets.append({**a,'kind':'decoration','classificationNote':'复杂彩色材质保留完整轮廓，不能只提取墨迹'})
             continue
         if .003<np.count_nonzero(ink)/max(1,ink.size)<.85:
-            owned_ink[y0:y1,x0:x1]|=ink>0
+            candidates=[]
             for part,color in parts:
-                mask=np.zeros((h,w),np.uint8);mask[y0:y1,x0:x1]=part.astype('uint8')*255
+                coverage=part.astype('uint8')*255
+                if len(parts)==1:coverage=observed_ink_alpha(patch,bg,coverage,color)
+                ys,xs=np.where(coverage>0)
+                if not len(xs):continue
+                try:outline=trace(coverage[ys.min():ys.max()+1,xs.min():xs.max()+1],precise=True)
+                except OutlineTooComplex:
+                    # ponytail: retain the 20k-vertex bound; extract the whole
+                    # textured asset instead of dropping strokes or colour parts.
+                    assets.append({**a,'kind':'decoration','classificationNote':'纹理轮廓超出矢量上限，按完整图像素材提取'})
+                    break
+                mask=np.zeros((h,w),np.uint8);mask[y0:y1,x0:x1]=coverage
                 suffix=' · #'+''.join(f'{int(v):02x}' for v in color) if len(parts)>1 else ''
-                logo_results.append({**a,'name':a['name']+suffix,'mask':mask,'flatColor':color})
+                candidates.append({**a,'name':a['name']+suffix,'mask':mask,'flatColor':color,'outline':outline,**({'observedGradient':gradient} if gradient else {})})
+            else:
+                owned_ink[y0:y1,x0:x1]|=ink>0
+                logo_results.extend(candidates)
     if not assets:return logo_results
     # Complex material remains an explicitly unapproved placement proposal.
     # No local neural model is loaded; complete_asset must replace it before export.
@@ -334,10 +412,11 @@ def build_scene(source,title,plan_override,progress,cancelled):
   if a.get('reuseEntityId'):n['reuseEntityId']=a['reuseEntityId']
   if a.get('extractionBrief'):n['extractionBrief']=a['extractionBrief']
   if 'flatColor' in a:
-   from vector_trace import trace
-   n.update(type='path',d=trace(alpha),fill='#'+''.join(f'{int(v):02x}' for v in a['flatColor']),provenance='observed-flat-ink')
+   n.update(type='path',d=a['outline'],fill='#'+''.join(f'{int(v):02x}' for v in a['flatColor']),provenance='observed-flat-ink')
   else:n.update(type='image',src=png(Image.fromarray(np.dstack([crop,alpha]))),provenance='pending-image-generation')
-  n.update(design_fields(a));n.update(planner.layer_order(a));n['sourceTextParts']=a.get('sourceTextParts',[]);layers.append(n)
+  n.update(design_fields(a))
+  if a.get('observedGradient'):n.update(gradient=a['observedGradient'],provenance='observed-gradient-ink')
+  n.update(planner.layer_order(a));n['sourceTextParts']=a.get('sourceTextParts',[]);layers.append(n)
  for i,a in enumerate(vectors):
   if a.get('type') not in ('rect','ellipse','path') or not re.fullmatch(r'#[0-9a-fA-F]{6}',a.get('fill','')):raise ValueError('原生矢量规划无效')
   if not all(isinstance(a.get(k),(int,float)) and not isinstance(a.get(k),bool) and np.isfinite(a[k]) for k in ['x','y','width','height']) or not (0<=a['x']<a['x']+a['width']<=w and 0<=a['y']<a['y']+a['height']<=h):raise ValueError('原生矢量框超出原图')

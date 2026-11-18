@@ -4,6 +4,16 @@ from unittest.mock import patch,Mock
 from PIL import Image
 import image_provider as p
 class ImageProviderTests(unittest.TestCase):
+ def test_unconfigured_key_never_reads_another_application(self):
+  class ForeignConfig:
+   def exists(self):raise AssertionError('不得读取其他应用配置')
+  with patch.object(p,'settings',return_value={'provider':'codex','model':'gpt-image-2'}),patch.object(p,'DRAMA_CONFIG',ForeignConfig(),create=True),patch.object(p,'catalog',side_effect=AssertionError('未配置不得查询其他账号')):
+   with self.assertRaisesRegex(ValueError,'配置'):p.key()
+   self.assertFalse(p.status()['configured'])
+ def test_explicit_own_key_remains_available(self):
+  with patch('assistant_models.protect',return_value='own-test-key') as decrypt:
+   self.assertEqual(p.key({'keyEncrypted':'own-test-cipher'}),'own-test-key')
+   decrypt.assert_called_once_with('own-test-cipher',True)
  def test_default_retains_codex_without_reading_credentials(self):
   with tempfile.TemporaryDirectory() as d,patch.object(p,'CONFIG',Path(d)/'config.json'):
    self.assertEqual(p.settings()['provider'],'codex')
@@ -66,7 +76,7 @@ class FidelityTransportTests(unittest.TestCase):
    file=Path(folder)/'reference.png';Image.new('RGB',(320,320)).save(file)
    shape=p.dimensions([file]);self.assertLess(shape['width']*shape['height'],700000)
  def test_pixelcut_stage_does_not_inject_flowers_or_conflicting_transparency(self):
-  with tempfile.TemporaryDirectory() as folder,patch.object(p,'key',return_value='test'),patch.object(p,'request',return_value=[{'id':'pixelcut-background-removal'}]),patch.object(p,'generate',return_value={}) as generate,patch.object(p,'remove_background',return_value={'size':[1024,1024]}):
+  with tempfile.TemporaryDirectory() as folder,patch.object(p,'key',return_value='test'),patch.object(p,'model_schema',return_value={'input':{}}),patch.object(p,'generate',return_value={}) as generate,patch.object(p,'remove_background',return_value={'size':[1024,1024]}):
    p.generate_transparent('仅提取战斧，其他对象和背景全部透明。',[],Path(folder)/'output.png',lambda:False,900,None)
    prompt=generate.call_args.args[0]
    self.assertNotIn('花瓣',prompt);self.assertIn('仅提取战斧',prompt)

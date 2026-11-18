@@ -113,7 +113,7 @@ def validate_replacement(scene,replacement):
   # existing source layer or partial selection as permission to generate anew.
   synthetic=(scene.get('format')=='shijie-scene' and type(scene.get('version')) is int and scene['version']==2 and scene.get('provenance')=='user-image' and original_import and len(scene['nodes'])==1 and ident=='generated-image' and scene.get('groups')==[] and scene.get('edges')==[] and node.get('provenance')=='imported-source' and not any(k in node for k in ('mask','imageReplacement','generationRecord')) and all(scene.get(k)==node['src'] for k in ('source','originalSource','comparisonSource')) and target.size==(scene.get('width'),scene.get('height')))
   if not synthetic or region is not None or replacement.get('selection') is not None:raise ValueError('独立图片生成只能使用专用空白画布，不能直接改写原图或局部选区')
-  if target.size not in ((1024,1024),(1536,1024),(1024,1536)):raise ValueError('独立图片生成仅支持 1024×1024、1536×1024 或 1024×1536 画布')
+  if target.size not in ((1024,1024),(1536,1024),(1024,1536),(2048,1024)):raise ValueError('独立图片生成仅支持 1024×1024、1536×1024 、1024×1536 或 2048×1024 画布')
   extrema=target.getextrema()
   if not (extrema[3]==(0,0) or extrema[3]==(255,255) and all(lo==hi for lo,hi in extrema[:3])):raise ValueError('独立图片生成需要完全透明或纯色不透明的空白画布')
  selection,selection_mask=_selection(replacement.get('selection'),region,target.size)
@@ -145,7 +145,7 @@ def process(source,title,progress,cancelled,original_source=None,on_scene=lambda
  return run_temporary(generate)
 
 
-def _process(source,title,progress,cancelled,original_source,home,resume_scene,replacement):
+def _process(source,title,progress,cancelled,original_source,home,resume_scene,replacement,*,preserve_identity=False):
  from codex_client import CLIENT
  from engine import png
  if cancelled():raise InterruptedError('已取消')
@@ -185,7 +185,8 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  if expanding:
   if spec['node'].get('rotation') or spec['node'].get('displayMask') or spec['node'].get('layerStyle'):raise ValueError('带旋转、蒙版或样式的图层需先生成独立底稿后向外补全')
   from expansion_geometry import margins
-  expand_left,expand_top=margins(before.width,before.height,max_pixels=36000000);ew=before.width+2*expand_left;eh=before.height+2*expand_top
+  expand_left,expand_top=margins(before.width,before.height,max_pixels=36000000)
+  ew=before.width+2*expand_left;eh=before.height+2*expand_top
   if ew*eh>36000000 or max(ew,eh)>6000:raise ValueError('向外补全的目标尺寸超过当前画布上限，请明确较小扩展尺寸')
   expanded=Image.new('RGBA',(ew,eh));expanded.paste(before,(expand_left,expand_top));model_image=expanded
  context_size=model_image.size;pad_x=pad_y=0
@@ -198,9 +199,18 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   if model_region is not None:model_region={**model_region,'x':model_region['x']+pad_x,'y':model_region['y']+pad_y}
  content_box=(pad_x,pad_y,pad_x+context_size[0],pad_y+context_size[1])
  requested_size=(1024,1024) if model_image.width==model_image.height else (1536,1024) if model_image.width>model_image.height else (1024,1536)
+ if preserve_identity and spec['reference'] is not None and model_region is not None:
+  # The original is stronger evidence than a damaged generated patch. Transparent
+  # off-canvas reference pixels retain the existing inferred continuation.
+  reference=spec['reference'].resize((model_region['width'],model_region['height']),Image.Resampling.LANCZOS)
+  model_image=model_image.copy();model_image.alpha_composite(reference,(model_region['x'],model_region['y']))
  source_path=home/'target.png';model_image.save(source_path);images=[source_path]
  if spec['reference'] is not None:
   ref_path=home/'reference.png';spec['reference'].save(ref_path);images.append(ref_path)
+ full_context_index=None
+ if preserve_identity and region is not None:
+  context_path=home/'complete-context.png';before.save(context_path);images.append(context_path)
+  full_context_index=len(images)
  if spec.get('annotations'):
   from source_annotations import render
   if spec.get('task')=='remove':
@@ -235,8 +245,10 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   prompt+=('输出透明背景 PNG，主体之外保持透明通道。' if transparent else '根据创作描述设计完整背景；未指定时使用协调的背景。')
   prompt+='用户创作描述：'+(spec['prompt'] or '参照参考素材创作新图片。')
  else:
-  prompt='用户明确请求图片替换，可以依描述和参考图更换指定对象的主体身份；保持其他内容。'+scope+layout+f'输出第一张附件的完整画幅，输出尺寸 {requested_size[0]}×{requested_size[1]}，全部内容与坐标统一等比缩放，不要额外裁切、添加边框或生成对比图。保持原透明背景。'
-  if spec['reference'] is not None:prompt+='第二张附件是用户参考图已裁选的部分；仅参考该部分的对象与细节，按目标图风格、视角、光照融入指定范围。'
+  prompt=('按原图证据修复已有素材，主体身份和原有姿态不得改写。' if preserve_identity else '用户明确请求图片替换，可以依描述和参考图更换指定对象的主体身份；保持其他内容。')+scope+layout+f'输出第一张附件的完整画幅，输出尺寸 {requested_size[0]}×{requested_size[1]}，全部内容与坐标统一等比缩放，不要额外裁切、添加边框或生成对比图。保持原透明背景。'
+  if spec['reference'] is not None:prompt+=('第二张附件是该区域的原图证据，必须恢复其中已露出的轮廓、姿态、纹理和明暗，不只是风格参考；第一张中的错误部分必须改正。遮挡物须移除，遮挡后的部分自然补全。' if preserve_identity else '第二张附件是用户参考图已裁选的部分；仅参考该部分的对象与细节，按目标图风格、视角、光照融入指定范围。')
+  if preserve_identity and spec['reference'] is not None and model_region is not None:prompt+='第一张附件的修复矩形内已放入原图证据：保留目标对象的真实边线和材质，移除其中的背景及其他遮挡对象；原图画幅之外已有的补全部分保持连续。矩形外保持不变。'
+  if full_context_index is not None:prompt+=f'第{full_context_index}张附件是同一物体的完整素材参照，尺寸{before.width}×{before.height}，本次修复在该整图的像素范围为'+json.dumps(region,ensure_ascii=False)+'。仅用于理解整体弧度、透视及连续边线；修复处必须与完整形体自然相接。仍然只输出第一张附件的局部画幅，不能输出或重新设计整件素材。'
   prompt+='用户替换描述：'+(spec['prompt'] or '按参考图替换指定对象。')
  if spec['reference'] is not None and spec.get('task')!='extract':
   from reference_fidelity import REFERENCE_STYLE_PRESERVATION
@@ -246,7 +258,7 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   prompt+=('\n第二张附件是用户原画彩笔示意。' if spec.get('task')=='remove' else '\n第三张附件是用户原画彩笔示意。')+RULES+'\n颜色对应：'+json.dumps(summary(spec['annotations']),ensure_ascii=False)
  progress(.1,'正在生成独立图片候选…' if fresh else '正在生成图片替换候选…')
  from image_provider import CLIENT as IMAGE_CLIENT
- record=IMAGE_CLIENT.generate(prompt,images,target,transparent=transparent,cancelled=cancelled,on_status=lambda message:progress(.2,message),allow_identity_change=spec.get('task') not in ('extract','remove'))
+ record=IMAGE_CLIENT.generate(prompt,images,target,transparent=transparent,cancelled=cancelled,on_status=lambda message:progress(.2,message),allow_identity_change=not preserve_identity and spec.get('task') not in ('extract','remove'))
  if cancelled():raise InterruptedError('已取消')
  if not isinstance(record,dict) or record.get('actualImageGeneration') is not True:raise ValueError('替换未完成实际图像生成，原工程已保留')
  with Image.open(target) as generated:
@@ -254,7 +266,19 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   if transparent_removal and (generated.mode!='RGBA' or generated.getchannel('A').getextrema()[0]!=0 or not generated.getchannel('A').getbbox()):raise ValueError('删除候选必须有真实透明通道且保留有效对象，原图未修改')
   candidate=generated.convert('RGBA')
  generated_size=candidate.size
- if candidate.size!=model_image.size:
+ canvas_fit=None
+ if fresh and region is None and selection is None and not preserve_identity and (candidate.size!=model_image.size or context_size!=model_image.size):
+  # Fresh assets have no source registration to preserve. Fit the entire
+  # generated frame into the final content area, including for 2:1 canvases
+  # whose model input was padded square; the later crop must remove padding only.
+  scale=min(context_size[0]/candidate.width,context_size[1]/candidate.height)
+  fitted_size=(max(1,round(candidate.width*scale)),max(1,round(candidate.height*scale)))
+  offset=((context_size[0]-fitted_size[0])//2,(context_size[1]-fitted_size[1])//2)
+  fitted=candidate.resize(fitted_size,Image.Resampling.LANCZOS) if candidate.size!=fitted_size else candidate
+  canvas=Image.new('RGBA',model_image.size,(0,0,0,0) if transparent else before.getpixel((0,0)))
+  canvas.paste(fitted,(pad_x+offset[0],pad_y+offset[1]));candidate=canvas
+  canvas_fit={'mode':'contain','scale':scale,'contentSize':list(fitted_size),'offset':list(offset),'canvasSize':list(context_size)}
+ elif candidate.size!=model_image.size:
   # Require the requested aspect ratio. At most one generated pixel (and
   # 0.1% relative ratio error) is permitted for integer-size rounding. Even
   # there, use one shared scale and trim only the fractional outer margin.
@@ -265,10 +289,35 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   ratio_error=abs(candidate.width*model_image.height-candidate.height*model_image.width)/max(candidate.width*model_image.height,candidate.height*model_image.width)
   if ratio_error>.001 or max(dx,dy)>1.000001:raise ValueError(f'生成图片比例不符合请求：实际 {candidate.width}×{candidate.height}，要求 {requested_size[0]}×{requested_size[1]}（输入画布 {model_image.width}×{model_image.height}，原图内容 {context_size[0]}×{context_size[1]}）。原图已保留；请重试并要求保留完整画布及补边。')
   candidate=candidate.resize(model_image.size,Image.Resampling.LANCZOS,box=(dx/2,dy/2,dx/2+crop_width,dy/2+crop_height))
+ patch_alignment=None
+ if preserve_identity and region is not None and candidate.width*candidate.height<=6000000:
+  from asset_geometry import align_to_source
+  aligned=align_to_source(source_path,dict(type='image',x=0,y=0,width=candidate.width,height=candidate.height,src=png(candidate)))
+  if aligned is not None:
+   ax,ay,aw,ah=(aligned[k] for k in ('x','y','width','height'))
+   # ponytail: reuse the full-asset feature matcher for small patch drift only.
+   # Actual edits can shear by ~3 degrees. Bound corner movement to 8%;
+   # larger redesigns cannot be registered safely and remain subject to QA.
+   limit=max(4,min(candidate.size)*.08)
+   if max(abs(ax),abs(ay),abs(ax+aw-candidate.width),abs(ay+ah-candidate.height))<=limit:
+    im=_image(aligned['src']);sx,sy=aw/im.width,ah/im.height
+    candidate=im.transform(model_image.size,Image.Transform.AFFINE,(1/sx,0,-ax/sx,0,1/sy,-ay/sy),Image.Resampling.BICUBIC)
+    patch_alignment=aligned['sourceAlignment']
  # The optional binary selection mask copies all four generated channels;
  # never use generated alpha as a paste mask. All exterior RGBA bytes survive.
  if region is not None:
-  result=before.copy();box=_box(model_region,model_image.size);result.paste(candidate.crop(box),(region['x'],region['y']),spec['selectionMask']);candidate=result
+  result=before.copy();box=_box(model_region,model_image.size);patch_image=candidate.crop(box)
+  if preserve_identity:
+   import numpy as np
+   old=np.asarray(before.crop(_box(region,before.size)));new=np.array(patch_image)
+   h,w=new.shape[:2];yy,xx=np.indices((h,w));band=min(16,max(1,min(w,h)//8))
+   weight=np.minimum.reduce([xx,yy,w-1-xx,h-1-yy])/band;weight=np.clip(weight,0,1)
+   # Blend colour only where both surfaces are opaque. Keep generated alpha
+   # intact so repaired holes/contours cannot acquire a ghost of the old edge.
+   weight[(old[:,:,3]<250)|(new[:,:,3]<250)]=1
+   new[:,:,:3]=np.rint(old[:,:,:3]*(1-weight[:,:,None])+new[:,:,:3]*weight[:,:,None]).astype('uint8')
+   patch_image=Image.fromarray(new)
+  result.paste(patch_image,(region['x'],region['y']),spec['selectionMask']);candidate=result
  else:
   if expanding:
    outside=candidate.getchannel('A');outside.paste(0,content_box)
@@ -290,12 +339,16 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
   boundary_risk=bool(bbox and (bbox[0]==0 or bbox[1]==0 or bbox[2]==candidate.width or bbox[3]==candidate.height))
  encoded=png(candidate);digest=hashlib.sha256(base64.b64decode(encoded.split(',',1)[1])).hexdigest()
  scene=copy.deepcopy(resume_scene);node=next(n for n in scene['nodes'] if n['id']==spec['node']['id'])
- node.update(src=encoded,provenance='aimake-image-generation' if record.get('provider')=='aimake' else 'codex-image-generation',review=True,assetReviewStatus='NOT_REVIEWED',pendingGeneration=False)
+ for key in ('completionBase','completionPlan','sourceFidelity','sourceAlignment','assetReviewChecks','assetReviewAttempts','targetedRepair','colorCorrectionReview','colorCorrectionAttempt','automaticLocalRepair'):node.pop(key,None)
+ node.update(src=encoded,provenance=record.get('provider','codex')+'-image-generation',review=True,assetReviewStatus='NOT_REVIEWED',pendingGeneration=False)
  node.pop('reviewIssue',None)
  if boundary_risk:node['reviewIssue']='候选外缘触及扩展画布边缘，可能存在截断；已保留完整结果，请预览核对后决定应用或返修'
- node['generationRecord']={'actualImageGeneration':True,'transparent':candidate.getchannel('A').getextrema()[0]<255,'sourceOriginalSHA256':original_sha,'generatedAssetSHA256':digest}
- node['generationRecord'].update({k:record[k] for k in ('provider','model','genId') if k in record})
+ node['generationRecord']={'actualImageGeneration':True,'provider':record.get('provider','codex'),'transparent':candidate.getchannel('A').getextrema()[0]<255,'sourceOriginalSHA256':original_sha,'generatedAssetSHA256':digest}
+ node['generationRecord'].update({k:record[k] for k in ('model','genId') if k in record})
  node['generationRecord']['replacementGeometry']={'contextBox':[left,top,right,bottom],'modelCanvasSize':list(model_image.size),'modelContentBox':list(content_box),'requestedSize':list(requested_size),'generatedSize':list(generated_size)}
+ if canvas_fit:node['generationRecord']['replacementGeometry']['canvasFit']=canvas_fit
+ if patch_alignment:node['generationRecord']['replacementGeometry']['alignment']=patch_alignment
+ if full_context_index is not None:node['generationRecord']['replacementGeometry']['fullAssetContextSize']=list(before.size)
  node['imageReplacement']={'version':1,'region':copy.deepcopy(region),'selection':copy.deepcopy(selection),'inputAssetSHA256':hashlib.sha256(base64.b64decode(spec['node']['src'].split(',',1)[1])).hexdigest(),'importedSource':spec['importedSource']}
  if boundary_risk:node['imageReplacement']['boundaryRisk']=True
  if expanding:
@@ -312,4 +365,3 @@ def _process(source,title,progress,cancelled,original_source,home,resume_scene,r
  if cancelled():raise InterruptedError('已取消')
  progress(1,'独立图片候选已生成，请预览后应用' if fresh else '替换候选已生成，请预览后应用')
  return scene
-

@@ -189,7 +189,8 @@ class LocalProjectStore:
   if len(header)>HEADER_LIMIT:raise ValueError('工程索引过大，原工程已保留')
   compressed=gzip.compress(raw,compresslevel=1,mtime=0)
   with self.lock:
-   path=self.path(ident);previous=self._check_version(path,expected);self.root.mkdir(parents=True,exist_ok=True)
+   path=self.path(ident);previous=self._check_version(path,expected)
+   self.root.mkdir(parents=True,exist_ok=True)
    destination=self._destination(title,path,record['doc'].get('_titleSource') in ('manual','ai') and title!=(previous or {}).get('title'))
    temp=None
    try:

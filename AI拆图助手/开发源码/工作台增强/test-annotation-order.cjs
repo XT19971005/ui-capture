@@ -10,4 +10,12 @@ assert(api.valid(order,marks));const changed=structuredClone(marks);changed.item
 for(const relations of [[{above:1,below:2},{above:2,below:25},{above:25,below:1}],[{above:1,below:1}],[{above:99,below:1}],[{above:'1',below:2}],[{above:Infinity,below:2}]])assert.throws(()=>api.parseReply({relations,uncertain:[]},marks));
 assert.throws(()=>api.parseReply('解释 {"relations":[],"uncertain":[]}',marks));assert.throws(()=>api.parseReply({relations:[],uncertain:[99]},marks));
 assert.equal(api.numberForNode({annotationNumber:26},{}),26);assert.equal(api.numberForNode({_generationTask:'old',_generationPlanIndex:0},{base:{_generationStagesByType:{text:{id:'old',plan:{layers:[{reviewNote:'标注25；原编号'}]}}}}}),25);assert.equal(api.numberForNode({_generationTask:'now',_generationPlanIndex:0},{groupId:'now',plan:{layers:[{name:'26 自选色对象'}]}}),26);assert.equal(api.numberForNode({name:'无编号'},{}),null);
+// A zero-length click is display history, not a new object range or occlusion request.
+const misclicked=structuredClone(marks);misclicked.items[0].strokes.push([[-201,480],[-201,480],[-201,480]]);misclicked.items[0].strokeWidths=[2,30];misclicked.order=['#ff5c87','#ffdf24'];
+const misclickedOriginal=JSON.stringify(misclicked);
+assert(api.valid(order,misclicked));assert.equal(api.signature(misclicked),api.signature(marks));assert.deepEqual(api.manifest(misclicked),api.manifest(marks));
+assert.equal(JSON.stringify(misclicked),misclickedOriginal);
+const onlyClick=structuredClone(marks);onlyClick.items.push({color:'#fedcba',strokes:[[[2,2],[2,2]]]});assert.deepEqual(api.manifest(onlyClick),api.manifest(marks));assert(api.valid(order,onlyClick));
+const openLine=structuredClone(marks);openLine.items[0].strokes.push([[-201,480],[-200,480]]);assert(!api.valid(order,openLine));assert.equal(api.manifest(openLine)[0].bounds.x,-201);
+const verticalLine=structuredClone(marks);verticalLine.items[0].strokes.push([[1,2],[1,50]]);assert(!api.valid(order,verticalLine));assert.equal(api.manifest(verticalLine)[0].bounds.height,48);
 assert.equal(JSON.stringify(marks),original);console.log('标注遮挡关系纯函数验证通过');

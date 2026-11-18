@@ -5,6 +5,45 @@ from PIL import Image
 from engine import png
 
 class AutoAnnotationTests(unittest.TestCase):
+ def test_empty_review_keeps_single_valid_draft_as_unreviewed(self):
+  import free_assistant as f
+  first={'objects':[{'name':'完整主体','box':[1,1,10,10],'shape':'rect'}]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=[first,{'objects':[]}]) as model:
+   result=f.plan(self.body(),Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(len(result['annotationObjects']),1)
+   self.assertEqual(result['annotationObjects'][0]['name'],'完整主体')
+   self.assertIn('待核对',result['annotationObjects'][0]['planNote'])
+   self.assertEqual(model.call_count,2)
+ def test_sparse_review_preserves_valid_draft_candidates_with_review_notes(self):
+  import free_assistant as f,hashlib
+  body={**self.body(),'annotationLimit':128}
+  body['image']=png(Image.new('RGB',(160,80),'red'));body['scene'].update(width=160,height=80)
+  first={'objects':[{'name':'独立控件'+str(i),'box':[i*10+2,10,6,8],'shape':'rect','layerType':'vector','planNote':'纯色底板','reuseKey':'','reuseEvidence':''} for i in range(12)]}
+  first_before=copy.deepcopy(first)
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=[first,{'objects':[copy.deepcopy(first['objects'][0])]}]) as model:
+   result=f.plan(body,Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual([o['name'] for o in result['annotationObjects']],['独立控件'+str(i) for i in range(12)])
+   self.assertEqual(result['annotationObjects'][0]['points'],[[0,8],[10,8],[10,20],[0,20]])
+   self.assertTrue(all('待核对' in o['planNote'] and '纯色底板' in o['planNote'] for o in result['annotationObjects']))
+   self.assertEqual(result['annotationReviewWarnings'],['独立控件'+str(i) for i in range(12)])
+   self.assertIn('初稿',result['reply']);self.assertIn('待核对',result['reply'])
+   self.assertEqual(result['sourceHash'],hashlib.sha256(body['image'].encode()).hexdigest())
+   self.assertEqual(result['layers'],[]);self.assertEqual(result['action'],'discuss')
+   self.assertEqual(model.call_count,2);self.assertEqual(first,first_before)
+   self.assertEqual(list(Path(folder).iterdir()),[])
+ def test_sparse_review_cannot_override_cancellation(self):
+  import free_assistant as f
+  body={**self.body(),'annotationLimit':128}
+  first={'objects':[{'name':'控件'+str(i),'box':[1,1,10,10],'shape':'rect'} for i in range(12)]}
+  stopped=[False]
+  def analyze(*args):
+   if stopped[0]:return {'objects':[]}
+   if analyze.called:stopped[0]=True;return {'objects':[]}
+   analyze.called=True;return first
+  analyze.called=False
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=analyze),self.assertRaises(InterruptedError):
+   try:f.plan(body,Path(folder),lambda:stopped[0],lambda *_:None)
+   finally:self.assertEqual(list(Path(folder).iterdir()),[])
  def test_fresh_asset_name_and_auto_apply_instructions_are_distinct_from_project_title(self):
   import free_assistant as f
   body=self.body();body.pop('annotationOnly');body.pop('annotationLimit')

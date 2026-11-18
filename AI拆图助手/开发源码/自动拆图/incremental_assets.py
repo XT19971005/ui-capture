@@ -1,6 +1,7 @@
 """Partial quality findings do not discard usable work. Resume data stays in RAM."""
 import base64,copy,hashlib,json,re
 from pathlib import Path
+from codex_client import CodexQuotaExceeded,CodexImageGenerationRequired
 
 def pending_generation(node):
  """Visual review findings do not make already produced pixels missing."""
@@ -113,7 +114,7 @@ def effective_locked_ids(scene):
 
 def review_or_pending(review):
  try:return review()
- except InterruptedError:raise
+ except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
  except Exception as error:
   note='最终画面复核未完成：'+str(error)[:240]
   return {'status':'NEEDS_REVIEW','summary':note,'issues':[note],'repair_assets':[],'asset_checks':[],'file_checks':[],'color_checks':[],'acceptance_checks':[]}
@@ -179,23 +180,71 @@ def restore_asset(cached,current,assets,structure,source_sha,background=False):
  (Path(structure)/('背景补全来源.json' if background else '补全_'+current['id']+'.json')).write_text(json.dumps(record,ensure_ascii=False),'utf8')
  return result
 
-def extract_checked(source,node,assets,structure,cancelled,original,on_status):
+def extract_checked(source,node,assets,structure,cancelled,original,on_status,*,scene=None):
  from workflow_assets import complete_asset
  from acceptance import review_asset
- candidate=None;quality=None;errors=[]
+ from asset_completion import edge_issues,correct_reviewed_color
+ node={**copy.deepcopy(node),'_automaticCompletion':True}
+ if scene is not None:
+  # ponytail: names and source boxes are ownership context, never rectangle masks.
+  # The existing contour planner still decides the actual occluding silhouette.
+  node['_otherLayers']=[{k:n[k] for k in ('name','type','assetKind','x','y','width','height') if k in n}
+                        for n in scene['nodes'] if n['id']!=node['id'] and not n.get('versionArchived') and n.get('assetKind')!='background']
+ candidate=None;quality=None;errors=[];attempts=[]
  for attempt in range(2):
   if cancelled():raise InterruptedError('已取消')
+  previous,previous_quality=candidate,quality
+  generated=None
   try:
    generated=complete_asset(source,node,assets,structure,cancelled,original_source=original,force_repair=bool(attempt),on_status=on_status)
    candidate=generated
+   if candidate.get('resolutionReviewRequired') or candidate.get('assetResolution',{}).get('status')=='LOW_RESOLUTION':
+    # Pixel shortfall is a delivered paid result, never consent to regenerate.
+    candidate.update(assetReviewStatus='NEEDS_REVIEW',review=True)
+    candidate.pop('pendingGeneration',None)
+    for key in ('_automaticCompletion','_repairNotes','_repairSource','_otherLayers'):candidate.pop(key,None)
+    if structure is not None:remember_record(candidate,structure)
+    return candidate
+   candidate.update(assetReviewStatus='NOT_REVIEWED',assetReviewChecks=[])
+   candidate.pop('pendingGeneration',None)
+   if structure is not None:remember_record(candidate,structure)
    quality=review_asset(source,candidate,structure,cancelled,on_status=on_status)
+   cuts=edge_issues(candidate)
+   if cuts:
+    quality=copy.deepcopy(quality);quality['status']='FAIL';quality['issues']+=cuts
+    for check in quality['checks']:
+     if check['name']=='透明边缘与孔洞':check.update(status='FAIL',notes='；'.join(cuts))
+   candidate,quality=correct_reviewed_color(source,candidate,quality,structure,cancelled,on_status)
+   attempts.append({**copy.deepcopy(quality),'assetSHA256':hashlib.sha256(base64.b64decode(candidate['src'].split(',',1)[1],validate=True)).hexdigest()})
+   candidate['assetReviewChecks']=quality['checks']
+   passed=lambda q:{c['name'] for c in q.get('checks',[]) if c['status']=='PASS'}
+   if previous is not None and previous_quality and not passed(previous_quality)<=passed(quality):
+    candidate,quality=previous,previous_quality
+    attempts[-1]['retainedPrevious']=True
    if quality['status']=='PASS':
     candidate.update(assetReviewStatus='PASS',review=False);candidate.pop('reviewIssue',None);break
    node['_repairNotes']=quality['issues']
-  except InterruptedError:raise
+   node['_repairSource']=candidate['src']
+  except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
   except Exception as error:
+   candidate,quality=previous,previous_quality
    errors.append(str(error)[:240])
+   attempts.append({'status':'ERROR','issues':[str(error)[:240]]})
+   if previous is None and generated is not None:
+    # ponytail: unavailable review is not evidence to regenerate usable pixels.
+    candidate,quality=generated,None
+    break
   if on_status:on_status('素材「'+node['name']+'」待校对，正在尝试修正…')
+ if candidate is not None and quality and quality.get('status')=='FAIL':
+  try:
+   from asset_completion import repair_local
+   repaired,rechecked=repair_local(source,candidate,quality,structure,cancelled,original,on_status)
+   if repaired is not candidate:
+    candidate,quality=repaired,rechecked;candidate['assetReviewChecks']=quality['checks']
+    attempts.append({**copy.deepcopy(quality),'automaticLocalRepair':True,'assetSHA256':hashlib.sha256(base64.b64decode(candidate['src'].split(',',1)[1],validate=True)).hexdigest()})
+    if quality['status']=='PASS':candidate.update(assetReviewStatus='PASS',review=False);candidate.pop('reviewIssue',None)
+  except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
+  except Exception as error:errors.append('局部返修未完成，已有完整素材保留：'+str(error)[:180])
  if candidate is None:
   # Keep a clearly labelled source crop when this item could not be extracted.
   # It is never represented as a complete transparent ImageGen asset.
@@ -204,10 +253,13 @@ def extract_checked(source,node,assets,structure,cancelled,original,on_status):
   with Image.open(source) as im:
    box=(max(0,int(node['x'])),max(0,int(node['y'])),min(im.width,int(node['x']+node['width'])),min(im.height,int(node['y']+node['height'])))
    crop=im.crop(box).convert('RGBA')
-  candidate={**node,'src':png(crop),'x':box[0],'y':box[1],'width':crop.width,'height':crop.height,'provenance':'source-crop-fallback','inferred':False}
+  candidate={**node,'src':png(crop),'x':box[0],'y':box[1],'width':crop.width,'height':crop.height,'provenance':'source-crop-fallback','inferred':False,'assetReviewStatus':'NEEDS_REVIEW'}
+  candidate.pop('generationRecord',None)
  if candidate.get('assetReviewStatus')!='PASS':
   issues=(quality or {}).get('issues',[])+errors
   candidate.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='；'.join(issues) or '素材尚未通过复核',assetReviewChecks=(quality or {}).get('checks',[]))
+ candidate['assetReviewAttempts']=attempts
+ for key in ('_automaticCompletion','_repairNotes','_repairSource','_otherLayers'):candidate.pop(key,None)
  if structure is not None:remember_record(candidate,structure)
  return candidate
 
@@ -217,7 +269,7 @@ def extract_once(source,node,assets,structure,cancelled,original,on_status):
  if cancelled():raise InterruptedError('已取消')
  try:
   candidate=complete_asset(source,node,assets,structure,cancelled,original_source=original,on_status=on_status)
- except InterruptedError:raise
+ except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
  except Exception as error:
   from PIL import Image
   from engine import png
@@ -247,7 +299,7 @@ def check_resume_assets(source,scene,previous,assets,structure,source_sha,cancel
    reusable[key]=candidate;continue
   if on_status:on_status('正在检查已有素材：'+current['name'])
   try:quality=review_asset(source,candidate,structure,cancelled,on_status=on_status)
-  except InterruptedError:raise
+  except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
   except Exception as error:
    candidate.update(assetReviewStatus='NEEDS_REVIEW',review=True,reviewIssue='续拆复核未完成，保留原素材：'+str(error)[:200])
    reusable[key]=candidate;continue
@@ -272,7 +324,7 @@ def check_resume_native(source,scene,cancelled,on_status,user_request=""):
   result,warnings=apply_patches(scene,response.get('patches'))
   result.setdefault('recognition',{}).setdefault('warnings',[]).extend(warnings+[n for n in response.get('notes',[]) if isinstance(n,str)])
   return result
- except InterruptedError:raise
+ except (InterruptedError,CodexQuotaExceeded,CodexImageGenerationRequired):raise
  except Exception as error:
   scene.setdefault('recognition',{}).setdefault('warnings',[]).append('已有文字检查未完成，保留原参数：'+str(error)[:200])
   return scene

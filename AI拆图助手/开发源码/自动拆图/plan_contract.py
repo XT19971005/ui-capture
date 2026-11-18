@@ -105,6 +105,13 @@ class PlanAssemblyError(ValueError):
   super().__init__(message);self.plan=copy.deepcopy(plan)
 
 
+def art_text_owner(asset,row):
+ if asset.get('derivedFromArtTextId',row['id'])!=row['id']:return False
+ x,y,right,bottom=row['bbox'];ax,ay,ar,ab=asset['box']
+ overlap=max(0,min(right,ar)-max(x,ax))*max(0,min(bottom,ab)-max(y,ay));area=(right-x)*(bottom-y)
+ if asset['kind']=='logo':return overlap/max(1,area)>=.5
+ return asset['kind']=='decoration' and overlap/max(1,area+(ar-ax)*(ab-ay)-overlap)>=.9
+
 def complete_art_text_assets(plan,canvas_size):
  """Materialize only an explicitly observed art-text object's missing asset."""
  art=plan.get('art_text_ids',[])
@@ -122,7 +129,7 @@ def complete_art_text_assets(plan,canvas_size):
  for ident in art:
   if ident not in by_id or ident not in source_rows:raise PlanAssemblyError('艺术字引用缺少精确有效原文案：'+str(ident),plan)
   row=by_id[ident];x,y,right,bottom=row['bbox'];area=(right-x)*(bottom-y)
-  if any(a['kind']=='logo' and a.get('derivedFromArtTextId',ident)==ident and max(0,min(right,a['box'][2])-max(x,a['box'][0]))*max(0,min(bottom,a['box'][3])-max(y,a['box'][1]))/max(1,area)>=.5 for a in assets):continue
+  if any(art_text_owner(a,row) for a in assets):continue
   original=source_rows[ident]
   if 'z_index' not in original:raise PlanAssemblyError('艺术字「'+row['text']+'」缺少已确认层序，不能自动建立素材',plan)
   style=design_fields(original);order=layer_order(original)
@@ -172,7 +179,7 @@ def link_art_text(assets,rows,art_ids):
   if row['id'] not in art_ids:continue
   x,y,right,bottom=row['bbox'];area=(right-x)*(bottom-y);candidates=[]
   for a in assets:
-   if a['kind']!='logo' or a.get('derivedFromArtTextId',row['id'])!=row['id']:continue
+   if not art_text_owner(a,row):continue
    ax,ay,ar,ab=a['box'];overlap=max(0,min(right,ar)-max(x,ax))*max(0,min(bottom,ab)-max(y,ay))
    if overlap/max(1,area)>=.5:candidates.append((overlap/max(1,area),a))
   if not candidates:raise ValueError('艺术字「'+row['text']+'」缺少对应完整素材')

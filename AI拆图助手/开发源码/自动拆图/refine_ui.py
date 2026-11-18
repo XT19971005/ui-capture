@@ -9,8 +9,8 @@ from design_properties import color, mask, number, obj, nullable, STYLE, style
 from incremental_assets import effective_locked_ids
 
 COMMON = {'x', 'y', 'width', 'height', 'fill'}
-TEXT = {'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'stroke', 'strokeWidth'}
-FIELDS = {**{k: {'type': 'number'} for k in COMMON - {'fill'} | {'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'radius', 'strokeWidth'}},
+TEXT = {'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'letterSpacing', 'wordSpacing', 'lineHeight', 'stroke', 'strokeWidth'}
+FIELDS = {**{k: {'type': 'number'} for k in COMMON - {'fill'} | {'fontSize', 'fontWeight', 'letterSpacing', 'wordSpacing', 'lineHeight', 'radius', 'strokeWidth'}},
           **{k: {'type': 'string'} for k in ('fill', 'text', 'fontFamily', 'fontStyle', 'd', 'stroke')}, 'layerStyle': STYLE}
 PATCHES = obj({'patches': {'type': 'array', 'maxItems': 700, 'items': obj({'id': {'type': 'string'},
                       'changes': obj({k: nullable(v) for k, v in FIELDS.items()})})},
@@ -18,7 +18,7 @@ PATCHES = obj({'patches': {'type': 'array', 'maxItems': 700, 'items': obj({'id':
 QUALITY = obj({'status': {'type': 'string', 'enum': ['PASS', 'NEEDS_REVIEW']},
                'summary': {'type': 'string'}, 'issues': {'type': 'array', 'maxItems': 100, 'items': {'type': 'string'}}})
 FONTS = {'Arial': 'arial.ttf', 'Arial Narrow': 'arialn.ttf', 'Impact': 'impact.ttf', 'Haettenschweiler': 'HATTEN.TTF', 'Microsoft YaHei': 'msyh.ttc', 'SimHei': 'simhei.ttf'}
-TEXT_METRICS = {'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'width', 'height'}
+TEXT_METRICS = {'text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'letterSpacing', 'wordSpacing', 'lineHeight', 'width', 'height'}
 
 
 def _check_cancel(cancelled):
@@ -72,11 +72,12 @@ def _fit_text(node, warnings):
         font = ImageFont.truetype('C:/Windows/Fonts/' + face, max(1, round(candidate)))
         ratio = candidate / size
         spacing = node.get('letterSpacing', 0) * ratio
+        word_spacing = node.get('wordSpacing', 0) * ratio
         leading = node.get('lineHeight', size * 1.2) * ratio
         boxes = []
         for line_index, line in enumerate(node['text'].split('\n')):
             baseline = line_index * leading
-            if not spacing:
+            if not spacing and not word_spacing:
                 left, top, right, bottom = font.getbbox(line, anchor='ls')
                 if bottom > top:
                     boxes.append((left, top + baseline, right, bottom + baseline))
@@ -88,7 +89,7 @@ def _fit_text(node, warnings):
                     left, top, right, bottom = font.getbbox(char, anchor='ls')
                     if bottom > top:
                         boxes.append((x + left, top + baseline, x + right, bottom + baseline))
-                    x += font.getlength(char) + spacing
+                    x += font.getlength(char) + spacing + (word_spacing if char in (' ', '\u00a0') else 0)
                     previous = char
         if not boxes:
             return 0, 0
@@ -114,8 +115,9 @@ def _fit_text(node, warnings):
         node['fontSize'] = fitted
         if 'lineHeight' in node:
             node['lineHeight'] *= scale
-        if 'letterSpacing' in node:
-            node['letterSpacing'] *= scale
+        for key in ('letterSpacing', 'wordSpacing'):
+            if key in node:
+                node[key] *= scale
         warnings.append(node['id'] + '：等比缩小字号以保留完整文案，未横向拉伸')
 
 

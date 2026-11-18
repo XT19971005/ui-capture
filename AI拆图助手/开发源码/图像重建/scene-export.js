@@ -109,6 +109,7 @@ export function validate(s){
  if(n.type!=='image'&&!/^#[\da-f]{6}$/i.test(n.fill))throw Error('图层颜色无效');
  normalizeGradient(n.gradient);normalizeStyle(n.layerStyle);normalizeMask(n.displayMask);
  if(n.strokeWidth!==undefined&&(!Number.isFinite(n.strokeWidth)||n.strokeWidth<0||n.strokeWidth>30))throw Error('文字描边宽度无效');if(n.stroke!==undefined&&!/^#[\da-f]{6}$/i.test(n.stroke))throw Error('文字描边颜色无效');
+ for(const key of ['letterSpacing','wordSpacing'])if(n[key]!==undefined&&(!Number.isFinite(n[key])||Math.abs(n[key])>1000))throw Error('文字间距无效');
  if(n.rotation!==undefined&&![0,90].includes(n.rotation))throw Error('文字旋转方向无效');if(n.fontFamily!==undefined&&!['Arial','Microsoft YaHei','SimHei','Impact','Arial Narrow','Haettenschweiler','Noto Sans CJK SC','Noto Serif CJK SC','Liberation Sans','Liberation Serif'].includes(n.fontFamily))throw Error('字体无效');
  if(n.fontStyle!==undefined&&!['normal','italic'].includes(n.fontStyle))throw Error('字体样式无效');if(n.fitWidth!==undefined&&typeof n.fitWidth!=='boolean')throw Error('文字字宽拟合参数无效');
  if(n.textSkew!==undefined&&(!Number.isFinite(n.textSkew)||n.textSkew<0||n.textSkew>.6))throw Error('文字倾斜参数无效');
@@ -138,7 +139,22 @@ export function contourOperations(paths){
 }
 export const textLines=n=>String(n.text??'').replace(/\r\n?/g,'\n').split('\n');
 export const textLeading=n=>n.lineHeight??n.fontSize*1.2;
-export function metrics(n){const c=ctx();c.font=`${n.textSkew?'normal':n.fontStyle||'normal'} ${n.fontWeight||400} ${n.fontSize}px "${n.fontFamily||'Microsoft YaHei'}",sans-serif`;const lines=textLines(n),rows=lines.map(t=>c.measureText(t||''));if(rows.length===1)return c.measureText(n.text||'文字');const first=rows[0],last=rows.at(-1),leading=textLeading(n);return {width:Math.max(...rows.map(r=>r.width)),actualBoundingBoxLeft:Math.max(0,...rows.map(r=>r.actualBoundingBoxLeft||0)),actualBoundingBoxRight:Math.max(0,...rows.map(r=>r.actualBoundingBoxRight||r.width)),actualBoundingBoxAscent:first.actualBoundingBoxAscent||n.fontSize*.85,actualBoundingBoxDescent:(rows.length-1)*leading+(last.actualBoundingBoxDescent||0),firstLineAscent:first.actualBoundingBoxAscent||n.fontSize*.85,firstLineDescent:first.actualBoundingBoxDescent||0,fontBoundingBoxAscent:first.fontBoundingBoxAscent,fontBoundingBoxDescent:last.fontBoundingBoxDescent,lineHeight:leading,lineCount:rows.length};}
+export function metrics(n) {
+  const c = ctx();
+  c.font = `${n.textSkew ? "normal" : n.fontStyle || "normal"} ${n.fontWeight || 400} ${n.fontSize}px "${n.fontFamily || "Microsoft YaHei"}",sans-serif`;
+  c.letterSpacing = "0px";
+  c.wordSpacing = "0px";
+  // Native canvas 0.1.80 shifts measured ink bounds for tracking although drawn glyphs stay anchored.
+  const measure = t => {
+    const m = c.measureText(t), gaps = Math.max(0, [...new Intl.Segmenter().segment(t)].length - 1);
+    const extra = gaps * (n.letterSpacing || 0) + (t.match(/[ \u00a0]/g) || []).length * (n.wordSpacing || 0);
+    return {width:m.width+extra,actualBoundingBoxLeft:m.actualBoundingBoxLeft,actualBoundingBoxRight:m.actualBoundingBoxRight+extra,actualBoundingBoxAscent:m.actualBoundingBoxAscent,actualBoundingBoxDescent:m.actualBoundingBoxDescent,fontBoundingBoxAscent:m.fontBoundingBoxAscent,fontBoundingBoxDescent:m.fontBoundingBoxDescent};
+  };
+  const lines = textLines(n), rows = lines.map(t => measure(t || ""));
+  if (rows.length === 1) return measure(n.text || "\u6587\u5B57");
+  const first = rows[0], last = rows.at(-1), leading = textLeading(n);
+  return { width: Math.max(...rows.map((r) => r.width)), actualBoundingBoxLeft: Math.max(0, ...rows.map((r) => r.actualBoundingBoxLeft || 0)), actualBoundingBoxRight: Math.max(0, ...rows.map((r) => r.actualBoundingBoxRight || r.width)), actualBoundingBoxAscent: first.actualBoundingBoxAscent || n.fontSize * 0.85, actualBoundingBoxDescent: (rows.length - 1) * leading + (last.actualBoundingBoxDescent || 0), firstLineAscent: first.actualBoundingBoxAscent || n.fontSize * 0.85, firstLineDescent: first.actualBoundingBoxDescent || 0, fontBoundingBoxAscent: first.fontBoundingBoxAscent, fontBoundingBoxDescent: last.fontBoundingBoxDescent, lineHeight: leading, lineCount: rows.length };
+}
 export function textInkBounds(n){const m=metrics(n),matrix=textMatrix(n),l=-(m.actualBoundingBoxLeft||0),r=m.actualBoundingBoxRight||m.width,t=-(m.actualBoundingBoxAscent||n.fontSize*.85),b=m.actualBoundingBoxDescent||0,points=[[l,t],[r,t],[r,b],[l,b]].map(([x,y])=>[matrix[0]*x+matrix[2]*y+matrix[4],matrix[1]*x+matrix[3]*y+matrix[5]]),x=Math.min(n.x,...points.map(p=>p[0])),y=Math.min(n.y,...points.map(p=>p[1]));return {x,y,width:Math.max(n.x+n.width,...points.map(p=>p[0]))-x,height:Math.max(n.y+n.height,...points.map(p=>p[1]))-y};}
 export function edgeNode(s,e,i=0){const a=s.nodes.find(n=>n.id===e.from),b=s.nodes.find(n=>n.id===e.to);if(!a||!b||a.visible===false||b.visible===false)return null;const ac=[a.x+a.width/2,a.y+a.height/2],bc=[b.x+b.width/2,b.y+b.height/2],dx=bc[0]-ac[0],dy=bc[1]-ac[1],len=Math.hypot(dx,dy);if(len<1)return null;const ux=dx/len,uy=dy/len,t1=Math.min(Math.abs(a.width/2/(ux||1e-9)),Math.abs(a.height/2/(uy||1e-9))),t2=Math.min(Math.abs(b.width/2/(ux||1e-9)),Math.abs(b.height/2/(uy||1e-9)));const p=[ac[0]+ux*t1,ac[1]+uy*t1],q=[bc[0]-ux*t2,bc[1]-uy*t2],nx=-uy*2,ny=ux*2;return {id:'edge-'+i,name:'连线',type:'path',x:0,y:0,width:s.width,height:s.height,fill:e.fill,d:`M${p[0]+nx} ${p[1]+ny}L${q[0]-ux*12+nx} ${q[1]-uy*12+ny}L${q[0]-ux*12-uy*6} ${q[1]-uy*12+ux*6}L${q[0]} ${q[1]}L${q[0]-ux*12+uy*6} ${q[1]-uy*12-ux*6}L${q[0]-ux*12-nx} ${q[1]-uy*12-ny}L${p[0]-nx} ${p[1]-ny}Z`};}
 const layerHidden=n=>n.visible===false||n.visible===undefined&&n.hidden===true;
@@ -147,7 +163,7 @@ export function textMatrix(n){const m=metrics(n),a=m.actualBoundingBoxAscent||n.
 export function gradientData(n){return nativeGradientData(n.gradient,n.name||'原图渐变');}
 function gradientCache(canvas,n,left,top){const c=canvas.getContext('2d');c.save();c.setTransform(1,0,0,1,0,0);c.globalCompositeOperation='source-in';c.fillStyle=gradientPaint(c,n.gradient,{x:n.x-left,y:n.y-top,width:n.width,height:n.height});c.fillRect(0,0,canvas.width,canvas.height);c.restore();}
 export function nodeSvg(n){let content=nodeSvgBase(n);return styleSvg(content,n,{x:n.x,y:n.y,width:n.width,height:n.height});}
-function nodeSvgBase(n){if(n.gradient){const g=normalizeGradient(n.gradient),id=definitionId(n,'gradient-'),a=g.angle*Math.PI/180,dx=Math.cos(a),dy=-Math.sin(a),span=(Math.abs(dx)*n.width+Math.abs(dy)*n.height)*g.scale,cx=(n.type==='text'?n.x:0)+n.width/2,cy=(n.type==='text'?n.y:0)+n.height/2;const matrix=n.type==='text'?textMatrix(n):null,det=matrix?matrix[0]*matrix[3]-matrix[1]*matrix[2]:1,inv=matrix?` gradientTransform="matrix(${[matrix[3]/det,-matrix[1]/det,-matrix[2]/det,matrix[0]/det,(matrix[2]*matrix[5]-matrix[3]*matrix[4])/det,(matrix[1]*matrix[4]-matrix[0]*matrix[5])/det].join(' ')})"`:'';const definition=g.kind==='radial'?`<radialGradient id="${esc(id)}" gradientUnits="userSpaceOnUse"${inv} cx="${cx}" cy="${cy}" r="${n.width*g.scale/2}">`:`<linearGradient id="${esc(id)}" gradientUnits="userSpaceOnUse"${inv} x1="${cx-dx*span/2}" y1="${cy-dy*span/2}" x2="${cx+dx*span/2}" y2="${cy+dy*span/2}">`;const stops=g.stops.map(([t,h])=>`<stop offset="${t}" stop-color="${h}"/>`).join(''),end=g.kind==='radial'?'radialGradient':'linearGradient';return `<defs>${definition}${stops}</${end}></defs>`+nodeSvgBase({...n,gradient:null}).replace(`fill="${n.fill}"`,`fill="url(#${esc(id)})"`)}const a=`data-id="${esc(n.id)}" pointer-events="${n.locked?'none':'visiblePainted'}" opacity="${n.opacity??1}"`;if(n.type==='text'){return `<text ${a} transform="matrix(${textMatrix(n).join(' ')})" fill="${n.fill}" stroke="${n.stroke||n.fill}" stroke-width="${(n.strokeWidth||0)*2}" stroke-linejoin="round" paint-order="stroke fill" font-family="${esc(n.fontFamily||'Microsoft YaHei')},sans-serif" font-size="${n.fontSize}" font-style="${n.textSkew?'normal':n.fontStyle||'normal'}" font-weight="${n.fontWeight||400}" xml:space="preserve">${textLines(n).map((line,i)=>`<tspan x="0" y="${i*textLeading(n)}">${esc(line)}</tspan>`).join('')}</text>`;}if(n.type==='image')return `<image ${a} x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" href="${esc(n.src)}" preserveAspectRatio="none"/>`;return `<path ${a} transform="translate(${n.x} ${n.y})" d="${geometry(n)}" fill="${n.fill}" fill-rule="evenodd"/>`;}
+function nodeSvgBase(n){if(n.gradient){const g=normalizeGradient(n.gradient),id=definitionId(n,'gradient-'),a=g.angle*Math.PI/180,dx=Math.cos(a),dy=-Math.sin(a),span=(Math.abs(dx)*n.width+Math.abs(dy)*n.height)*g.scale,cx=(n.type==='text'?n.x:0)+n.width/2,cy=(n.type==='text'?n.y:0)+n.height/2;const matrix=n.type==='text'?textMatrix(n):null,det=matrix?matrix[0]*matrix[3]-matrix[1]*matrix[2]:1,inv=matrix?` gradientTransform="matrix(${[matrix[3]/det,-matrix[1]/det,-matrix[2]/det,matrix[0]/det,(matrix[2]*matrix[5]-matrix[3]*matrix[4])/det,(matrix[1]*matrix[4]-matrix[0]*matrix[5])/det].join(' ')})"`:'';const definition=g.kind==='radial'?`<radialGradient id="${esc(id)}" gradientUnits="userSpaceOnUse"${inv} cx="${cx}" cy="${cy}" r="${n.width*g.scale/2}">`:`<linearGradient id="${esc(id)}" gradientUnits="userSpaceOnUse"${inv} x1="${cx-dx*span/2}" y1="${cy-dy*span/2}" x2="${cx+dx*span/2}" y2="${cy+dy*span/2}">`;const stops=g.stops.map(([t,h])=>`<stop offset="${t}" stop-color="${h}"/>`).join(''),end=g.kind==='radial'?'radialGradient':'linearGradient';return `<defs>${definition}${stops}</${end}></defs>`+nodeSvgBase({...n,gradient:null}).replace(`fill="${n.fill}"`,`fill="url(#${esc(id)})"`)}const a=`data-id="${esc(n.id)}" pointer-events="${n.locked?'none':'visiblePainted'}" opacity="${n.opacity??1}"`;if(n.type==='text'){return `<text ${a} transform="matrix(${textMatrix(n).join(' ')})" fill="${n.fill}" stroke="${n.stroke||n.fill}" stroke-width="${(n.strokeWidth||0)*2}" stroke-linejoin="round" paint-order="stroke fill" font-family="${esc(n.fontFamily||'Microsoft YaHei')},sans-serif" font-size="${n.fontSize}" font-style="${n.textSkew?'normal':n.fontStyle||'normal'}" font-weight="${n.fontWeight||400}" letter-spacing="${n.letterSpacing||0}" word-spacing="${n.wordSpacing||0}" xml:space="preserve">${textLines(n).map((line,i)=>`<tspan x="0" y="${i*textLeading(n)}">${esc(line)}</tspan>`).join('')}</text>`;}if(n.type==='image')return `<image ${a} x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" href="${esc(n.src)}" preserveAspectRatio="none"/>`;return `<path ${a} transform="translate(${n.x} ${n.y})" d="${geometry(n)}" fill="${n.fill}" fill-rule="evenodd"/>`;}
 
 export function grouped(s,nodes,values,wrap){const byId=new Map(nodes.map((n,i)=>[n.id,values[i]])),groups=new Map((s.groups||[]).map(g=>[g.id,g])),owner=new Map(),seen=new Set(),result=[];for(const g of groups.values())for(const id of g.children)owner.set(id,g.id);function item(id){if(groups.has(id)){const g=groups.get(id);return wrap(g,g.children.map(item).filter(v=>v!=null))}return byId.get(id)}function root(id){while(owner.has(id))id=owner.get(id);return id}for(const n of nodes){const id=root(n.id);if(seen.has(id))continue;seen.add(id);const v=item(id);if(v!=null)result.push(v)}return result;}
 export function groupBounds(s,g){const map=new Map(s.nodes.map(n=>[n.id,n])),groups=new Map((s.groups||[]).map(v=>[v.id,v]));const bs=g.children.map(id=>map.get(id)||groupBounds(s,groups.get(id))).filter(Boolean),x=Math.min(...bs.map(n=>n.x)),y=Math.min(...bs.map(n=>n.y));return {x,y,width:Math.max(...bs.map(n=>n.x+n.width))-x,height:Math.max(...bs.map(n=>n.y+n.height))-y};}
@@ -157,6 +173,35 @@ export function assertRenderCapacity(s){
  return decodeUsage(nodes);
 }
 export function svg(s){assertRenderCapacity(s);const nodes=allNodes(s);return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s,nodes,nodes.map(nodeSvg),(g,parts)=>layerHidden(g)?'':styleSvg('<g data-group="'+esc(g.id)+'" data-name="'+esc(g.name)+'" opacity="'+(g.opacity??1)+'">'+parts.join('')+'</g>',g,groupBounds(s,g))).join('')}</svg>`;}
+
+// Figma's direct SVG importer does not reliably resolve CJK fonts. Preserve
+// each text layer's appearance independently; plugin import keeps native Text.
+export async function figmaSvg(s){
+ validate(s);assertRenderCapacity(s);const nodes=allNodes(s),parts=[];
+ for(const n of nodes){
+  let markup;
+  if(n.type!=='text')markup=nodeSvg(n);
+  else{
+   const box=textInkBounds(n),pad=Math.ceil(n.strokeWidth||0)+3,left=Math.floor(box.x)-pad,top=Math.floor(box.y)-pad,w=Math.ceil(box.width)+pad*2,h=Math.ceil(box.height)+pad*2;
+   const scale=Math.min(3,6000/Math.max(w,h),Math.sqrt(16000000/(w*h)));
+   if(scale<1)throw Error('Figma文字外观尺寸超过安全范围，请分批导出');
+   const canvas=document.createElement('canvas');canvas.width=Math.ceil(w*scale);canvas.height=Math.ceil(h*scale);
+   try{const c=canvas.getContext('2d'),m=textMatrix(n);c.setTransform(m[0]*scale,m[1]*scale,m[2]*scale,m[3]*scale,(m[4]-left)*scale,(m[5]-top)*scale);
+    c.font=`${n.textSkew?'normal':n.fontStyle||'normal'} ${n.fontWeight||400} ${n.fontSize}px "${n.fontFamily||'Microsoft YaHei'}"`;c.letterSpacing=`${n.letterSpacing||0}px`;c.wordSpacing=`${n.wordSpacing||0}px`;c.fillStyle=n.fill;
+    if(n.strokeWidth&&n.stroke){c.strokeStyle=n.stroke;c.lineWidth=n.strokeWidth*2;c.lineJoin='round';textLines(n).forEach((line,i)=>c.strokeText(line,0,i*textLeading(n)));}
+    textLines(n).forEach((line,i)=>c.fillText(line,0,i*textLeading(n)));
+    if(n.gradient){c.setTransform(scale,0,0,scale,-left*scale,-top*scale);c.globalCompositeOperation='source-in';c.fillStyle=gradientPaint(c,n.gradient,n);c.fillRect(left,top,w,h);}
+    const image=`<image data-id="${esc(n.id)}" opacity="${n.opacity??1}" x="${left}" y="${top}" width="${w}" height="${h}" href="${canvas.toDataURL('image/png')}" preserveAspectRatio="none"/>`;
+    markup=styleSvg(image,n,{x:n.x,y:n.y,width:n.width,height:n.height});
+   }finally{canvas.width=canvas.height=1;}
+  }
+  // Use semantic SVG ids, which Figma imports as layer names. Keep data-id.
+  const label=esc(String(n.name||n.text||n.id).replace(/[^\p{L}\p{N}_-]+/gu,'_')+'_'+n.id);
+  parts.push(`<g id="${label}"><title>${esc(n.name||n.text||n.id)}</title>${markup}</g>`);
+ }
+ return `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">${grouped(s,nodes,parts,(g,children)=>layerHidden(g)?'':styleSvg('<g id="'+esc(String(g.name||g.id).replace(/[^\p{L}\p{N}_-]+/gu,'_')+'_'+g.id)+'" data-group="'+esc(g.id)+'" opacity="'+(g.opacity??1)+'"><title>'+esc(g.name||g.id)+'</title>'+children.join('')+'</g>',g,groupBounds(s,g))).join('')}</svg>`;
+}
+
 export function figma(s){validate(s);const visible=allNodes(s),layers=visible.map(n=>{const base={name:n.name||n.text||n.id,x:n.x,y:n.y,width:n.width,height:n.height,opacity:n.opacity??1};if(n.type==='text')return {...base,type:'text',text:n.text,textStroke:n.stroke?color(n.stroke):null,textStrokeWidth:n.strokeWidth||0,fontFamily:n.fontFamily||'Microsoft YaHei',fontStyle:n.fontStyle||'normal',fontSize:n.fontSize,fontWeight:n.fontWeight||400,lineHeight:textLeading(n),height:Math.max(n.height,n.fontSize*1.5),color:color(n.fill)};if(n.type==='image')return {...base,type:'image',image:n.src};if(n.type==='rect')return {...base,type:'box',background:color(n.fill),radii:[1,1,1,1].map(()=>n.radius||0),children:[]};return {...base,type:'svg',svg:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+n.width+' '+n.height+'"><path fill="'+n.fill+'" fill-rule="evenodd" d="'+geometry(n)+'"/></svg>'};});const children=grouped(s,visible,layers,(g,children)=>{const x=Math.min(...children.map(n=>n.x)),y=Math.min(...children.map(n=>n.y));return {type:'box',name:g.name||'分组',x,y,width:Math.max(...children.map(n=>n.x+n.width))-x,height:Math.max(...children.map(n=>n.y+n.height))-y,children,clip:false,background:null}});return {format:'gugu-page-to-figma',version:1,title:s.title,width:s.width,height:s.height,root:{type:'box',name:s.title,x:0,y:0,width:s.width,height:s.height,children},sceneMetadata:{edges:s.edges,groups:s.groups,source:s.provenance},warnings:['文字和形状可编辑；字体为估计值，请对照原图校对。流程关系保存在工程 JSON。']};}
 export async function loadImage(src){
  const expected=typeof src==='string'&&imageURI.test(src)?imageMetadata(src):null;if(expected)assertImageDecodeCapacity(expected,'图片');
@@ -206,7 +251,11 @@ export async function compactPsdImages(scene){
  }
  return s;
 }
-export async function psd(s){s=await compactPsdImages(s);assertExportCapacity(s);const decodedImages=new Map();let cachedPixels=0;
+export async function psd(s){
+ // The layout raster is only a preview. Embedded masters retain source pixels
+ // and the original uncropped frame, independently of the displayed size.
+ const masters=new Map((s.nodes||[]).filter(n=>n.type==='image').map(n=>[n.id,{src:n.src,x:n.x,y:n.y,width:n.width,height:n.height}])),linkedFiles=[],linkedBySource=new Map();
+ s=await compactPsdImages(s);assertExportCapacity(s);const decodedImages=new Map();let cachedPixels=0;
  async function exportImage(src){
   if(decodedImages.has(src)){const image=decodedImages.get(src);decodedImages.delete(src);decodedImages.set(src,image);return image}
   const info=imageMetadata(src);while(decodedImages.size&&cachedPixels+info.pixels>SCENE_CAPACITY_LIMITS.decodeCachePixels){const [key,image]=decodedImages.entries().next().value;cachedPixels-=image.width*image.height;decodedImages.delete(key);releaseDecodedImage(image)}
@@ -214,8 +263,13 @@ export async function psd(s){s=await compactPsdImages(s);assertExportCapacity(s)
  }
  try{const factory=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c},composite=factory(s.width,s.height),cc=composite.getContext('2d'),layers=[];
  const exportNodes=allNodes(s,true);for(const [index,n] of exportNodes.entries()){const box=n.type==='text'?textInkBounds(n):n,pad=Math.ceil(n.strokeWidth||0)+2,left=Math.floor(box.x)-pad,top=Math.floor(box.y)-pad,w=Math.ceil(box.width)+pad*2,h=Math.ceil(box.height)+pad*2;const canvas=factory(w,h),c=canvas.getContext('2d');c.translate(n.x-left,n.y-top);const layer={id:index+1,name:n.name||n.text||n.id,left,top,canvas,opacity:n.opacity??1,hidden:layerHidden(n),...(n.locked?{protected:{transparency:true,composite:true,position:true}}:{}),blendMode:normalizeStyle(n.layerStyle)?.blendMode||'normal'};
- if(n.type==='image')c.drawImage(await exportImage(n.src),0,0,n.width,n.height);
- else if(n.type==='text'){const matrix=textMatrix(n);c.setTransform(matrix[0],matrix[1],matrix[2],matrix[3],matrix[4]-left,matrix[5]-top);c.font=`${n.textSkew?'normal':n.fontStyle||'normal'} ${n.fontWeight||400} ${n.fontSize}px "${n.fontFamily||'Microsoft YaHei'}"`;c.fillStyle=n.fill;const intrinsicStroke=n.strokeWidth&&n.stroke&&n.layerStyle?.enabled===false;if(intrinsicStroke){c.strokeStyle=n.stroke;c.lineWidth=n.strokeWidth*2;c.lineJoin='round';textLines(n).forEach((line,i)=>c.strokeText(line,0,i*textLeading(n)));}textLines(n).forEach((line,i)=>c.fillText(line,0,i*textLeading(n)));nativeText(layer,{...n,fontStyle:n.textSkew?'normal':n.fontStyle,color:color(n.fill),fontFamily:n.fontFamily||'Microsoft YaHei',lineHeight:textLeading(n)},matrix[5]);layer.text.transform=matrix;if(intrinsicStroke)Object.assign(layer.text.style,{strokeFlag:true,fillFlag:true,fillFirst:false,outlineWidth:n.strokeWidth,strokeColor:{r:parseInt(n.stroke.slice(1,3),16),g:parseInt(n.stroke.slice(3,5),16),b:parseInt(n.stroke.slice(5,7),16)}});if(n.strokeWidth&&n.stroke)layer.effects=nativeEffects({stroke:{color:n.stroke,size:n.strokeWidth,opacity:1,position:'outside'}});}
+ if(n.type==='image'){
+  c.drawImage(await exportImage(n.src),0,0,n.width,n.height);
+  const master=masters.get(n.id),info=imageMetadata(master.src);let linked=linkedBySource.get(master.src);
+  if(!linked){const raw=atob(master.src.slice(master.src.indexOf(',')+1)),data=Uint8Array.from(raw,ch=>ch.charCodeAt(0)),extension=master.src.startsWith('data:image/jpeg;')?'jpg':master.src.startsWith('data:image/webp;')?'webp':'png';linked={id:'00000000-0000-4000-8000-'+String(linkedFiles.length+1).padStart(12,'0'),name:(n.name||n.id)+'.'+extension,data};linkedBySource.set(master.src,linked);linkedFiles.push(linked)}
+  const {x,y,width,height}=master;layer.placedLayer={id:linked.id,placed:'00000000-0001-4000-8000-'+String(index+1).padStart(12,'0'),type:'raster',width:info.width,height:info.height,resolution:{value:72,units:'Density'},transform:[x,y,x+width,y,x+width,y+height,x,y+height]};
+ }
+ else if(n.type==='text'){const matrix=textMatrix(n);c.setTransform(matrix[0],matrix[1],matrix[2],matrix[3],matrix[4]-left,matrix[5]-top);c.font=`${n.textSkew?'normal':n.fontStyle||'normal'} ${n.fontWeight||400} ${n.fontSize}px "${n.fontFamily||'Microsoft YaHei'}"`;c.letterSpacing=`${n.letterSpacing||0}px`;c.wordSpacing=`${n.wordSpacing||0}px`;c.fillStyle=n.fill;const intrinsicStroke=n.strokeWidth&&n.stroke&&n.layerStyle?.enabled===false;if(intrinsicStroke){c.strokeStyle=n.stroke;c.lineWidth=n.strokeWidth*2;c.lineJoin='round';textLines(n).forEach((line,i)=>c.strokeText(line,0,i*textLeading(n)));}textLines(n).forEach((line,i)=>c.fillText(line,0,i*textLeading(n)));nativeText(layer,{...n,fontStyle:n.textSkew?'normal':n.fontStyle,color:color(n.fill),fontFamily:n.fontFamily||'Microsoft YaHei',lineHeight:textLeading(n)},matrix[5]);layer.text.transform=matrix;if(intrinsicStroke)Object.assign(layer.text.style,{strokeFlag:true,fillFlag:true,fillFirst:false,outlineWidth:n.strokeWidth,strokeColor:{r:parseInt(n.stroke.slice(1,3),16),g:parseInt(n.stroke.slice(3,5),16),b:parseInt(n.stroke.slice(5,7),16)}});if(n.strokeWidth&&n.stroke)layer.effects=nativeEffects({stroke:{color:n.stroke,size:n.strokeWidth,opacity:1,position:'outside'}});}
  else{const d=geometry(n);c.fillStyle=n.fill;c.fill(new Path2D(d),'evenodd');layer.vectorFill={type:'color',color:{r:parseInt(n.fill.slice(1,3),16),g:parseInt(n.fill.slice(3,5),16),b:parseInt(n.fill.slice(5,7),16)}};layer.vectorMask={fillStartsWithAllPixels:false,paths:contourOperations(pathData(d,`translate(${n.x},${n.y})`).paths)};}
  if(n.gradient&&n.type!=='image'){const g=gradientData(n);if(n.type==='text'){const fx=nativeEffects({gradientOverlay:{...normalizeGradient(n.gradient),enabled:true,opacity:1}});layer.effects={...(layer.effects||{}),...fx};}else{gradientCache(canvas,n,left,top);layer.vectorFill=g;}}
  if(n.layerStyle){const fx=nativeEffects(n.layerStyle);layer.effects={...(layer.effects||{}),...fx};}if(n.type==='text'&&n.gradient&&n.layerStyle?.enabled===false){
@@ -229,9 +283,80 @@ export async function psd(s){s=await compactPsdImages(s);assertExportCapacity(s)
  }if(n.type==='text')fitGradientEffects(layer,n);if(n.displayMask)layer.mask=nativeMask(n.displayMask,s.width,s.height,factory,Path2D);layer._target=n;layers.push(layer);}
  const children=grouped(s,exportNodes,layers,(g,children)=>({id:10000+(s.groups||[]).indexOf(g),name:g.name||'分组',children,opened:true,hidden:layerHidden(g),...(g.locked?{protected:{transparency:true,composite:true,position:true}}:{}),opacity:g.opacity??1,blendMode:normalizeStyle(g.layerStyle)?.blendMode||'normal',...(g.layerStyle?{effects:nativeEffects(g.layerStyle)}:{}),...(g.displayMask?{mask:nativeMask(g.displayMask,s.width,s.height,factory,Path2D)}:{}),_target:g}));
  function paint(layer,target){if(layer.hidden)return;const temporary=[];const paintFactory=(w,h)=>{const c=factory(w,h);temporary.push(c);return c};try{let base,left=layer.left||0,top=layer.top||0;if(layer.children){base=paintFactory(s.width,s.height);layer.children.forEach(l=>paint(l,base.getContext('2d')));left=top=0;}else base=layer.canvas;let style=layer._target.layerStyle;if(layer._target.strokeWidth&&layer._target.stroke&&!style?.stroke)style={...(style||{enabled:true}),stroke:{color:layer._target.stroke,size:layer._target.strokeWidth,opacity:1,position:'outside'}};if(layer._target.type==='text'&&layer._target.gradient){style=style?.enabled===false?{enabled:true,gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1}}:{...(style||{enabled:true}),gradientOverlay:{...normalizeGradient(layer._target.gradient),enabled:true,opacity:1},...(style?.gradientOverlay?{gradientOverlay:style.gradientOverlay}:{})};}const effectBounds=layer._target.width?{x:layer._target.x-left,y:layer._target.y-top,width:layer._target.width,height:layer._target.height}:alphaBounds(base);if(normalizeMask(layer._target.displayMask)?.enabled){const masked=paintFactory(base.width,base.height),mc=masked.getContext('2d');mc.drawImage(base,0,0);mc.globalCompositeOperation='destination-in';mc.drawImage(displayMaskCanvas(layer._target.displayMask,s.width,s.height,paintFactory,Path2D),-left,-top);base=masked;}const rendered=styleCanvas(base,style,paintFactory,effectBounds),scratch=paintFactory(s.width,s.height),sc=scratch.getContext('2d');sc.drawImage(rendered.canvas,left-rendered.pad,top-rendered.pad);target.save();target.globalAlpha=layer.opacity??1;target.globalCompositeOperation=layer.blendMode==='normal'?'source-over':layer.blendMode;target.drawImage(scratch,0,0);target.restore();}finally{for(const canvas of temporary)canvas.width=canvas.height=1}}
- children.forEach(l=>paint(l,cc));function clean(l){delete l._target;if(l.canvas){const canvas=l.canvas;l.imageData=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);canvas.width=canvas.height=1;delete l.canvas}(l.children||[]).forEach(clean)}children.forEach(clean);return writePsd({width:s.width,height:s.height,canvas:composite,children},{noBackground:true,trimImageData:false});
+ children.forEach(l=>paint(l,cc));function clean(l){delete l._target;if(l.canvas){const canvas=l.canvas;l.imageData=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);canvas.width=canvas.height=1;delete l.canvas}(l.children||[]).forEach(clean)}children.forEach(clean);return writePsd({width:s.width,height:s.height,canvas:composite,children,linkedFiles},{noBackground:true,trimImageData:false});
  }finally{for(const image of decodedImages.values())releaseDecodedImage(image);decodedImages.clear()}
 }
-export function html(s){validate(s);const data=JSON.stringify(s).replace(/</g,'\\u003c');return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(s.title)}</title><style>*{box-sizing:border-box}body{margin:0;background:#151b24;font-family:"Microsoft YaHei",sans-serif;color:#e8eff7}header{padding:14px 22px;display:flex;gap:12px;align-items:center}button{padding:8px 15px;background:#283a49;color:white;border:1px solid #647888;border-radius:6px;cursor:pointer}#wrap{overflow:auto;padding:20px}#board{position:relative;isolation:isolate;background:transparent;transform-origin:top left}.node{position:absolute;cursor:move}.text{white-space:pre;line-height:1;cursor:text}.node:focus{outline:2px solid #5ad7b7}svg{display:block}#connections{position:absolute;inset:0;pointer-events:none}</style><header><b>${esc(s.title)}</b><span>双击文字修改 · 拖动图层 · 流程连线跟随</span><button id="reset">恢复</button><button id="save">保存工程</button></header><div id="wrap"><div id="board"></div></div><script>const original=${data};let s=structuredClone(original);const board=document.getElementById('board');const geom=${geometry.toString()};const edge=${edgeNode.toString()};function drawEdges(){const el=document.getElementById('connections');el.replaceChildren();s.edges.forEach((e,i)=>{const n=edge(s,e,i);if(!n)return;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',n.d);p.setAttribute('fill',n.fill);el.append(p);});}function render(){board.replaceChildren();board.style.width=s.width+'px';board.style.height=s.height+'px';board.style.background=s.background||'transparent';for(const n of s.nodes){if(n.visible===false)continue;let el=document.createElement('div');el.className='node';el.dataset.id=n.id;Object.assign(el.style,{left:n.x+'px',top:n.y+'px',width:n.width+'px',height:n.height+'px',opacity:n.opacity??1});if(n.type==='text'){el.classList.add('text');el.textContent=n.text;Object.assign(el.style,{fontFamily:n.fontFamily||'Microsoft YaHei',fontSize:n.fontSize+'px',fontStyle:n.fontStyle||'normal',fontWeight:n.fontWeight||400,lineHeight:(n.lineHeight||n.fontSize*1.2)+'px',color:n.fill,WebkitTextStroke:(n.strokeWidth||0)*2+'px '+(n.stroke||n.fill),paintOrder:'stroke fill'});el.ondblclick=()=>{if(el.querySelector('textarea'))return;const editor=document.createElement('textarea');editor.value=n.text;editor.setAttribute('aria-label','编辑同一文案');editor.style.cssText='display:block;box-sizing:border-box;width:100%;height:100%;min-height:44px;resize:vertical;font:inherit;line-height:inherit;color:inherit;background:transparent;border:1px solid currentColor;outline:none;padding:0;margin:0';el.replaceChildren(editor);editor.onblur=()=>{n.text=editor.value;el.textContent=n.text};editor.focus();editor.select()};}else if(n.type==='image'){const im=new Image();im.src=n.src;im.style.width='100%';im.style.height='100%';im.draggable=false;el.append(im);}else{const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');svg.setAttribute('width','100%');svg.setAttribute('height','100%');svg.setAttribute('viewBox','0 0 '+n.width+' '+n.height);p.setAttribute('d',geom(n));p.setAttribute('fill',n.fill);p.setAttribute('fill-rule','evenodd');svg.append(p);el.append(svg);}el.onpointerdown=e=>{if(el.isContentEditable||el.querySelector('textarea')||n.locked)return;const x=e.clientX,y=e.clientY,nx=n.x,ny=n.y;el.setPointerCapture(e.pointerId);el.onpointermove=e=>{n.x=nx+e.clientX-x;n.y=ny+e.clientY-y;el.style.left=n.x+'px';el.style.top=n.y+'px';drawEdges()};el.onpointerup=()=>{el.onpointermove=null;};};board.append(el);}const lines=document.createElementNS('http://www.w3.org/2000/svg','svg');lines.id='connections';lines.setAttribute('width',s.width);lines.setAttribute('height',s.height);board.append(lines);drawEdges();}document.getElementById('reset').onclick=()=>{s=structuredClone(original);render()};document.getElementById('save').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(s)],{type:'application/json'}));a.download=(String(s.title||'未命名工程').replace(/[\\\\/:*?"<>|]/g,'_').trim().slice(0,100)||'未命名工程')+'.scene.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();<\/script></html>`;}
+function portableHtmlRuntime(original, edge) {
+  const board = document.getElementById('board'), wrap = document.getElementById('wrap');
+  const initialSvg = board.firstElementChild.cloneNode(true);
+  const dialog = document.getElementById('text-editor'), input = document.getElementById('edit-text');
+  let scene, root, editing, fitMode = true;
+  function fit() {
+    root.style.width = (fitMode ? scene.width * Math.min(1, Math.max(1, wrap.clientWidth - 32) / scene.width, Math.max(1, wrap.clientHeight - 32) / scene.height) : scene.width) + 'px';
+    root.style.height = 'auto';
+  }
+  function render() {
+    scene = structuredClone(original); board.replaceChildren(initialSvg.cloneNode(true)); root = board.firstElementChild;
+    const elements = new Map([...root.querySelectorAll('[data-id]')].map(el => [el.dataset.id, el]));
+    const parents = new Map((scene.groups || []).flatMap(g => g.children.map(id => [id, g])));
+    function locked(n) { for (let item = n; item; item = parents.get(item.id)) if (item.locked) return true; return false; }
+    function drawEdges() { (scene.edges || []).forEach((e, i) => { const n = edge(scene, e, i), el = elements.get('edge-' + i); if (n && el) el.setAttribute('d', n.d); }); }
+    for (const n of scene.nodes) {
+      const el = elements.get(n.id); if (!el) continue;
+      if (n.type === 'image' && !n.src) n.src = el.getAttribute('href') || el.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+      if (locked(n)) continue;
+      // ponytail: keep the authoritative SVG styles and move their existing wrapper as a unit.
+      let styled = el;
+      while (styled.parentElement !== root && styled.parentElement.tagName.toLowerCase() === 'g' && !styled.parentElement.hasAttribute('data-group')) styled = styled.parentElement;
+      const holder = document.createElementNS(root.namespaceURI, 'g'); styled.before(holder); holder.append(styled);
+      holder.setAttribute('tabindex', '0'); holder.setAttribute('aria-label', n.name || n.text || n.type); holder.style.cursor = 'move';
+      const ox = n.x, oy = n.y;
+      const move = () => { holder.setAttribute('transform', 'translate(' + (n.x - ox) + ' ' + (n.y - oy) + ')'); drawEdges(); };
+      const point = e => new DOMPoint(e.clientX, e.clientY).matrixTransform(root.getScreenCTM().inverse());
+      holder.onpointerdown = e => {
+        if (e.button !== 0 || dialog.open) return;
+        const start = point(e), x = n.x, y = n.y; holder.setPointerCapture(e.pointerId);
+        holder.onpointermove = event => { const p = point(event); n.x = x + p.x - start.x; n.y = y + p.y - start.y; move(); };
+        const finish = () => { holder.onpointermove = holder.onpointerup = holder.onpointercancel = null; };
+        holder.onpointerup = finish;
+        holder.onpointercancel = () => { n.x = x; n.y = y; move(); finish(); };
+        e.preventDefault(); holder.focus();
+      };
+      holder.onkeydown = e => {
+        const delta = {ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
+        if (!delta || dialog.open) return; e.preventDefault(); const step = e.shiftKey ? 10 : 1;
+        n.x += delta[0] * step; n.y += delta[1] * step; move();
+      };
+      if (n.type === 'text') holder.ondblclick = () => { editing = {n, el}; input.value = n.text; dialog.showModal(); input.focus(); input.select(); };
+    }
+    fit();
+  }
+  document.getElementById('text-save').onclick = () => {
+    if (!editing) return;
+    const {n, el} = editing; n.text = input.value; el.replaceChildren();
+    n.text.split(/\r?\n/).forEach((line, i) => { const span = document.createElementNS(root.namespaceURI, 'tspan'); span.setAttribute('x', '0'); span.setAttribute('y', String(i * (n.lineHeight || n.fontSize * 1.2))); span.textContent = line || ' '; el.append(span); });
+    if (n.fitWidth) { const m = el.transform.baseVal.consolidate()?.matrix; if (m) { el.setAttribute('textLength', String(n.width / Math.hypot(m.a, m.b))); el.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } }
+    dialog.close(); editing = null;
+  };
+  document.getElementById('text-cancel').onclick = () => dialog.close();
+  document.getElementById('fit').onclick = () => { fitMode = true; fit(); };
+  document.getElementById('actual').onclick = () => { fitMode = false; fit(); };
+  document.getElementById('reset').onclick = render;
+  document.getElementById('save').onclick = () => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(scene)], {type:'application/json'}));
+    a.download = (String(scene.title || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').trim().slice(0, 100) || '未命名工程') + '.scene.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  window.addEventListener('resize', () => { if (fitMode) fit(); }); render();
+}
+
+export function html(s) {
+  validate(s);
+  const markup = svg(s);
+  // HTML exports the current design; full source/recovery history belongs in the project format.
+  const snapshot = structuredClone({format:s.format,version:s.version,title:s.title,width:s.width,height:s.height,background:s.background,nodes:s.nodes,groups:s.groups || [],edges:s.edges || []});
+  for (const n of snapshot.nodes) if (n.type === 'image' && markup.includes('data-id="' + esc(n.id) + '"')) delete n.src;
+  const data = JSON.stringify(snapshot).replace(/</g, '\\u003c');
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(s.title)}</title><style>*{box-sizing:border-box}body{margin:0;background:#151b24;color:#e8eff7;font:14px system-ui,sans-serif}header{padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}header b{margin-right:auto}button{padding:8px 12px;background:#283a49;color:white;border:1px solid #647888;border-radius:6px;cursor:pointer}button:focus-visible,svg g:focus-visible{outline:2px solid #75dcca}#wrap{height:calc(100dvh - 110px);overflow:auto;padding:16px}#board>svg{display:block;overflow:hidden;margin:auto}p{margin:0;padding:0 16px 12px;color:#b4bfcb}dialog{max-width:min(480px,90vw);background:#202b38;color:white;border:1px solid #647888;border-radius:10px}dialog label{display:block}textarea{display:block;width:100%;min-height:110px;margin:12px 0;font:inherit}dialog::backdrop{background:#0009}</style></head><body><header><b>${esc(s.title)}</b><button id="fit">适应窗口</button><button id="actual">100%</button><button id="reset">恢复</button><button id="save">保存工程</button></header><p>双击文字修改 · 拖动或方向键移动图层 · 完整原图和历史请另存工程文件</p><div id="wrap"><div id="board">${markup}</div></div><dialog id="text-editor"><label for="edit-text">修改文字</label><textarea id="edit-text"></textarea><button id="text-cancel">取消</button><button id="text-save">保存文字</button></dialog><script>(${portableHtmlRuntime.toString()})(${data},${edgeNode.toString()});</script></body></html>`;
+}
 
 export function resizePath(n,width,height){n.d=pathData(n.d,`scale(${width/n.width},${height/n.height})`).d;n.width=width;n.height=height;}

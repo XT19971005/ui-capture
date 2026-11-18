@@ -11,7 +11,7 @@ class SelectedRefineTests(unittest.TestCase):
   self.scene={'format':'shijie-scene','version':2,'title':'selected','source':self.raw,'width':40,'height':40,'recognition':{'sourceOriginalSHA256':sha,'reviewStatus':'NOT_REVIEWED'},'nodes':[n,{**n,'id':'other','name':'其它角色'}],'groups':[],'edges':[],'_partial':True}
  def run_selected(self,review,generated=None):
   import selected_refine
-  with tempfile.TemporaryDirectory() as tmp,patch('acceptance.review_asset',side_effect=review),patch('incremental_assets.extract_once',return_value=generated) as generate,patch('subprocess.Popen',side_effect=AssertionError('selection must not export PSD')):
+  with tempfile.TemporaryDirectory() as tmp,patch('acceptance.review_asset',side_effect=review),patch('incremental_assets.extract_checked',return_value=generated) as generate,patch('subprocess.Popen',side_effect=AssertionError('selection must not export PSD')):
    result=selected_refine._process(self.raw,'selected',lambda *_:None,lambda:False,self.raw,Path(tmp),self.scene,['actor'])
   return result,generate.call_count
  def test_pass_checks_only_selected_and_does_not_regenerate_or_export(self):

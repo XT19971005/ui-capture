@@ -31,8 +31,13 @@ def check_schema(names):
 
 from asset_geometry import PLACEMENT,PLACEMENT_PROMPT
 ASSET_REVIEW={'type':'object','properties':{'status':{'type':'string','enum':['PASS','FAIL','NEEDS_REVIEW']},'checks':check_schema(ASSET_CRITERIA),'issues':{'type':'array','items':{'type':'string'}},'placement':PLACEMENT},'required':['status','checks','issues','placement'],'additionalProperties':False}
+ASSET_REVIEW['properties']['repairRegions']={'type':'array','maxItems':2,'items':{'type':'object','additionalProperties':False,
+ 'properties':{**{k:{'type':'integer'} for k in ('x','y','width','height')},'confidence':{'type':'number'},'reason':{'type':'string'}},
+ 'required':['x','y','width','height','confidence','reason']}}
+ASSET_REVIEW['required'].append('repairRegions')
 
 def review_asset(source,node,structure,cancelled,on_status=None,user_request=""):
+ if on_status:on_status('正在对照原图复核完整素材：'+node['name'])
  structure=Path(structure);tag='逐件临时_'+uuid.uuid4().hex;files=[]
  try:
   original=Image.open(source).convert('RGB');x,y,w,h=(round(node[k]) for k in ('x','y','width','height'))
@@ -44,6 +49,11 @@ def review_asset(source,node,structure,cancelled,on_status=None,user_request="")
    file=structure/(tag+'_'+name+'.png');bg=Image.new('RGBA',(w,h),color);bg.alpha_composite(actual);bg.save(file);files.append(file)
   prompt='逐件检查实际提取素材“'+node['name']+'”。第一张是原图对应准确坐标区域，后两张是当前完整底稿按相同位置/比例放在深浅底。必须实际对照，每项填写观察，不能仅凭生成完成PASS。'+GRANULARITY_RULES+'\n颜色检查肤色/服装/主色的色相、饱和度、明度和光照，不允许自动增强。比例检查五官、肢体、物体外形及画布定位，补全遮挡部分不改变已有可见区域。身份检查脸型、发型、神态、姿势；不是人物则检查完整物体。透明边缘排除背景/相邻物品残留、锯齿、毛刺、断笔、误透明。材质文字不能错字/变形。仅原图已有的毛边和纹理保留。'+'\n检查名称：'+json.dumps(ASSET_CRITERIA,ensure_ascii=False)
   prompt+='\n'+PLACEMENT_PROMPT+'\n当前图层绝对坐标：'+json.dumps({k:node[k] for k in ('x','y','width','height')})+'。最后一张为完整原图，仅用于定位该所选物体。'
+  if node.get('fidelityWarning'):prompt+='\n处理记录（不代替视觉证据）：'+node['fidelityWarning']
+  from asset_completion import ownership_context
+  prompt+=ownership_context(node)
+  prompt+='\n区分可见保真与推断补绘：原图可见区域必须准确；不可见区域检查结构合理、实体完整、连接自然、无硬切和拼接裂缝。无法从原图证实隐藏姿态的真实性，应记录在相应notes中，不单凭这一事实填issues或判FAIL；具体形体、比例、接缝或边缘缺陷仍必须FAIL。允许完整底稿延伸到原画板外，不能把画板裁切当完整素材裁切。'
+  prompt+='\nrepairRegions 仅列可局部修复的具体形体/接缝/边缘或局部材质错误，最多2处；使用完整原图绝对整数坐标，框必须同时覆盖原图正确位置及当前错误部分，并留出自然衔接空间，每框不超过原图面积30%，必须位于当前完整图层范围内；为修复原画板边缘或遮挡处接缝，框必须跨过交界并覆盖两侧，允许超出原图画板但不可超出完整素材。画板外仍为原图绝对坐标，可为负数，隐藏内容只能按合理连续性修复。reason须具体描述原图的姿态/边线应如何恢复，不能只说“有偏差”。置信度至少0.9；整件全局色偏或没有确定局部位置时返回空数组；若某处衣料、印字或纹理被改写，可圈定该材质区域并要求保持现有形体与透明轮廓，只修复表面细节。不要用整个人物框代替局部错误。'
   prompt+="\n本次用户要求："+user_request if user_request else ""
   from source_annotations import append_reference
   prompt,references=append_reference(prompt,[*files,source],structure)
@@ -54,6 +64,14 @@ def review_asset(source,node,structure,cancelled,on_status=None,user_request="")
   checks=result.get('checks')
   if not isinstance(checks,list) or len(checks)!=len(ASSET_CRITERIA) or any(not isinstance(check,dict) or check.get('name') not in ASSET_CRITERIA or check.get('status') not in ('PASS','FAIL') or not isinstance(check.get('notes'),str) or not check['notes'].strip() for check in checks) or len({check['name'] for check in checks})!=len(ASSET_CRITERIA):raise ValueError('素材复核缺少完整、唯一的实际观察记录，保留原素材')
   errors=check_errors(result.get('checks',[]),ASSET_CRITERIA)
+  from asset_completion import validate_repair_region
+  regions=[]
+  proposed=result.get('repairRegions',[])
+  for region in (proposed[:2] if isinstance(proposed,list) else []):
+   try:
+    regions.append(validate_repair_region(region,node,original.size))
+   except (ValueError,KeyError,TypeError):continue
+  result['repairRegions']=regions
   if result.get('status')!='NEEDS_REVIEW' and (errors or result.get('status')!='PASS' or result.get('issues')):
    result={**result,'status':'FAIL','issues':list(result.get('issues',[]))+errors or ['实际逐件复核未通过']}
   record=structure/('逐件复核_'+re.sub(r'[^\w-]','_',node['id'])+'.json');record.write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
