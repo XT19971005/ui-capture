@@ -36,6 +36,8 @@ const groups={
     "image-generate.css",
     "workspace-actions.js",
     "workspace-actions.css",
+    "interaction-project.js",
+    "interaction-project.css",
     "assistant-live-progress.js",
     "free-assistant.js",
     "candidate-store.js",

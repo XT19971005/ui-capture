@@ -5,9 +5,11 @@ import math
 import re
 from design_properties import obj
 from annotation_plan import VECTOR_QUALITY_RULES
+from ui_split_policy import RULES as UI_SPLIT_RULES, DECISION_FIELDS, decision_note
 from material_classification import material_icon, STRICT_CLASSIFICATION_RULES
 
-CLASS_FIELDS={'layerType':{'type':'string','enum':['image','vector','text','auto']},'planNote':{'type':'string','maxLength':1000},'reuseKey':{'type':'string','maxLength':80},'reuseEvidence':{'type':'string','maxLength':300}}
+CLASS_FIELDS={'layerType':{'type':'string','enum':['image','vector','text','auto']},'planNote':{'type':'string','maxLength':120},'reuseKey':{'type':'string','maxLength':80},'reuseEvidence':{'type':'string','maxLength':300}}
+CLASS_FIELDS.update({key:{'type':'string','maxLength':limit} for key,(_,limit) in DECISION_FIELDS.items()})
 
 def classification(item):
  out={}
@@ -22,6 +24,7 @@ def classification(item):
  if out.get('layerType')=='vector' and material_icon(item.get('name',''),out.get('planNote','')):
   out['layerType']='image'
   out['planNote']='完整材质图标按透明图片提取，保留金属边、内在纹样和立体光照，不拆成近似色块。'+out.get('planNote','')
+ if any(key in item for key in DECISION_FIELDS):out['planNote']=decision_note(item,out.get('planNote',''))
  return out
 
 POINT={'type':'array','minItems':2,'maxItems':2,'items':{'type':'number'}}
@@ -226,7 +229,8 @@ def plan(body,folder,cancelled,on_status):
  # Separate object localization from drawing. A model's arbitrary polygon
  # can be valid JSON yet cross a vehicle; stable enclosing contours are code.
  prompt+='\n自动标注现在必须逐项确定layerType：复杂纹理主体或场景背景=image（需生图）；完整主体也须按材质判断，简单多色图标不因完整主体而归生图，纯色剪影/标识/简单图形=vector（直接矢量），普通纯文字=text（原生可编辑），确实看不清才auto并在planNote写待确认原因。planNote同时记录可见描边/阴影/渐变等样式和另拆子项。每个实际位置仍返回一项独立box，禁止把分散的蝙蝠合成一个大box。确认造型、翅膀姿态、颜色、材质和状态相同的重复对象填写相同reuseKey和相同资源name，reuseEvidence说明具体同款依据；仅大小/位置/旋转差异可以复用。不同姿态、不同轮廓或仅同类不能共用reuseKey，不确定就空字符串。程序会让同款多处共用颜色与名称，但保留每个位置的独立圈线和实例；每种姿态分别用蝙蝠A/B命名。不要仅因颜色格只有24个就省略对象或乱合并。'
- prompt+='\n'+VECTOR_QUALITY_RULES+'\n'+STRICT_CLASSIFICATION_RULES
+ prompt+='\n'+VECTOR_QUALITY_RULES+'\n'+STRICT_CLASSIFICATION_RULES+'\n'+UI_SPLIT_RULES
+ prompt+='\n每个定位对象的splitReason写独立拆出及类型判断的具体依据，keepTogether写不另拆的内部部件及理由，separateParts写另拆文字/图标/底板的名称与归属（无则明确无需另拆），uncertainty写实际疑点或未见状态。四字段各200字以内；planNote只保留样式与范围补充，120字以内。说明必须针对当前对象，不用同一句笼统理由覆盖全图；不新增模型请求、不生成图片。'
  prompt+='\n本轮只返回定位清单，不输出points。每项name、imageIndex、box、shape；box为[x,y,width,height]，必须包含整个对象而非仅露出部分。imageIndex=0。圆底/圆图标用ellipse，文字及底板用rect；车辆人物等完整主体用envelope，程序将画向外留白的完整包裹轮廓，不作像素抠图边界。'
  references=[source];frames=[(0,0,1)];warnings=[];issues=[];incomplete_review=False
  try:

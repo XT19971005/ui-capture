@@ -461,3 +461,46 @@ class ScopeIntentTests(FreeAssistantTests):
    prompt=analyze.call_args.args[0]
    self.assertIn('若整张拆分',prompt);self.assertIn('不是本轮授权范围',prompt)
    self.assertIn('提取独立素材',prompt)
+
+
+class UiSplitDecisionTests(unittest.TestCase):
+ def test_auto_classification_keeps_split_and_whole_decisions_in_existing_note(self):
+  from auto_annotations import classification
+  value=classification({'name':'开始按钮底板','layerType':'image','planNote':'金属边与渐变','splitReason':'按钮需独立响应按压','keepTogether':'底板内的金边、高光与纹样不另拆','separateParts':'开始文字另为可编辑文字','uncertainty':'未见按下状态，不能宣称已还原'})
+  for expected in ['拆分原因：按钮需独立响应按压','保留整体：底板内的金边、高光与纹样不另拆','另拆对象：开始文字另为可编辑文字','待确认：未见按下状态，不能宣称已还原','金属边与渐变']:
+   self.assertIn(expected,value['planNote'])
+  self.assertEqual(classification({'name':'开始按钮底板',**value}),value)
+  self.assertLessEqual(len(value['planNote']),1000)
+  self.assertEqual(value['planNote'].count('\n'),4)
+  self.assertIn('\n',classification({'splitReason':'第一行\n第二行'})['planNote'])
+ def test_decisions_reject_invalid_fields_instead_of_silently_hiding_them(self):
+  from auto_annotations import classification
+  for value in [None,[], 'x'*201]:
+   with self.subTest(value=value):
+    with self.assertRaises(ValueError):classification({'splitReason':value})
+ def test_legacy_notes_stay_honest_and_are_not_given_invented_reasons(self):
+  from auto_annotations import classification
+  self.assertEqual(classification({'planNote':'旧定位待核对'})['planNote'],'旧定位待核对')
+ def test_auto_schema_requires_independent_reason_and_preservation_fields(self):
+  from auto_annotations import detection_schema
+  item=detection_schema(128)['properties']['objects']['items']
+  self.assertTrue(set(['splitReason','keepTogether','separateParts','uncertainty'])<=set(item['required']))
+ def test_policy_shared_by_auto_and_manual_analysis_without_extra_model_call(self):
+  import auto_annotations as a,free_assistant as f
+  from ui_split_policy import RULES
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',return_value={'objects':[]}) as model:
+   result=f.plan(AutoAnnotationTests().body(),Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(model.call_count,1)
+   self.assertIn(RULES,model.call_args.args[0]);self.assertEqual(result['layers'],[])
+  self.assertIn('保留整体',RULES);self.assertIn('按下',RULES)
+
+ def test_auto_localization_and_review_keep_decisions_without_third_explanation_request(self):
+  import free_assistant as f
+  value={'objects':[{'name':'开始按钮底板','imageIndex':0,'box':[1,1,10,10],'shape':'rect','layerType':'image','planNote':'金属边与渐变','reuseKey':'','reuseEvidence':'','splitReason':'独立按钮底板且有材质','keepTogether':'金边和高光随底板，不拆碎','separateParts':'开始文字另拆，归开始按钮组','uncertainty':'按下状态不可见'}]}
+  with tempfile.TemporaryDirectory() as folder,patch('assistant_models.analyze',side_effect=[value,value]) as model:
+   result=f.plan(AutoAnnotationTests().body(),Path(folder),lambda:False,lambda *_:None)
+   self.assertEqual(model.call_count,2)
+   self.assertEqual(len(result['annotationObjects']),1)
+   note=result['annotationObjects'][0]['planNote']
+   for part in ['拆分原因：','保留整体：','另拆对象：','待确认：']:self.assertIn(part,note)
+   self.assertEqual(result['layers'],[]);self.assertEqual(list(Path(folder).iterdir()),[])

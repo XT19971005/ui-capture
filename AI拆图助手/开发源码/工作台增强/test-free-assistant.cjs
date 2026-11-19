@@ -2,6 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const file=path.join(__dirname,'free-assistant.js');
 function api(){const scope={window:{},structuredClone};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'annotation-order.js'),'utf8'),scope);vm.runInNewContext(fs.readFileSync(file,'utf8'),scope);return scope.window.ShijieFreeAssistant;}
 const image='data:image/png;base64,AAAA',doc=()=>({_projectId:'p',width:100,height:100,source:image,nodes:[{id:'a',name:'角色',type:'image',src:image,x:0,y:0,width:100,height:100,locked:true}],_splitBaseline:{private:true}});
+test('analysis names imported Photoshop layer placeholders but never manual names',()=>{const a=api();for(const title of ['图层 22 拷贝','图层 1','图层 22 拷贝 2'])assert.equal(a.semanticTitle(title,'持剑国王扑克牌徽章','import'),'持剑国王扑克牌徽章');assert.equal(a.semanticTitle('图层 22 拷贝','持剑国王扑克牌徽章','manual'),null)});
 
 test('confirmation binds the analyzed attachment snapshot and refuses later replacement',async()=>{const a=api(),d=doc(),attachment={src:'reference-A',name:'人物'},tracker=a.createAnalysisTaskTracker({get:()=>d,request:async()=>({action:'discuss',nextStep:'confirm',reference:'selection',targetIds:['a'],instruction:'替换为参考人物',layers:[]}),save:async()=>{}});await tracker.request({selectedIds:['a'],provider:'tygpt',model:'m',attachment});attachment.src='reference-B';const saved=JSON.parse(JSON.stringify(d._assistantPreparedAnalysis));assert.equal(saved.attachment.src,'reference-A');assert.equal(a.confirmationAttachment(saved,null).src,'reference-A');assert.throws(()=>a.confirmationAttachment(saved,attachment),/参考图片.*改变/);const bound=a.confirmationAttachment(saved,{src:'reference-A',name:'人物'});bound.src='mutated';assert.equal(saved.attachment.src,'reference-A');});
 
@@ -215,3 +216,29 @@ test('size calibration never applies an estimate rejected by the actual referenc
 
 
 test('fresh and restored confirmation dispatch the analyzed reference while changed attachments never dispatch',async()=>{for(const route of ['fresh','restored','changed']){const a=api(),d=doc(),source=fs.readFileSync(file,'utf8'),reference={src:'reference-A',name:'人物'},result={action:'discuss',nextStep:'confirm',reference:'selection',targetIds:['a'],instruction:'替换为参考人物',layers:[]};let confirmation,dispatched=0;const tracker=a.createAnalysisTaskTracker({get:()=>d,request:async()=>result,save:async()=>{}}),flow=a.createFlow({get:()=>d,ids:()=>['a'],attachment:()=>reference,request:body=>tracker.request(body),onReply:(plan,meta)=>{confirmation={owner:d,before:meta.before,ids:meta.ids,attachment:meta.attachment,plan,canConfirm:true}}});await flow.send('先讨论用参考图替换','tygpt','m');if(route!=='fresh'){d._assistantPreparedAnalysis=JSON.parse(JSON.stringify(d._assistantPreparedAnalysis));confirmation=null;}const scope={...a,clone:structuredClone,preparedHydrated:null,confirmation,attachment:route==='changed'?{src:'reference-B'}:route==='restored'?null:reference,provider:{value:'tygpt'},model:{value:'m'},canStart:async()=>true,checkpointBeforeRequest:async()=>{},busy:false,splitLocked:false,confirmationCurrent:()=>true,studio:{adapter:{get:()=>d},isBusy:()=>false},timing:{start(){},stop(){}},flow:{recordOutcome(){}},render(){},status(){},updateButtons(){},notice:{textContent:''},executePlan:async(plan,scene,ids,messages,current,attachment)=>{dispatched++;assert.equal(plan.action,'correct');assert.equal(a.correctionOptions(plan,attachment).reference.src,'reference-A');assert.match(a.correctionOptions(plan,attachment).prompt,/第二张/);}};if(route!=='fresh'){const start=source.indexOf(' function restorePreparedAnalysis()'),end=source.indexOf('\n',start+1);vm.runInNewContext(source.slice(start,end),scope);scope.restorePreparedAnalysis();}const start=source.indexOf(' async function runPreparedGeneration()'),end=source.indexOf('\n confirmGeneration.onclick=',start);vm.runInNewContext(source.slice(start,end),scope);await scope.runPreparedGeneration();assert.equal(dispatched,route==='changed'?0:1);if(route==='changed')assert.match(scope.notice.textContent,/参考图片已改变/);}});
+
+test('chat updates preserve reading position while user scrolls up, and follow only near the bottom',()=>{
+ const log={scrollTop:300,scrollHeight:1200,clientHeight:300},a=api(),v=a.createChatViewport(log);let draws=0;
+ const draw=()=>{draws++;log.scrollHeight+=200;log.scrollTop=0};
+ v.update('project-a','one',draw);assert.equal(log.scrollTop,1400);
+ log.scrollTop=250;v.update('project-a','two',draw);assert.equal(log.scrollTop,250);
+ v.update('project-a','two',draw);assert.equal(draws,2);assert.equal(log.scrollTop,250);
+ log.scrollTop=log.scrollHeight-log.clientHeight-10;v.update('project-a','three',draw);assert.equal(log.scrollTop,1800);
+ log.scrollTop=100;v.update('project-b','one',draw);assert.equal(log.scrollTop,2000);
+});
+test('chat wheel reading at top stays at top through repeated streamed updates',()=>{
+ const log={scrollTop:0,scrollHeight:900,clientHeight:200},v=api().createChatViewport(log);v.update('p','first',()=>{});log.scrollTop=0;
+ for(let i=0;i<20;i++){v.update('p','stream'+i,()=>{log.scrollHeight+=10;log.scrollTop=10000});assert.equal(log.scrollTop,0)}
+});
+
+test('actual chat render path preserves reading position during streaming and skips unrelated progress redraws',()=>{
+ const source=fs.readFileSync(file,'utf8'),start=source.indexOf('const messages=flow.messages();chatViewport.update('),end=source.indexOf("q('[data-send]').disabled=",start);assert.ok(start>0&&end>start);
+ let messages=[{role:'assistant',content:'first reply'}],draws=0;
+ const log={scrollTop:0,scrollHeight:1000,clientHeight:200,replaceChildren(){draws++;this.scrollTop=0},append(){this.scrollHeight+=50}};
+ const state={flow:{messages:()=>messages},chatViewport:api().createChatViewport(log),studio:{adapter:{get:()=>({_projectId:'p'})}},generationStates:()=>[],streamingText:'',busy:false,document:{createElement:()=>({})},log};
+ const run=()=>vm.runInNewContext('{'+source.slice(start,end)+'}',state);
+ run();assert.equal(draws,1);log.scrollTop=180;run();assert.equal(draws,1);assert.equal(log.scrollTop,180);
+ state.busy=true;state.streamingText='first stream';run();assert.equal(log.scrollTop,180);
+ state.streamingText='longer stream';run();assert.equal(log.scrollTop,180);
+ messages=[...messages,{role:'assistant',content:'final reply'}];state.busy=false;state.streamingText='';run();assert.equal(log.scrollTop,180);
+});

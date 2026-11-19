@@ -107,7 +107,8 @@ def register(app,jobs,lock,pool,project_store=None):
   except InterruptedError:item.update(status='cancelled',message='已停止对话，工程未修改')
   except Exception as error:
    # Do not emit HTTP request exceptions or credentials in responses/logs.
-   message=str(error)[:240] if isinstance(error,ValueError) else '模型连接或回复未完成，请检查连接后重试'
+   from assistant_split import SceneDeliveryError
+   message=str(error)[:240] if isinstance(error,(ValueError,SceneDeliveryError)) else '模型连接或回复未完成（'+type(error).__name__+'），已有结果保留；未自动重发生成'
    item.update(status='failed',message=message)
   finally:item['finished']=time.time()
 

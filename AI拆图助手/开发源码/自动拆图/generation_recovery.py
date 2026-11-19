@@ -38,6 +38,13 @@ class GenerationRecovery:
    return self.ident
 
 
+def retire_saved_recovery(store,project_id):
+ """Retry retirement after an explicit durable main save, not only task callbacks."""
+ recovery_id='generation-source-'+hashlib.sha256(project_id.encode()).hexdigest()
+ try:recovery=store.get(recovery_id)
+ except FileNotFoundError:return {'deleted':False,'retained':False}
+ return acknowledge(store,project_id,recovery_id,recovery.get('persistedVersion'))
+
 def acknowledge(store,project_id,recovery_id,expected_version):
  """Client assertions are insufficient: re-read durable main and CAS safety copy."""
  retained={'deleted':False,'retained':True}

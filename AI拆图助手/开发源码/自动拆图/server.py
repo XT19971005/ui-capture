@@ -154,7 +154,16 @@ def saved_project(ident):
         if expected is not None and (not isinstance(expected,str) or len(expected)>160):raise ValueError('工程版本无效')
         if request.method=='DELETE':
             store.delete(ident,expected);return jsonify(deleted=True)
-        return jsonify(project=store.save(ident,data,expected),directory=str(store.root.resolve()))
+        saved=store.save(ident,data,expected)
+        # Task failures can bypass the final receipt acknowledgement. A later
+        # successful main save must recheck the durable copy before retiring it.
+        with lock:idle=not any(j['status'] in ('queued','running') for j in jobs.values())
+        if idle and not data.get('doc',{}).get('_generationRecovery'):
+            try:
+                from generation_recovery import retire_saved_recovery
+                retire_saved_recovery(store,ident)
+            except (OSError,ValueError,KeyError):pass # Keep the safety copy on uncertainty.
+        return jsonify(project=saved,directory=str(store.root.resolve()))
     except ProjectConflict as error:return jsonify(error=str(error)),409
     except FileNotFoundError:return jsonify(error='本地工程不存在或已被删除'),404
     except (ValueError,TypeError,RecursionError) as error:return jsonify(error=str(error) or '本地工程内容无效'),400

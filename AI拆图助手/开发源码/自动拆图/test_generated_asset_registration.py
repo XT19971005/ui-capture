@@ -21,3 +21,14 @@ class RegistrationTests(unittest.TestCase):
    with tempfile.TemporaryDirectory() as folder:
     p=Path(folder)/'asset.png';Image.new('RGBA',(20,20),color).save(p)
     with self.assertRaises(ValueError):register_asset(p,100,(0,0))
+
+ def test_semantic_match_receives_object_scope_and_exclusions_without_relaxing_fit(self):
+  from semantic_registration import calibrate_semantic
+  reference=Image.new('RGB',(200,120),'white');generated=Image.new('RGBA',(160,100));generated.paste((230,160,40,255),(10,10,150,90));captured=[]
+  def analyze(prompt,images,schema,**kwargs):
+   captured.append(prompt)
+   self.assertIn('排除英文副标题',prompt);self.assertIn('不得作为缺失主体的证据',prompt)
+   return {'sameObject':False,'confidence':.95,'reason':'主星芒被拉长','anchors':[]}
+  with self.assertRaisesRegex(ValueError,'主星芒被拉长'):
+   calibrate_semantic(reference,generated,{'x':10,'y':10,'width':160,'height':90,'name':'标题','extractionBrief':'只取中文金字，排除英文副标题'}, {'name':'标题'},analyze=analyze)
+  self.assertEqual(len(captured),1)

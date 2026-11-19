@@ -2,7 +2,7 @@
 import base64,hashlib,io,json,re,uuid,copy
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
-from image_provider import CLIENT
+from image_provider import CLIENT,expects_opaque_material
 from layer_review import approved_asset_names
 from design_properties import design_fields
 from split_strategy import CONTAINER_EXTRACTION_RULES
@@ -270,7 +270,7 @@ def _legacy_complete_asset(source,node,assets,structure,cancelled,original_sourc
    file.write_bytes(raw);record.update(file=str(file),reusedCompletionBase=True)
   else:
    if on_status:on_status('正在生成完整透明素材：'+node['name'])
-   record=CLIENT.generate(prompt,references,file,transparent=True,cancelled=cancelled,on_status=on_status)
+   record=CLIENT.generate(prompt,references,file,transparent=True,cancelled=cancelled,on_status=on_status,opaque_subject=expects_opaque_material(node))
  finally:
   crop.unlink(missing_ok=True)
   if repair_reference:repair_reference.unlink(missing_ok=True)

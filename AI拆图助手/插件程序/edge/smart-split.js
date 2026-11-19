@@ -114,7 +114,7 @@ window.ShijieSmartSplit=(()=>{
    await awaitCancelledCleanup(run,onProgress);if(run.cancelled)throw abortError();
    onProgress(.02,'正在整理工程图片，保留原图与全部图层…');await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const transportScene=resumeScene?{...resumeScene}:null;if(transportScene){delete transportScene._splitBaseline;delete transportScene._splitDraftCore;}
-   const body=serializeJob(assistantWire({image,title,mode,original,...(options.annotations?{annotations:options.annotations}:{}),...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{}),...(options.dialogue?{dialogue:options.dialogue}:{})}:{})}),engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
+   const body=serializeJob((mode==='repair-order'?value=>value:assistantWire)({image,title,mode,original,...(options.annotations?{annotations:options.annotations}:{}),...(transportScene?{resume:transportScene}:{}),...(mode==='replace-image'?{replacement:options.replacement}:{}),...(mode==='refine-selected'?{selectedIds:options.selectedIds,...(options.region?{region:options.region}:{}),...(options.dialogue?{dialogue:options.dialogue}:{})}:{})}),engine.imageWireVersion===1);await new Promise(resolve=>setTimeout(resolve,0));if(run.cancelled)throw abortError();
    const job=await request('/jobs',{method:'POST',body});run.id=job.id;
    let revision=0;
    while(true){

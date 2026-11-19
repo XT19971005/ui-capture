@@ -247,11 +247,11 @@ body.unified-workbench{font-size:13px}
 
 .unified-workbench .app-header .project-controls{display:flex!important;width:auto!important;gap:8px!important}.unified-workbench .app-header .project-controls>*{position:static!important;flex:none}.web-live-open #preview{overflow:hidden!important}
 
-body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:260px 208px 112px minmax(0,1fr) max-content!important;grid-template-areas:"brand modes assistant intake actions"!important;grid-template-rows:64px!important;height:64px!important;gap:16px!important;padding:0 20px!important}
+body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:260px max-content 112px minmax(0,1fr) max-content!important;grid-template-areas:"brand modes assistant intake actions"!important;grid-template-rows:64px!important;height:64px!important;gap:16px!important;padding:0 20px!important}
 body.unified-workbench .app-header>.header-actions{grid-area:actions!important;align-self:center;flex-wrap:nowrap!important}
 body.unified-workbench .app-header .project-controls>:is(#open-project,#save-project){width:80px!important;min-width:80px!important;height:34px!important}
 body.unified-workbench .app-header .project-controls #studio-recovery-state{width:66px!important;margin:0!important}
-@media(max-width:1320px){body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px 190px 112px minmax(0,1fr) max-content!important;gap:12px!important;padding:0 12px!important}}
+@media(max-width:1320px){body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px max-content 112px minmax(0,1fr) max-content!important;gap:12px!important;padding:0 12px!important}}
 @media(max-width:900px){body.unified-workbench .app-header.single-module,body.unified-workbench .app-header.single-module:has(>#assistant-toggle){grid-template-columns:160px minmax(0,1fr) 112px!important;grid-template-areas:"brand modes assistant" "actions actions actions"!important;grid-template-rows:48px 42px!important;height:98px!important;gap:0 8px!important}.unified-workbench .header-actions{justify-self:end!important}.web-workbench .canvas-panel>.web-address-dock{width:calc(100% - 16px)}}
 
 .web-workbench .canvas-panel>.web-live-preview{inset:82px 0 28px}.web-workbench .web-live-preview img{max-width:none;object-fit:contain}
@@ -348,3 +348,6 @@ body.unified-workbench{--workflow-accent:#8c70d8;--workflow-border:#343746;--wor
 .unified-workbench .document-actions #calibrate-split-size{margin-inline-start:20px}
 
 body.unified-workbench .app-header .project-controls>#clear-image{width:80px!important;min-width:80px!important;max-width:80px!important;flex:0 0 80px!important;height:34px!important;padding:6px 10px!important}
+
+/* Mode entries grow with their labels; the assistant occupies the next real grid column. */
+body.unified-workbench .app-header>.workspace-switch{width:max-content;max-width:none;min-width:max-content}
