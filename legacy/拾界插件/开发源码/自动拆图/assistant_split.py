@@ -347,8 +347,10 @@ def generate(body,home,cancelled,progress,on_scene=None):
     register_node(candidate,index)
     if on_scene:on_scene(partial_scene())
    except InterruptedError:raise
-   except (ValueError,RuntimeError,OSError) as error:
-    vector_warnings.append({'index':index,'name':layer['name'],'reason':str(error)[:240]})
+   except SceneDeliveryError:raise
+   except Exception as error:
+    reason=str(error)[:240] if isinstance(error,(ValueError,RuntimeError,OSError)) else '本对象处理未完成（'+type(error).__name__+'）；已有结果保留，未自动重新生图'
+    vector_warnings.append({'index':index,'name':layer['name'],'reason':reason})
     progress((index+1)/len(body['layers']),'本项未生成，继续其他对象：'+layer['name'])
     if on_scene:on_scene(partial_scene())
  except Exception as error:

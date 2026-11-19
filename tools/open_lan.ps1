@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskPython = Join-Path $taskRoot '.venv/Scripts/python.exe'
 & $taskPython -X utf8 -B (Join-Path $PSScriptRoot 'lan_https.py') --check *> $null

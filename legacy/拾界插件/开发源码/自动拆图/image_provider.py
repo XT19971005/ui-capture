@@ -238,6 +238,14 @@ def generation_input(model,prompt,images,urls,schema=None):
 
 
 
+def expects_opaque_material(layer):
+ """Only opt confirmed solid subjects into near-opaque interior repair."""
+ text=' '.join(str(layer.get(k) or '') for k in ('name','extractionBrief','instruction'))
+ if layer.get('opacity',1) != 1:return False
+ if any(word in text for word in ('半透明','透明材质','玻璃','薄纱','烟雾','雾气','光晕','发光体','透明度渐变')):return False
+ return any(word in text for word in ('不透明实体','金属','银框','金框','底板','勋章','徽章','人物','女王','盔甲','木质','石质','陶瓷','塑料','皮革'))
+
+
 def repair_opaque_interior(image,*,expected_opaque=False):
  """Restore a confirmed solid material's near-opaque interior only.
  Keep RGB, canvas, holes, antialias edges and truly translucent pixels intact.
@@ -419,8 +427,18 @@ def generate(prompt,images,target,transparent=False,cancelled=lambda:False,timeo
 
 class ImageClient:
  def generate(self,*args,**kwargs):
-  if settings()['provider']=='aimake':return generate(*args,**kwargs)
-  from codex_client import CLIENT as codex
-  return codex.generate(*args,**kwargs)
+  opaque_subject=kwargs.get('opaque_subject',False)
+  if settings()['provider']=='aimake':record=generate(*args,**kwargs)
+  else:
+   kwargs.pop('opaque_subject',None)
+   from codex_client import CLIENT as codex
+   record=codex.generate(*args,**kwargs)
+  if opaque_subject and kwargs.get('transparent'):
+   target=Path(args[2] if len(args)>2 else kwargs['target'])
+   with Image.open(target) as image:fixed,count=repair_opaque_interior(image.convert('RGBA'),expected_opaque=True)
+   if count:
+    fixed.save(target)
+    record['opaqueInteriorPixelsRepaired']=count
+  return record
 
 CLIENT=ImageClient()

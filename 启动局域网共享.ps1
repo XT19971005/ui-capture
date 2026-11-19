@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $taskPython = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 $taskEntry = Join-Path $PSScriptRoot 'tools/lan_server.py'
 & $taskPython -X utf8 -B $taskEntry --prepare

@@ -46,7 +46,7 @@ def process(value):
   else:
    result=calibrate(image,node,target)
    if result.get('registration',{}).get('status')!='aligned':
-    try:result=calibrate_semantic(image,generated,{**target,'name':node.get('name')},node)
+    try:result=calibrate_semantic(image,generated,{**targets[0],**target,'name':node.get('name')},node)
     except (ValueError,RuntimeError) as exc:
      result=annotation_estimate(generated,target,node);result['registration']['detail']=str(exc)[:240]
   result.update(x=result['x']*scale+ox,y=result['y']*scale+oy,width=result['width']*scale,height=result['height']*scale)

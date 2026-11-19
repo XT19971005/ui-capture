@@ -29,7 +29,7 @@ def register_asset(target,reference_side,origin):
   'reviewIssue':'；'.join(issues),'registration':{'method':'reference-center-provisional' if mismatch else 'reference-canvas','scale':scale,'rawWidth':width,'rawHeight':height}}
 
 def extract(source,layer,assets,cancelled,on_status,annotations=None,structure=None):
- from image_provider import CLIENT,settings
+ from image_provider import CLIENT,settings,expects_opaque_material
  from reference_fidelity import COLOR_PRESERVATION
  with Image.open(source) as raw:original=raw.convert('RGBA')
  w,h=original.size
@@ -79,7 +79,7 @@ def extract(source,layer,assets,cancelled,on_status,annotations=None,structure=N
    if len(images)>maximum:
     # Keep the clean target, marked full context and repair asset when the model accepts three references.
     images.pop(1)
-  record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False)
+  record=CLIENT.generate(prompt,images,target,transparent=True,cancelled=cancelled,on_status=on_status,allow_identity_change=False,opaque_subject=expects_opaque_material(layer))
  finally:
   reference.unlink(missing_ok=True)
   if repair_reference:repair_reference.unlink(missing_ok=True)

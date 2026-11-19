@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $taskPython = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 $taskEntry = Join-Path $PSScriptRoot 'tools/lan_https.py'
 $taskStatusPath = Join-Path $env:LOCALAPPDATA 'AI拆图助手/局域网共享/https-status.json'

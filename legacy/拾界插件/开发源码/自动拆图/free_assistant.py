@@ -20,7 +20,7 @@ def validate_request(body):
  if 'annotationOnly' in body and type(body['annotationOnly']) is not bool:raise ValueError('自动标注开关无效')
  if 'annotationAllowExpand' in body and type(body['annotationAllowExpand']) is not bool:raise ValueError('自动标注向外补全开关无效')
  if 'annotationLimit' in body and (type(body['annotationLimit']) is not int or not 1<=body['annotationLimit']<=128):raise ValueError('自动标注数量必须为1至128')
- if body['provider'] not in ('codex','tygpt') and not (body.get('annotationOnly') is True and body['provider']=='auto') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
+ if body['provider'] not in ('auto','codex','tygpt') or not isinstance(body['model'],str) or len(body['model'])>200:raise ValueError('请选择可用的智能模型')
  from selected_dialogue import validate_dialogue
  validate_dialogue({'action':'discuss','messages':body['messages']})
  workspace=body.get('workspace')
@@ -223,6 +223,8 @@ instruction是完整具体的执行要求，包括最新补充；name为根据�
  prompt+='\n原生矢量和文字的首个底稿必须给出非空native对象，不能只写类型和说明。path必须有平滑贝塞尔d和fill；text必须有准确text、fontFamily、fontSize、fontWeight及fill；rect/ellipse必须有fill。native的其他无关字段用空字符串或有效默认值。只有image或reuseOf已指向前一个底稿的位置实例可以native=null；不能把缺参数的矢量降级为图片。'
  if body.get('analysisStage'):
   prompt+='\n本次严格只详细分析'+{'vector':'矢量','text':'文字','image':'图片'}[body['analysisStage']]+'标注，其他类别只作画面遮挡上下文，不分类、不规划参数、不生成。只返回本批对应类型的layers；逐项覆盖本批所有标注，每处位置独立一层，不得漏项，name以原标注编号开头；不要复述整图分类，不添加未圈对象。保留原标注编号，reply只简短汇报本批数量和必要待确认项，不逐项复述全部参数。用户已选择生成此类，本批参数齐全时discuss/confirm，不能因为未分析其它类阻止本类执行。'
+ from ui_split_policy import RULES as UI_SPLIT_RULES
+ prompt+='\n'+UI_SPLIT_RULES+'\n本轮有分层layers时，每项reviewNote按拆分原因、保留整体、另拆对象、待确认四个标签逐项解释，并说明为什么选图片、矢量或文字；控制每项reviewNote在600字以内。不另拆部件必须说明随哪个主体保留以及原因，不能写成漏标；独立文字图标仍需列对应层。执行instruction保留完整包含、排除和补全要求，说明不代替执行要求。无layers的讨论不虚构分层清单。'
  from marked_scope import bounded, RULES as MARKED_SCOPE_RULES
  if bounded(body):prompt+='\n'+MARKED_SCOPE_RULES
  result=analyze(prompt,images,stage_schema(body.get('analysisStage')),body['provider'],body['model'],cancelled,on_status,**({'on_text':lambda text:on_reply(reply_prefix(text))} if on_reply else {}))
