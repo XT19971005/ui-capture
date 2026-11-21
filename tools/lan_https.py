@@ -265,8 +265,12 @@ def run():
             while not exit_event.wait(2):
                 if stop.exists():
                     server.stop();return
-                atomic_json(STATE/'https-status.json',{'running':True,'pid':os.getpid(),'heartbeat':time.time(),
-                    'url':f"https://{config['host']}:{PORT}", 'certificate':loaded_certificate})
+                try:
+                    atomic_json(STATE/'https-status.json',{'running':True,'pid':os.getpid(),'heartbeat':time.time(),
+                        'url':f"https://{config['host']}:{PORT}", 'certificate':loaded_certificate})
+                except OSError:
+                    # A transient Windows file lock must not kill monitoring.
+                    continue
         thread=threading.Thread(target=monitor,daemon=True);thread.start()
         try:
             server.serve()
@@ -286,20 +290,24 @@ def main():
     if args.prepare:
         prepare();print('网页入口已生成：'+str(ENTRY));return
     if args.check:
-        import urllib.request
+        import http.client
+        import hashlib
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
         site=json.loads((STATE/'site.json').read_text('utf8'))
-        status=json.loads((STATE/'https-status.json').read_text('utf8'))
-        expected=f"https://{site['host']}:{PORT}"
         certificate=x509.load_pem_x509_certificate((STATE/'https/server.crt').read_bytes()).fingerprint(hashes.SHA256()).hex()
-        if (not status.get('running') or time.time()-status.get('heartbeat',0)>20
-                or status.get('url')!=expected or status.get('certificate')!=certificate):
-            raise ValueError('网页入口地址或证书已更新，请停止并重新启动局域网共享')
         context=ssl.create_default_context(cafile=str(STATE/'https/root.crt'))
-        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=context))
-        with opener.open(expected+'/health/live',timeout=5) as response:
+        # A stopped heartbeat writer or a failed competing launch must not make
+        # a live, correctly authenticated TLS entrance look stopped.
+        connection=http.client.HTTPSConnection(site['host'],PORT,context=context,timeout=5)
+        try:
+            connection.connect()
+            if hashlib.sha256(connection.sock.getpeercert(binary_form=True)).hexdigest()!=certificate:
+                raise ValueError('网页入口证书已更新，请保存工程后重新启动局域网共享')
+            connection.request('GET','/health/live')
+            response=connection.getresponse()
             if response.status!=200:raise ValueError('HTTPS入口未就绪')
+        finally:connection.close()
         return
     run()
 
@@ -307,7 +315,7 @@ def main():
 if __name__=='__main__':
     try:main()
     except Exception as error:
-        if STATE.exists() and not any(flag in sys.argv for flag in ('--prepare','--check','--stop')):
+        if STATE.exists() and not isinstance(error,BlockingIOError) and not any(flag in sys.argv for flag in ('--prepare','--check','--stop')):
             atomic_json(STATE/'https-status.json',{'running':False,'heartbeat':time.time(),'error':type(error).__name__})
         print('HTTPS入口未能启动：'+type(error).__name__,file=sys.stderr)
         raise SystemExit(1)

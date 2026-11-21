@@ -1,6 +1,16 @@
 ﻿$ErrorActionPreference = 'Stop'
 $taskPython = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 $taskEntry = Join-Path $PSScriptRoot 'tools/lan_server.py'
+$taskServiceReady = $false
+try {
+    $taskHealth = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:19218/health/live' -TimeoutSec 3
+    $taskServiceReady = ($taskHealth.StatusCode -eq 200)
+} catch { }
+if ($taskServiceReady) {
+    Write-Host '共享服务正在运行。'
+    & (Join-Path $PSScriptRoot '启动网页入口.ps1')
+    return
+}
 & $taskPython -X utf8 -B $taskEntry --prepare
 if ($LASTEXITCODE -ne 0) { throw '无法准备共享服务；已运行时请使用“查看局域网共享.ps1”。' }
 $taskProcess = Start-Process -FilePath $taskPython -ArgumentList @('-X','utf8','-B',('"'+$taskEntry+'"')) -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru

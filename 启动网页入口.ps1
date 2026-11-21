@@ -4,15 +4,14 @@ $taskEntry = Join-Path $PSScriptRoot 'tools/lan_https.py'
 $taskStatusPath = Join-Path $env:LOCALAPPDATA 'AI拆图助手/局域网共享/https-status.json'
 & $taskPython -X utf8 -B $taskEntry --prepare
 if ($LASTEXITCODE -ne 0) { throw '无法准备HTTPS网页入口。' }
-if (Test-Path -LiteralPath $taskStatusPath) {
-    $taskStatus = Get-Content -Raw -Encoding utf8 -LiteralPath $taskStatusPath | ConvertFrom-Json
-    $taskNow = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    if ($taskStatus.running -and ($taskNow - $taskStatus.heartbeat) -lt 20) {
-        & $taskPython -X utf8 -B $taskEntry --check
-        if ($LASTEXITCODE -ne 0) { throw '网页地址或证书可能已变化；请先保存工程，再停止并重启局域网共享。' }
-        Write-Host ('网页入口正在运行：' + $taskStatus.url)
-        return
-    }
+function Test-HttpsEntry {
+    $ErrorActionPreference = 'Continue'
+    & $taskPython -X utf8 -B $taskEntry --check *> $null
+    return ($LASTEXITCODE -eq 0)
+}
+if (Test-HttpsEntry) {
+    Write-Host '网页入口正在运行。'
+    return
 }
 $taskProcess = Start-Process -FilePath $taskPython -ArgumentList @('-X','utf8','-B',('"'+$taskEntry+'"')) -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru
 $taskStarted = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()

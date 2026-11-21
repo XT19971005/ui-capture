@@ -161,7 +161,7 @@ if __name__ == '__main__':
     try: main()
     except Exception as error:
         # Only controlled local messages; never put credential values or provider responses in logs.
-        if STATE.exists():
+        if STATE.exists() and not isinstance(error, BlockingIOError):
             atomic_json(STATE / 'status.json', {'running': False, 'heartbeat': time.time(), 'error': type(error).__name__})
         print('启动未完成：' + (str(error) if isinstance(error, (ValueError, BlockingIOError)) else type(error).__name__), file=sys.stderr)
         raise SystemExit(1)
